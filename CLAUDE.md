@@ -67,6 +67,12 @@ Key modules:
 - `runtime_layout.py` — init/copy mutable runtime directory structure
 - `llm/request_cli.py` — LLM generation CLI; `--workouts N` overrides expected count
 
+## JSON Schema (Pydantic)
+
+`WorkoutPlanSchema.model_json_schema()` generates machine-readable schema for all step types.
+Use `get_plan_json_schema()` from `garmin_fit.llm.prompt` for external tools.
+Compact version injected into prompt with `get_system_prompt(include_json_schema=True)`.
+
 ## LLM workout count detection
 
 `normalize_source_text()` auto-detects expected workout count:

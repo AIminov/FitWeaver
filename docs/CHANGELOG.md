@@ -10,6 +10,15 @@
 - `pyproject.toml`: dev optional-dependencies group (`pydantic>=2.0`, `pytest>=8.0`, `pytest-asyncio>=0.23`, `ruff>=0.4`); `[tool.pytest.ini_options]` and `[tool.ruff]` config sections.
 - `tests/test_plan_schema.py`: 38 new tests covering all step models, discriminated union dispatch, HR/pace ordering, duplicate filename detection, JSON Schema generation, and validator integration. Total test count: 60 → 98.
 
+### Added (cont.)
+- `llm/prompt.py` — `get_plan_json_schema()`: public function returning `WorkoutPlanSchema.model_json_schema()` for use in external tools (ChatGPT, Claude, etc.).
+- `llm/prompt.py` — `_build_json_schema_section()`: compact step schema derived programmatically from Pydantic models (always in sync). Injected into prompt when `include_json_schema=True`.
+- `create_system_prompt()` / `get_system_prompt()`: new `include_json_schema=False` parameter. Off by default to preserve token budget for local LLMs; enable for capable models (GPT-4, Claude API).
+- `pyproject.toml`: duplicate `src.garmin_fit.llm` package-data key removed (was causing TOML parse error blocking ruff).
+- `pyproject.toml`: ruff `ignore` extended with `W191`, `W291`, `W292`, `W293` (pre-existing tab/whitespace style); `per-file-ignores` for `Scripts/` and `garmin_fit/` shims (`F401`, `I001`, `E402`).
+- `llm/__init__.py`: explicit re-export syntax (`X as X`) for public API symbols.
+- `archive_manager.py`: `# noqa: E402` on post-logger imports (intentional pattern).
+
 ### Changed
 - `plan_validator.py` — Pydantic structural pass (`_validate_with_pydantic`) prepended to `validate_plan_data_detailed()`; gracefully skipped if pydantic is unavailable.
 - `README.md` split into two separate files: `README.md` (English only, shown by default on GitHub) and `README.ru.md` (Russian only), each with a link to the other.
