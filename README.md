@@ -124,10 +124,10 @@ Ask Claude or ChatGPT to generate YAML following the schema:
 Промпт / Prompt:
 ```
 Сгенерируй тренировочный план в формате YAML для проекта Garmin FIT Workout Generator.
-Формат описан здесь: https://github.com/AIminov/FitForge/blob/main/docs/YAML_GUIDE.md
+Формат описан здесь: https://github.com/AIminov/FitWeaver/blob/main/docs/YAML_GUIDE.md
 
 Generate a training plan in YAML format for the Garmin FIT Workout Generator project.
-The schema is described here: https://github.com/AIminov/FitForge/blob/main/docs/YAML_GUIDE.md
+The schema is described here: https://github.com/AIminov/FitWeaver/blob/main/docs/YAML_GUIDE.md
 ```
 
 **2.** Сохраните полученный YAML в `Plan/` /
