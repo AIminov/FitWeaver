@@ -1,5 +1,5 @@
 FitWeaver
-v9.0 — 2026-03-31
+v9.1 — 2026-03-31
 
 History:
   Garmin          — v1: initial FIT generator, hardcoded templates
@@ -13,3 +13,4 @@ History:
   Garmin8.8       — v8.8: SBU repeat fix (two-builder), ISO week numbering
   Garmin8.9/v8.9  — v8.9: LLM workout count detection, structural refactor, phase plans
   FitWeaver/v9.0  — v9.0: Pydantic v2 validation, CI/CD (GitHub Actions), README bilingual split, docs overhaul
+  FitWeaver/v9.1  — v9.1: clean src-layout packaging, garmin_fit bridge, all imports migrated, runner fixed

@@ -1,5 +1,29 @@
 ﻿# Changelog
 
+## 2026-03-31 — v9.1 (Clean Packaging, Import Migration, Runner Fix)
+
+### Changed
+- `pyproject.toml`: finalized clean src-layout — `package-dir = {"" = "src"}`, `find where=["src"]`. `Scripts*` removed from installed package (remains in repo as compatibility layer only).
+- `garmin_fit/__init__.py`: replaced per-module shim files with a single bridge that extends `__path__` to `src/garmin_fit/`. All 30 shim files removed.
+- `[project.scripts]`: proper console entry points (`garmin-fit`, `garmin-fit-legacy`, `garmin-fit-runner`, etc.) wired to `src/garmin_fit` modules.
+- `src/garmin_fit/runner.py`: interactive menu now uses `importlib.import_module()` + `mod.main()` instead of `subprocess.run()`. Fixes silent output on Windows (PowerShell stdout inheritance issue).
+- All tests migrated from `Scripts.*` imports to `garmin_fit.*`.
+- All examples migrated: `sys.path.append(Scripts)` removed, `garmin_fit.*` imports used.
+- All docs updated: primary commands now `python -m garmin_fit.*`; `Scripts.*` retained only in explicit compatibility notes.
+- `README.md` / `README.ru.md`: fixed step numbering gaps (1→2→4 → 1→2→3).
+- `.gitignore`: added `*.egg-info/`.
+
+### Added
+- `docs/SCRIPTS_DEPENDENCY_AUDIT.md`: records current Scripts exit criteria and compatibility decision.
+- `src/garmin_fit/runner.py`: new interactive menu runner (replaces legacy `run.py`).
+
+### Architecture
+- `src/garmin_fit/` — canonical source (unchanged)
+- `garmin_fit/` — bridge only (`__init__.py` extends `__path__`; no per-module files)
+- `Scripts/` — compatibility layer, not part of installed package
+
+---
+
 ## 2026-03-31 — v9.0 (Pydantic Validation, CI/CD, Documentation Overhaul)
 
 ### Added
