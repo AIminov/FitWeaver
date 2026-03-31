@@ -1,0 +1,188 @@
+workouts:
+- filename: W10_03-09_Mon_Easy_8km
+  name: W10_03-09_Mon_Easy_8km
+  desc: Easy run with heart rate capped at 140 bpm
+  type_code: easy
+  distance_km: 8.0
+  estimated_duration_min: 52
+  steps:
+  - type: dist_hr
+    km: 8.0
+    hr_low: 125
+    hr_high: 140
+    intensity: recovery
+- filename: W10_03-10_Tue_Easy_7km
+  name: W10_03-10_Tue_Easy_7km
+  desc: Easy aerobic run with heart rate between 125 and 140 bpm
+  type_code: easy
+  distance_km: 7.0
+  estimated_duration_min: 45
+  steps:
+  - type: dist_hr
+    km: 7.0
+    hr_low: 125
+    hr_high: 140
+    intensity: recovery
+- filename: W10_03-11_Wed_Tempo_4km
+  name: W10_03-11_Wed_Tempo_4km
+  desc: 'Tempo run: 4km at threshold pace with warmup and cooldown'
+  type_code: tempo
+  distance_km: 8.0
+  estimated_duration_min: 48
+  steps:
+  - type: dist_pace
+    km: 2.0
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: warmup
+  - type: dist_pace
+    km: 4.0
+    pace_fast: '5:00'
+    pace_slow: '5:10'
+    intensity: active
+  - type: dist_pace
+    km: 2.0
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: cooldown
+- filename: W11_03-12_Thu_Recovery_5km
+  name: W11_03-12_Thu_Recovery_5km
+  desc: Very easy run with heart rate between 120 and 130 bpm
+  type_code: recovery
+  distance_km: 5.0
+  estimated_duration_min: 35
+  steps:
+  - type: dist_hr
+    km: 5.0
+    hr_low: 120
+    hr_high: 130
+    intensity: recovery
+- filename: W11_03-13_Fri_Intervals_5x1000m
+  name: W11_03-13_Fri_Intervals_5x1000m
+  desc: 'Intervals: 5x1000m at high HR with jogging recovery'
+  type_code: intervals
+  distance_km: 9.0
+  estimated_duration_min: 55
+  steps:
+  - type: dist_hr
+    km: 2.0
+    hr_low: 130
+    hr_high: 145
+    intensity: warmup
+  - type: dist_hr
+    km: 1.0
+    hr_low: 165
+    hr_high: 175
+    intensity: active
+  - type: dist_hr
+    km: 0.4
+    hr_low: 130
+    hr_high: 145
+    intensity: recovery
+  - type: repeat
+    back_to_offset: 1
+    count: 5
+  - type: dist_hr
+    km: 1.0
+    hr_low: 130
+    hr_high: 145
+    intensity: cooldown
+- filename: W11_03-14_Sat_Long_16km
+  name: W11_03-14_Sat_Long_16km
+  desc: Long aerobic run with heart rate cap at 150 bpm
+  type_code: long
+  distance_km: 16.0
+  estimated_duration_min: 108
+  steps:
+  - type: dist_hr
+    km: 16.0
+    hr_low: 140
+    hr_high: 150
+    intensity: active
+- filename: W11_03-15_Sun_Recovery_6km
+  name: W11_03-15_Sun_Recovery_6km
+  desc: Very easy recovery run with heart rate capped at 130 bpm
+  type_code: recovery
+  distance_km: 6.0
+  estimated_duration_min: 40
+  steps:
+  - type: dist_hr
+    km: 6.0
+    hr_low: 104
+    hr_high: 130
+    intensity: recovery
+- filename: W11_03-16_Mon_Fartlek
+  name: W11_03-16_Mon_Fartlek
+  desc: 'Fartlek: 6 cycles of 1min fast + 2min easy running'
+  type_code: mixed
+  distance_km: 7.0
+  estimated_duration_min: 38
+  steps:
+  - type: time_pace
+    seconds: 600
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: warmup
+  - type: time_pace
+    seconds: 60
+    pace_fast: '4:40'
+    pace_slow: '4:50'
+    intensity: active
+  - type: time_pace
+    seconds: 120
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: recovery
+  - type: repeat
+    back_to_offset: 1
+    count: 6
+  - type: time_pace
+    seconds: 600
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: cooldown
+- filename: W11_03-18_Wed_Intervals_6x800m
+  name: W11_03-18_Wed_Intervals_6x800m
+  desc: 'Classic intervals: 6x800m at tempo pace with jogging recovery'
+  type_code: intervals
+  distance_km: 10.4
+  estimated_duration_min: 55
+  steps:
+  - type: dist_pace
+    km: 2.0
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: warmup
+  - type: dist_pace
+    km: 0.8
+    pace_fast: '4:20'
+    pace_slow: '4:30'
+    intensity: active
+  - type: dist_open
+    km: 0.4
+    intensity: recovery
+  - type: repeat
+    back_to_offset: 1
+    count: 6
+  - type: dist_pace
+    km: 1.0
+    pace_fast: '5:45'
+    pace_slow: '6:00'
+    intensity: cooldown
+- filename: W12_03-21_Sat_Long_Progression_16km
+  name: W12_03-21_Sat_Long_Progression_16km
+  desc: 'Progressive long run: 12km aerobic base + 4km developing pace'
+  type_code: progression
+  distance_km: 16.0
+  estimated_duration_min: 110
+  steps:
+  - type: dist_hr
+    km: 12.0
+    hr_low: 135
+    hr_high: 150
+    intensity: active
+  - type: dist_hr
+    km: 4.0
+    hr_low: 150
+    hr_high: 160
+    intensity: active

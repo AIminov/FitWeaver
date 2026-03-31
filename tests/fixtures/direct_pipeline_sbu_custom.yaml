@@ -1,0 +1,18 @@
+workouts:
+  - filename: W02_SBU_CUSTOM
+    name: W02_SBU_CUSTOM
+    steps:
+      - type: dist_open
+        km: 2.0
+        intensity: warmup
+      - type: sbu_block
+        drills:
+          - name: Bounds
+            seconds: 20
+            reps: 2
+          - name: Ankling
+            seconds: 30
+            reps: 1
+      - type: dist_open
+        km: 1.0
+        intensity: cooldown

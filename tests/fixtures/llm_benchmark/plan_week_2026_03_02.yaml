@@ -1,0 +1,79 @@
+suite: plan_week_2026_03_02
+cases:
+  - id: group_1
+    input_path: LLM_input_test/plan_week_2026_03_02/group_1.txt
+    yaml_path: Plan/plan_done/group_1.yaml
+    expected_workout_count: 5
+    expected_filenames:
+      - W09_03-03_Tue_Easy_8km
+      - W09_03-04_Wed_Intervals_Hills_2x5x40m
+      - W10_03-06_Fri_Easy_8km
+      - W10_03-07_Sat_Easy_10km
+      - W10_03-08_Sun_Long_16km
+    checks:
+      - kind: step_field
+        workout: W09_03-04_Wed_Intervals_Hills_2x5x40m
+        step_index: 0
+        field: intensity
+        equals: warmup
+        severity: warning
+      - kind: step_field
+        workout: W09_03-04_Wed_Intervals_Hills_2x5x40m
+        step_index: 3
+        field: count
+        equals: 5
+      - kind: step_field
+        workout: W09_03-04_Wed_Intervals_Hills_2x5x40m
+        step_index: 7
+        field: count
+        equals: 5
+      - kind: step_field
+        workout: W10_03-08_Sun_Long_16km
+        step_index: 0
+        field: hr_high
+        equals: 155
+  - id: group_2
+    input_path: LLM_input_test/plan_week_2026_03_02/group_2.txt
+    yaml_path: Plan/plan_done/group_2.yaml
+    expected_workout_count: 4
+    expected_filenames:
+      - W09_03-03_Tue_Easy_6km
+      - W09_03-04_Wed_Intervals_Hills_2x5x40m
+      - W10_03-06_Fri_Easy_6km
+      - W10_03-08_Sun_Long_14km
+    checks:
+      - kind: step_field
+        workout: W09_03-04_Wed_Intervals_Hills_2x5x40m
+        step_index: 0
+        field: intensity
+        equals: warmup
+        severity: warning
+      - kind: step_field
+        workout: W10_03-08_Sun_Long_14km
+        step_index: 0
+        field: hr_high
+        equals: 155
+  - id: group_3
+    input_path: LLM_input_test/plan_week_2026_03_02/group_3.txt
+    yaml_path: Plan/plan_done/group_3.yaml
+    expected_workout_count: 3
+    expected_filenames:
+      - W09_03-04_Wed_Intervals_Hills_1x5x40m
+      - W10_03-06_Fri_Easy_5km
+      - W10_03-08_Sun_Long_12km
+    checks:
+      - kind: step_field
+        workout: W09_03-04_Wed_Intervals_Hills_1x5x40m
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W09_03-04_Wed_Intervals_Hills_1x5x40m
+        step_index: 3
+        field: count
+        equals: 5
+      - kind: step_field
+        workout: W10_03-08_Sun_Long_12km
+        step_index: 0
+        field: hr_high
+        equals: 155

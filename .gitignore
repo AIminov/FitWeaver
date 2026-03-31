@@ -1,0 +1,41 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Test and temp runtime
+.tmp_runtime/
+.tmp_runtime_tests/
+
+# Generated runtime artifacts
+Logs/
+Archive/
+Build_artifacts/
+Output_fit/
+Workout_templates/
+runtime/
+
+# Local state and machine-specific files
+state.json
+bot_config.yaml
+user_profile.yaml
+
+# Plan directory — keep folder structure, ignore personal plan files
+Plan/*
+!Plan/.gitkeep
+
+# Garmin SDK — Java JARs not needed for Python users
+sdk/java/
+
+# IDE / tool local settings
+.claude/
+.idea/
+.vscode/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

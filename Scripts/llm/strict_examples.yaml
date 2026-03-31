@@ -1,0 +1,717 @@
+examples:
+  - id: intervals_pace
+    tags: [intervals, pace, repeat, 800]
+    match_any:
+      - интервалы
+      - 800
+      - повтор
+      - interval
+      - x800
+      - ускорение
+    input: |
+      14.04.2026 (вт)
+      Интервалы 6x800м
+      Разминка: 2 км (5:45-6:00)
+      6x800м по 4:20-4:30, восстановление 400 м трусцой (5:30-6:00)
+      Заминка: 1 км (5:45-6:00)
+      Итого: ~10.4 км, 55 мин
+    output: |
+      workouts:
+        - filename: W15_04-14_Tue_Intervals_6x800m
+          name: W15_04-14_Tue_Intervals_6x800m
+          desc: "Classic intervals: 6x800m at tempo pace with jogging recovery"
+          type_code: intervals
+          distance_km: 10.4
+          estimated_duration_min: 55
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: "5:45"
+              pace_slow: "6:00"
+              intensity: warmup
+            - type: dist_pace
+              km: 0.8
+              pace_fast: "4:20"
+              pace_slow: "4:30"
+              intensity: active
+            - type: dist_open
+              km: 0.4
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 6
+            - type: dist_pace
+              km: 1.0
+              pace_fast: "5:45"
+              pace_slow: "6:00"
+              intensity: cooldown
+  - id: tempo_pace
+    tags: [tempo, pace, threshold]
+    match_any:
+      - темп
+      - темповый
+      - tempo
+      - пороговый
+      - threshold
+    input: |
+      15.04.2026 (ср)
+      Темповый бег
+      Разминка 2 км легко (5:45-6:00)
+      Темп 5 км по 4:50-5:00
+      Заминка 1 км (5:45-6:00)
+      Итого: 8 км, 45 мин
+    output: |
+      workouts:
+        - filename: W15_04-15_Wed_Tempo_5km
+          name: W15_04-15_Wed_Tempo_5km
+          desc: "Tempo run: 5km at threshold pace with warmup and cooldown"
+          type_code: tempo
+          distance_km: 8.0
+          estimated_duration_min: 45
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: "5:45"
+              pace_slow: "6:00"
+              intensity: warmup
+            - type: dist_pace
+              km: 5.0
+              pace_fast: "4:50"
+              pace_slow: "5:00"
+              intensity: active
+            - type: dist_pace
+              km: 1.0
+              pace_fast: "5:45"
+              pace_slow: "6:00"
+              intensity: cooldown
+  - id: easy_hr_cap
+    tags: [easy, hr, cap]
+    match_any:
+      - кросс
+      - спокойно
+      - пульс
+      - easy
+      - hr
+    input: |
+      3.03 (вт)
+      Кросс спокойно
+      Пульс до 140
+      8 км
+    output: |
+      workouts:
+        - filename: W09_03-03_Tue_Easy_8km
+          name: W09_03-03_Tue_Easy_8km
+          desc: "Easy run with heart rate capped at 140 bpm"
+          type_code: easy
+          distance_km: 8.0
+          estimated_duration_min: 52
+          steps:
+            - type: dist_hr
+              km: 8.0
+              hr_low: 125
+              hr_high: 140
+              intensity: recovery
+  - id: fartlek_time
+    tags: [fartlek, time, mixed]
+    match_any:
+      - фартлек
+      - фартлёк
+      - fartlek
+      - цикл
+      - чередование
+      - мин быстро
+    input: |
+      16.04.2026 (чт)
+      Фартлек
+      10 мин разминка лёгко (5:45)
+      5 циклов: 2 мин быстро (4:40) + 3 мин легко (6:00)
+      10 мин заминка (5:45)
+      Примерно 8 км, 45 мин
+    output: |
+      workouts:
+        - filename: W16_04-16_Thu_Fartlek
+          name: W16_04-16_Thu_Fartlek
+          desc: "Fartlek: 5 cycles of 2min fast + 3min easy running"
+          type_code: mixed
+          distance_km: 8.0
+          estimated_duration_min: 45
+          steps:
+            - type: time_pace
+              seconds: 600
+              pace_fast: "5:30"
+              pace_slow: "6:00"
+              intensity: warmup
+            - type: time_pace
+              seconds: 120
+              pace_fast: "4:30"
+              pace_slow: "4:50"
+              intensity: active
+            - type: time_pace
+              seconds: 180
+              pace_fast: "5:45"
+              pace_slow: "6:00"
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: time_pace
+              seconds: 600
+              pace_fast: "5:30"
+              pace_slow: "6:00"
+              intensity: cooldown
+  - id: hills_series
+    tags: [intervals, hills, repeat, series]
+    match_any:
+      - серия
+      - повторить
+      - гору
+      - hills
+    input: |
+      4.03 (ср)
+      Разминка
+      2 км спокойно (пульс до 140)
+      Спринтерская работа
+      Одна серия:
+      ускорение в гору 40 м
+      затем 400 м спокойной трусцы
+      повторить 5 раз
+      Всего: 2 серии
+      Между сериями:
+      1 км трусцы
+      пульс до 150
+      Заминка
+      1 км спокойно
+    output: |
+      workouts:
+        - filename: W09_03-04_Wed_Intervals_Hills_2x5x40m
+          name: W09_03-04_Wed_Intervals_Hills_2x5x40m
+          desc: "Hill sprint workout with two separate series and jogging recovery"
+          type_code: intervals
+          distance_km: 8.4
+          estimated_duration_min: 58
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 125
+              hr_high: 140
+              intensity: warmup
+            - type: dist_open
+              km: 0.04
+              intensity: active
+            - type: dist_open
+              km: 0.4
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 150
+              intensity: recovery
+            - type: dist_open
+              km: 0.04
+              intensity: active
+            - type: dist_open
+              km: 0.4
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 5
+              count: 5
+            - type: dist_open
+              km: 1.0
+              intensity: cooldown
+  - id: sbu_drills
+    tags: [sbu, drills, easy]
+    match_any:
+      - сбу
+      - упражнения
+      - high knees
+      - bounding
+      - skipping
+      - drills
+    input: |
+      18.04.2026 (сб)
+      Лёгкий бег + СБУ
+      2 км разминка легко (5:45-6:00)
+      СБУ: High Knees 30с x2, Bounding 30с x2, Skipping 30с x2
+      3 км аэробный бег (5:30-5:50)
+      1 км заминка (5:45-6:00)
+      Итого: 6 км, 45 мин
+    output: |
+      workouts:
+        - filename: W16_04-18_Sat_Easy_SBU
+          name: W16_04-18_Sat_Easy_SBU
+          desc: "Easy run with SBU drills block"
+          type_code: easy_drills
+          distance_km: 6.0
+          estimated_duration_min: 45
+          steps:
+            - type: dist_open
+              km: 2.0
+              intensity: warmup
+            - type: sbu_block
+              drills:
+                - name: "High Knees"
+                  seconds: 30
+                  reps: 2
+                - name: "Bounding"
+                  seconds: 30
+                  reps: 2
+                - name: "Skipping"
+                  seconds: 30
+                  reps: 2
+            - type: dist_pace
+              km: 3.0
+              pace_fast: "5:30"
+              pace_slow: "5:50"
+              intensity: active
+            - type: dist_open
+              km: 1.0
+              intensity: cooldown
+  - id: intervals_hr
+    tags: [intervals, hr, repeat, 1000]
+    match_any:
+      - 1000
+      - пульсе
+      - пульс 16
+      - пульс 17
+      - интервалы
+    input: |
+      19.02.2026 (чт)
+      Интервалы 5x1000м
+      2 км разминка (пульс 130-145)
+      5x1000м на пульсе 165-170, восстановление 400 м (пульс 130-145)
+      1 км заминка
+      Итого: 9 км, 50 мин
+    output: |
+      workouts:
+        - filename: W08_02-19_Thu_Intervals_5x1000m
+          name: W08_02-19_Thu_Intervals_5x1000m
+          desc: "Intervals: 5x1000m at high HR with jogging recovery"
+          type_code: intervals
+          distance_km: 9.0
+          estimated_duration_min: 50
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 1.0
+              hr_low: 165
+              hr_high: 170
+              intensity: active
+            - type: dist_hr
+              km: 0.4
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+  - id: progression_long
+    tags: [progression, long, zones]
+    match_any:
+      - прогрессивный
+      - развивающий
+      - progression
+      - длинный прогрессивный
+      - зоны
+    input: |
+      21.02.2026 (сб)
+      Длинный прогрессивный бег
+      12 км аэробно (пульс 135-150)
+      4 км развивающий темп (пульс 150-160)
+      Итого: 16 км, 110 мин
+    output: |
+      workouts:
+        - filename: W08_02-21_Sat_Long_Progression_16km
+          name: W08_02-21_Sat_Long_Progression_16km
+          desc: "Progressive long run: 12km aerobic base + 4km developing pace"
+          type_code: progression
+          distance_km: 16.0
+          estimated_duration_min: 110
+          steps:
+            - type: dist_hr
+              km: 12.0
+              hr_low: 135
+              hr_high: 150
+              intensity: active
+            - type: dist_hr
+              km: 4.0
+              hr_low: 150
+              hr_high: 160
+              intensity: active
+  - id: long_hr_cap
+    tags: [long, hr, cap]
+    match_any:
+      - длительный
+      - long
+      - развивающий
+      - 155
+    input: |
+      8.03 (вс)
+      Длительный кросс
+      Развивающий режим
+      Пульс до 155
+      16 км
+    output: |
+      workouts:
+        - filename: W10_03-08_Sun_Long_16km
+          name: W10_03-08_Sun_Long_16km
+          desc: "Long run with aerobic heart rate cap"
+          type_code: long
+          distance_km: 16.0
+          estimated_duration_min: 108
+          steps:
+            - type: dist_hr
+              km: 16.0
+              hr_low: 140
+              hr_high: 155
+              intensity: active
+  - id: insertion_run
+    tags: [long, insertion, tempo, mixed]
+    match_any:
+      - вставки
+      - вставка
+      - insertion
+      - темп вставки
+      - темповая вставка
+      - длинный с темпом
+    input: |
+      22.03 (вс)
+      Длинный бег с темповыми вставками
+      5 км аэробно (пульс 135-150)
+      2 км темп (пульс 155-165)
+      1 км восстановление (пульс 130-145)
+      2 км темп (пульс 155-165)
+      4 км аэробно (пульс 135-150)
+      Итого: 14 км, 95 мин
+    output: |
+      workouts:
+        - filename: W12_03-22_Sun_Long_Insertion_14km
+          name: W12_03-22_Sun_Long_Insertion_14km
+          desc: "Long run with two tempo inserts: aerobic base + 2x2km tempo segments"
+          type_code: long
+          distance_km: 14.0
+          estimated_duration_min: 95
+          steps:
+            - type: dist_hr
+              km: 5.0
+              hr_low: 135
+              hr_high: 150
+              intensity: active
+            - type: dist_hr
+              km: 2.0
+              hr_low: 155
+              hr_high: 165
+              intensity: active
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: dist_hr
+              km: 2.0
+              hr_low: 155
+              hr_high: 165
+              intensity: active
+            - type: dist_hr
+              km: 4.0
+              hr_low: 135
+              hr_high: 150
+              intensity: active
+
+# FAILURE EXAMPLES: What NOT to do
+# These show common errors and how to fix them
+
+failure_examples:
+  - id: fail_hr_inverted
+    tags: [failure, hr, inverted, critical]
+    error: "hr_low >= hr_high"
+    input: |
+      20.04.2026 (ПН)
+      Лёгкий кросс
+      8 км на пульсе 150-140
+      (user means 140-150 but wrote backwards)
+    wrong_output: |
+      steps:
+        - type: dist_hr
+          km: 8.0
+          hr_low: 150      # ❌ ERROR: Must be < hr_high!
+          hr_high: 140
+          intensity: recovery
+    correct_output: |
+      steps:
+        - type: dist_hr
+          km: 8.0
+          hr_low: 140      # ✓ Fixed: hr_low < hr_high
+          hr_high: 150
+          intensity: recovery
+    fix_rule: "CRITICAL: hr_low MUST be < hr_high. Always check!"
+
+  - id: fail_unquoted_pace
+    tags: [failure, pace, format]
+    error: "pace must be quoted string MM:SS"
+    input: |
+      21.04.2026 (ВТ)
+      Темповый бег 5 км
+      Темп 5:00-5:10
+    wrong_output: |
+      steps:
+        - type: dist_pace
+          km: 5.0
+          pace_fast: 5:00    # ❌ ERROR: Must be quoted!
+          pace_slow: 5:10    # ❌ ERROR: Must be quoted!
+          intensity: active
+    correct_output: |
+      steps:
+        - type: dist_pace
+          km: 5.0
+          pace_fast: "5:00"  # ✓ Quoted string
+          pace_slow: "5:10"  # ✓ Quoted string
+          intensity: active
+    fix_rule: "Pace MUST be quoted strings: \"MM:SS\", never bare numbers!"
+
+  - id: fail_zero_distance
+    tags: [failure, distance, validation]
+    error: "km must be > 0"
+    input: |
+      22.04.2026 (СР)
+      Лёгкий бег
+      Разминка
+      Основная работа 5 км
+      Заминка
+    wrong_output: |
+      steps:
+        - type: dist_open
+          km: 0.0           # ❌ ERROR: km must be > 0!
+          intensity: warmup
+        - type: dist_pace
+          km: 5.0
+          pace_fast: "5:30"
+          pace_slow: "5:50"
+          intensity: active
+        - type: dist_open
+          km: 0.0           # ❌ ERROR: km must be > 0!
+          intensity: cooldown
+    correct_output: |
+      steps:
+        - type: dist_open
+          km: 0.5           # ✓ Use small positive distance
+          intensity: warmup
+        - type: dist_pace
+          km: 5.0
+          pace_fast: "5:30"
+          pace_slow: "5:50"
+          intensity: active
+        - type: dist_open
+          km: 0.5           # ✓ Use small positive distance
+          intensity: cooldown
+    fix_rule: "All distances MUST be > 0. Use at least 0.5 km for short segments!"
+
+  - id: fail_duplicate_names
+    tags: [failure, naming, uniqueness]
+    error: "duplicate filename across workouts"
+    input: |
+      Plan contains 2 workouts with same name
+    wrong_output: |
+      workouts:
+        - filename: W10_03-08_Sun_Long_16km
+          name: W10_03-08_Sun_Long_16km    # ❌ Duplicate!
+          type_code: long
+          distance_km: 16.0
+          estimated_duration_min: 108
+          steps: [...]
+        - filename: W10_03-08_Sun_Long_16km   # ❌ SAME NAME!
+          name: W10_03-08_Sun_Long_16km
+          type_code: long
+          distance_km: 14.0
+          estimated_duration_min: 95
+          steps: [...]
+    correct_output: |
+      workouts:
+        - filename: W10_03-08_Sun_Long_16km
+          name: W10_03-08_Sun_Long_16km    # ✓ Unique
+          type_code: long
+          distance_km: 16.0
+          estimated_duration_min: 108
+          steps: [...]
+        - filename: W10_03-09_Mon_Easy_10km
+          name: W10_03-09_Mon_Easy_10km    # ✓ Different
+          type_code: easy
+          distance_km: 10.0
+          estimated_duration_min: 65
+          steps: [...]
+    fix_rule: "ALWAYS use unique filenames! Pattern: W{week}_{MM-DD}_{Day}_{Type}_{Details}"
+
+  - id: fail_mixing_hr_pace
+    tags: [failure, mixing, hr, pace]
+    error: "cannot mix hr_* and pace_* in same step"
+    input: |
+      23.04.2026 (ЧТ)
+      Интервалы
+      5x1000м на пульсе 165-170, темп 4:20-4:30
+    wrong_output: |
+      steps:
+        - type: dist_hr
+          km: 1.0
+          hr_low: 165
+          hr_high: 170
+          pace_fast: "4:20"      # ❌ ERROR: Don't mix hr_* with pace_*!
+          pace_slow: "4:30"      # ❌ This is forbidden!
+          intensity: active
+    correct_output: |
+      # Choose ONE approach:
+      # Option A: Use HR (ignore pace)
+      steps:
+        - type: dist_hr
+          km: 1.0
+          hr_low: 165
+          hr_high: 170
+          intensity: active
+      # Option B: Use pace (ignore HR)
+      steps:
+        - type: dist_pace
+          km: 1.0
+          pace_fast: "4:20"
+          pace_slow: "4:30"
+          intensity: active
+    fix_rule: "NEVER mix hr_* and pace_* in the same step! Choose one target type only."
+
+  - id: fail_invalid_repeat_offset
+    tags: [failure, repeat, offset]
+    error: "back_to_offset must point to previous step"
+    input: |
+      24.04.2026 (ПТ)
+      Интервалы с повтором
+      5x(1000м + 400м восстановление)
+    wrong_output: |
+      steps:
+        - type: dist_pace
+          km: 1.0
+          pace_fast: "4:20"
+          pace_slow: "4:30"
+          intensity: active        # Индекс 0
+        - type: dist_open
+          km: 0.4
+          intensity: recovery      # Индекс 1
+        - type: repeat
+          back_to_offset: 2        # ❌ ERROR: Points to itself (index 2)!
+          count: 5
+    correct_output: |
+      steps:
+        - type: dist_pace
+          km: 1.0
+          pace_fast: "4:20"
+          pace_slow: "4:30"
+          intensity: active        # Индекс 0
+        - type: dist_open
+          km: 0.4
+          intensity: recovery      # Индекс 1
+        - type: repeat
+          back_to_offset: 0        # ✓ Points to first step of interval
+          count: 5
+    fix_rule: "back_to_offset must be < current step index and point to the FIRST step of the repeating section!"
+
+  - id: fail_invalid_intensity
+    tags: [failure, intensity, enum]
+    error: "intensity must be one of allowed values"
+    input: |
+      25.04.2026 (СБ)
+      Лёгкий восстановительный бег
+      8 км легко
+    wrong_output: |
+      steps:
+        - type: dist_open
+          km: 8.0
+          intensity: easy          # ❌ ERROR: Not allowed! Use 'recovery'
+    correct_output: |
+      steps:
+        - type: dist_open
+          km: 8.0
+          intensity: recovery      # ✓ Correct value
+    allowed_intensity_values: ["active", "warmup", "cooldown", "recovery"]
+    fix_rule: "Use ONLY these intensity values: active, warmup, cooldown, recovery. Never: easy, hard, fast, slow, main, work, light!"
+
+  - id: fail_sbu_drill_name_too_long
+    tags: [failure, sbu, drill, name_length]
+    error: "drill name exceeds 12 characters"
+    input: |
+      26.04.2026 (ВС)
+      СБУ
+      High Knees 30с x2, Straight Legs 30с x2
+    wrong_output: |
+      steps:
+        - type: sbu_block
+          drills:
+            - name: "High Knees"      # ✓ OK (11 chars)
+              seconds: 30
+              reps: 2
+            - name: "Straight Legs"   # ❌ ERROR: 13 characters!
+              seconds: 30
+              reps: 2
+    correct_output: |
+      steps:
+        - type: sbu_block
+          drills:
+            - name: "High Knees"      # ✓ 11 chars
+              seconds: 30
+              reps: 2
+            - name: "Straight Lg"     # ✓ 11 chars (abbreviated)
+              seconds: 30
+              reps: 2
+    fix_rule: "Drill names must be ≤ 12 characters for Garmin watch display. Abbreviate if needed!"
+
+  - id: fail_sbu_type_in_drill
+    tags: [failure, sbu, drill, structure]
+    error: "drills are not steps - no 'type' field allowed"
+    input: |
+      27.04.2026 (ПН)
+      СБУ блок
+    wrong_output: |
+      steps:
+        - type: sbu_block
+          drills:
+            - type: dist_open        # ❌ ERROR: Drills don't have 'type'!
+              name: "High Knees"
+              seconds: 30
+              reps: 2
+    correct_output: |
+      steps:
+        - type: sbu_block
+          drills:
+            - name: "High Knees"     # ✓ ONLY these 3 fields
+              seconds: 30
+              reps: 2
+    structure_rule: "Drills MUST have ONLY: name, seconds, reps. NO 'type' field!"
+
+  - id: fail_invalid_hr_range
+    tags: [failure, hr, range]
+    error: "HR values outside valid range (30-240)"
+    input: |
+      28.04.2026 (ВТ)
+      Интервалы на максимум
+      5x1000м на максимальном пульсе
+    wrong_output: |
+      steps:
+        - type: dist_hr
+          km: 1.0
+          hr_low: 20             # ❌ ERROR: < 30 (minimum)!
+          hr_high: 250           # ❌ ERROR: > 240 (maximum)!
+          intensity: active
+    correct_output: |
+      steps:
+        - type: dist_hr
+          km: 1.0
+          hr_low: 170            # ✓ Within 30-240 range
+          hr_high: 180           # ✓ Within 30-240 range
+          intensity: active
+    hr_range_rule: "HR must be: 30 ≤ hr_low < hr_high ≤ 240. Typical zones: recovery 110-135, aerobic 135-150, threshold 168-172, intervals 165-180"

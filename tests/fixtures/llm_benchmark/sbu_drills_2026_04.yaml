@@ -1,0 +1,30 @@
+workouts:
+- filename: W16_04-18_Sat_Easy_SBU
+  name: W16_04-18_Sat_Easy_SBU
+  desc: Easy run with SBU drills block
+  type_code: easy_drills
+  distance_km: 6.0
+  estimated_duration_min: 45
+  steps:
+  - type: dist_open
+    km: 2.0
+    intensity: warmup
+  - type: sbu_block
+    drills:
+    - name: High Knees
+      seconds: 30
+      reps: 2
+    - name: Bounding
+      seconds: 30
+      reps: 2
+    - name: Skipping
+      seconds: 30
+      reps: 2
+  - type: dist_pace
+    km: 3.0
+    pace_fast: '5:30'
+    pace_slow: '5:50'
+    intensity: active
+  - type: dist_open
+    km: 1.0
+    intensity: cooldown

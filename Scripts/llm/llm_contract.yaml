@@ -1,0 +1,74 @@
+version: structured_plan_v1
+
+output:
+  root_key: workouts
+  skip_rest_days: true
+
+naming:
+  known_date_pattern: "W{calendar_week}_{MM-DD}_{DayName}_{Type}_{Details}"
+
+allowed_type_codes:
+  - easy
+  - aerobic
+  - tempo
+  - intervals
+  - long
+  - recovery
+  - progression
+  - threshold
+  - marathon_pace
+  - race
+  - mixed
+
+allowed_intensity:
+  - active
+  - warmup
+  - cooldown
+  - recovery
+
+validation_rules:
+  naming:
+    - Filenames must match pattern W{week}_{MM-DD}_{Day}_{Type}_{Details}
+    - All filenames must be unique
+    - filename must equal name field
+
+  distances:
+    - All km values must be positive and greater than zero
+    - Minimum distance 0.5 km
+
+  durations:
+    - All seconds must be positive and greater than zero
+
+  heart_rate:
+    - hr_low must be less than hr_high
+    - HR range 30 to 240 bpm
+    - Recovery 110-135, aerobic 135-150, threshold 168-172, intervals 165-180
+
+  pace_format:
+    - Pace values quoted strings MM:SS format
+    - MM at least 1, SS between 00-59
+
+  intensity:
+    - Optional field, only active/warmup/cooldown/recovery
+    - Never easy, hard, fast, slow, main, work, light
+
+  sbu_drills:
+    - Names max 12 characters for watch
+    - Fields: name, seconds, reps only
+    - No type field inside drills
+
+  repeat_block:
+    - back_to_offset 0-based index pointing to first repeating step
+    - back_to_offset must be less than current step index
+    - No nested repeats
+
+forbidden_patterns:
+  - Mixing hr and pace in same step
+  - type field in sbu drills
+  - Nested repeat blocks
+  - Zero or negative values
+  - hr_low greater than hr_high
+  - HR outside 30-240 range
+  - Unquoted pace values
+  - Invalid intensity values
+  - Drill names over 12 characters

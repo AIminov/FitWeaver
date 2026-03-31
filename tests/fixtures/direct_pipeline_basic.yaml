@@ -1,0 +1,33 @@
+workouts:
+  - filename: W01_EASY_BASE
+    name: W01_EASY_BASE
+    steps:
+      - type: dist_open
+        km: 1.0
+        intensity: warmup
+      - type: dist_pace
+        km: 5.0
+        pace_fast: "5:15"
+        pace_slow: "5:45"
+      - type: time_step
+        seconds: 180
+        intensity: cooldown
+  - filename: W01_INTERVAL_BLOCK
+    name: W01_INTERVAL_BLOCK
+    steps:
+      - type: time_step
+        seconds: 600
+        intensity: warmup
+      - type: time_pace
+        seconds: 60
+        pace_fast: "4:00"
+        pace_slow: "4:10"
+      - type: time_step
+        seconds: 60
+        intensity: recovery
+      - type: repeat
+        back_to_offset: 1
+        count: 4
+      - type: time_step
+        seconds: 300
+        intensity: cooldown

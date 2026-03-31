@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "garmin-fit-generator"
+version = "0.1.0"
+description = "Generate Garmin FIT workout files from training plans."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fit_tool",
+    "garmin-fit-sdk",
+    "PyYAML",
+    "python-telegram-bot>=20.0",
+    "requests",
+]
+
+[project.scripts]
+garmin-fit = "garmin_fit.cli:main"
+garmin-fit-legacy = "garmin_fit.legacy_cli:main"
+garmin-fit-runner = "run:main"
+garmin-fit-bot = "garmin_fit.bot:main"
+garmin-fit-llm = "garmin_fit.llm_cli:main"
+garmin-fit-runtime = "garmin_fit.runtime_cli:main"
+garmin-fit-validate = "garmin_fit.validate_cli:main"
+
+[tool.setuptools]
+py-modules = ["get_fit", "run", "validate_yaml", "sitecustomize"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["Scripts*", "garmin_fit*", "src", "src.garmin_fit*"]
+
+[tool.setuptools.package-data]
+"Scripts.llm" = ["*.yaml", "*.txt"]
+"src.garmin_fit.llm" = ["*.yaml", "*.txt"]
+"src.garmin_fit.llm" = ["*.yaml", "*.txt"]

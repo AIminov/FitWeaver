@@ -1,0 +1,18 @@
+workouts:
+  - filename: W03_HR_BLOCK
+    name: W03_HR_BLOCK
+    steps:
+      - type: dist_open
+        km: 1.5
+        intensity: warmup
+      - type: dist_hr
+        km: 6.0
+        hr_low: 140
+        hr_high: 152
+      - type: time_hr
+        seconds: 900
+        hr_low: 155
+        hr_high: 168
+      - type: time_step
+        seconds: 300
+        intensity: cooldown

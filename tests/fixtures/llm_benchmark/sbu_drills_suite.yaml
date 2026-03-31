@@ -1,0 +1,27 @@
+suite: sbu_drills_2026_04
+cases:
+  - id: sbu_drills
+    input_path: LLM_input_test/sbu_benchmark/plan.txt
+    yaml_path: tests/fixtures/llm_benchmark/sbu_drills_2026_04.yaml
+    expected_workout_count: 1
+    expected_filenames:
+      - W16_04-18_Sat_Easy_SBU
+    checks:
+      # Warmup step is first
+      - kind: step_field
+        workout: W16_04-18_Sat_Easy_SBU
+        step_index: 0
+        field: intensity
+        equals: warmup
+      # sbu_block step is second
+      - kind: step_field
+        workout: W16_04-18_Sat_Easy_SBU
+        step_index: 1
+        field: type
+        equals: sbu_block
+      # Cooldown step is last (step index 3)
+      - kind: step_field
+        workout: W16_04-18_Sat_Easy_SBU
+        step_index: 3
+        field: intensity
+        equals: cooldown

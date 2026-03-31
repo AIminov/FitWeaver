@@ -1,0 +1,83 @@
+suite: plan_10workouts_2026_03
+cases:
+  - id: plan_10workouts
+    input_path: LLM_input_test/plan_10workouts_benchmark/plan.txt
+    yaml_path: tests/fixtures/llm_benchmark/plan_10workouts_2026_03.yaml
+    expected_workout_count: 10
+    expected_filenames:
+      - W10_03-09_Mon_Easy_8km
+      - W10_03-10_Tue_Easy_7km
+      - W10_03-11_Wed_Tempo_4km
+      - W11_03-12_Thu_Recovery_5km
+      - W11_03-13_Fri_Intervals_5x1000m
+      - W11_03-14_Sat_Long_16km
+      - W11_03-15_Sun_Recovery_6km
+      - W11_03-16_Mon_Fartlek
+      - W11_03-18_Wed_Intervals_6x800m
+      - W12_03-21_Sat_Long_Progression_16km
+    checks:
+      # Tempo run: correct WU/active/CD structure
+      - kind: step_field
+        workout: W10_03-11_Wed_Tempo_4km
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W10_03-11_Wed_Tempo_4km
+        step_index: 2
+        field: intensity
+        equals: cooldown
+      # Intervals HR 5x1000m: correct repeat semantics
+      - kind: step_field
+        workout: W11_03-13_Fri_Intervals_5x1000m
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W11_03-13_Fri_Intervals_5x1000m
+        step_index: 3
+        field: back_to_offset
+        equals: 1
+      - kind: step_field
+        workout: W11_03-13_Fri_Intervals_5x1000m
+        step_index: 3
+        field: count
+        equals: 5
+      # Fartlek: correct time_pace + repeat
+      - kind: step_field
+        workout: W11_03-16_Mon_Fartlek
+        step_index: 3
+        field: back_to_offset
+        equals: 1
+      - kind: step_field
+        workout: W11_03-16_Mon_Fartlek
+        step_index: 3
+        field: count
+        equals: 6
+      # Intervals pace 6x800m: correct dist_pace + repeat
+      - kind: step_field
+        workout: W11_03-18_Wed_Intervals_6x800m
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W11_03-18_Wed_Intervals_6x800m
+        step_index: 3
+        field: back_to_offset
+        equals: 1
+      - kind: step_field
+        workout: W11_03-18_Wed_Intervals_6x800m
+        step_index: 3
+        field: count
+        equals: 6
+      # Progressive long: two-zone HR structure
+      - kind: step_field
+        workout: W12_03-21_Sat_Long_Progression_16km
+        step_index: 0
+        field: hr_high
+        equals: 150
+      - kind: step_field
+        workout: W12_03-21_Sat_Long_Progression_16km
+        step_index: 1
+        field: hr_high
+        equals: 160

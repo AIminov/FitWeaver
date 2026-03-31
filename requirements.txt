@@ -1,0 +1,8 @@
+# Existing dependencies
+fit_tool
+garmin-fit-sdk
+pyyaml
+
+# New - Telegram bot + LLM client
+python-telegram-bot>=20.0
+requests

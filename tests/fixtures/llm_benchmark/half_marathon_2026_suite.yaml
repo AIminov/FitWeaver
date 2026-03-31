@@ -1,0 +1,121 @@
+suite: half_marathon_2026
+cases:
+  - id: half_marathon_full_plan
+    input_path: Plan/half_marathon_plan_FINAL.md
+    yaml_path: Plan/half_marathon_plan_final.yaml
+    expected_workout_count: 44
+    expected_filenames:
+      - W01_02-18_Wed_Aerobic_SBU
+      - W01_02-19_Thu_Intervals_5x1000m
+      - W01_02-21_Sat_Long_12km
+      - W01_02-23_Sun_Short_Recovery_SBU
+      - W02_02-25_Wed_Aerobic_SBU
+      - W02_02-26_Thu_Threshold_4x1.5km
+      - W02_02-28_Sat_Long_14km
+      - W02_03-02_Sun_Short_Recovery_SBU
+      - W03_03-04_Wed_Aerobic_SBU
+      - W03_03-05_Thu_Intervals_3x1600m
+      - W03_03-08_Sat_Long_16km
+      - W03_03-09_Sun_Short_Recovery_SBU
+      - W04_03-11_Wed_Aerobic_SBU_Short
+      - W04_03-12_Thu_Threshold_3x1km
+      - W04_03-15_Sat_Long_10km_Easy
+      - W04_03-16_Sun_Short_Recovery_SBU
+      - W05_03-18_Wed_Aerobic_SBU
+      - W05_03-19_Thu_Intervals_3x2000m
+      - W05_03-22_Sat_Test_10km
+      - W05_03-23_Sun_Long_15km
+      - W06_03-25_Wed_Aerobic_SBU
+      - W06_03-26_Thu_Threshold_6km
+      - W06_03-29_Sat_Long_18km_Inserts
+      - W06_03-30_Sun_Short_Recovery_SBU
+      - W07_04-01_Wed_Aerobic_SBU
+      - W07_04-02_Thu_Intervals_4x1000m
+      - W07_04-05_Sat_Long_20km
+      - W07_04-06_Sun_Short_Recovery_SBU
+      - W08_04-08_Wed_Aerobic_SBU_Short
+      - W08_04-09_Thu_Threshold_3km
+      - W08_04-12_Sat_Long_12km_Easy
+      - W08_04-13_Sun_Short_Recovery_SBU
+      - W09_04-15_Wed_Aerobic_SBU
+      - W09_04-16_Thu_Intervals_4x1600m
+      - W09_04-19_Sat_Progressive_18km
+      - W09_04-20_Sun_Short_Recovery_SBU
+      - W10_04-22_Wed_Aerobic_SBU
+      - W10_04-23_Thu_Threshold_6km_Race
+      - W10_04-26_Sat_Long_15km
+      - W10_04-27_Sun_Short_Recovery_SBU
+      - W11_04-29_Wed_Aerobic_SBU_Taper
+      - W11_04-30_Thu_Threshold_4km
+      - W11_05-01_Fri_Easy_4km
+      - W11_05-03_Sun_HalfMarathon_21.1km
+    checks:
+      # Aerobic SBU: sbu_block at step[1], run-drill repeat at step[4]
+      - kind: step_field
+        workout: W01_02-18_Wed_Aerobic_SBU
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W01_02-18_Wed_Aerobic_SBU
+        step_index: 1
+        field: type
+        equals: sbu_block
+      - kind: step_field
+        workout: W01_02-18_Wed_Aerobic_SBU
+        step_index: 4
+        field: back_to_offset
+        equals: 2
+      - kind: step_field
+        workout: W01_02-18_Wed_Aerobic_SBU
+        step_index: 4
+        field: count
+        equals: 6
+      # Intervals 5x1000m: correct repeat semantics
+      - kind: step_field
+        workout: W01_02-19_Thu_Intervals_5x1000m
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W01_02-19_Thu_Intervals_5x1000m
+        step_index: 3
+        field: back_to_offset
+        equals: 1
+      - kind: step_field
+        workout: W01_02-19_Thu_Intervals_5x1000m
+        step_index: 3
+        field: count
+        equals: 5
+      # Threshold 4x1.5km: correct repeat and warmup/cooldown
+      - kind: step_field
+        workout: W02_02-26_Thu_Threshold_4x1.5km
+        step_index: 0
+        field: intensity
+        equals: warmup
+      - kind: step_field
+        workout: W02_02-26_Thu_Threshold_4x1.5km
+        step_index: 3
+        field: back_to_offset
+        equals: 1
+      - kind: step_field
+        workout: W02_02-26_Thu_Threshold_4x1.5km
+        step_index: 3
+        field: count
+        equals: 4
+      - kind: step_field
+        workout: W02_02-26_Thu_Threshold_4x1.5km
+        step_index: 4
+        field: intensity
+        equals: cooldown
+      # Intervals 4x1600m (peak week): repeat semantics
+      - kind: step_field
+        workout: W09_04-16_Thu_Intervals_4x1600m
+        step_index: 3
+        field: back_to_offset
+        equals: 1
+      - kind: step_field
+        workout: W09_04-16_Thu_Intervals_4x1600m
+        step_index: 3
+        field: count
+        equals: 4

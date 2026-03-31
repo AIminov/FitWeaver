@@ -1,0 +1,24 @@
+# User-specific heart rate configuration
+# Copy this file to user_profile.yaml and adjust values to match your personal HR data
+
+max_hr: 190          # Your maximum heart rate (bpm)
+resting_hr: 50       # Your resting heart rate (bpm)
+
+# HR zones (bpm ranges)
+# These are calculated from max HR — adjust to match your Garmin / lab results
+hr_zones:
+  zone1:  # Recovery / Very Easy
+    low: 104
+    high: 132
+  zone2:  # Aerobic / Base
+    low: 132
+    high: 151
+  zone3:  # Tempo / Threshold
+    low: 151
+    high: 162
+  zone4:  # Threshold / VO2max
+    low: 162
+    high: 172
+  zone5:  # VO2max / Anaerobic
+    low: 172
+    high: 190

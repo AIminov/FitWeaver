@@ -1,0 +1,13 @@
+Garmin8.8
+2026-03-18
+
+History:
+  Garmin          — v1: initial FIT generator, hardcoded templates
+  Garmin2/3       — v2: Ollama LLM, dist_hr only
+  Garmin4         — v3: YAML-first, modular, both dist_hr + dist_pace
+  Garmin6         — v6: LLM subsystem refactor, contract-first prompt
+  Garmin7         — v7: direct builder, Telegram bot, benchmark
+  Garmin8         — v8: domain model, validation layers, archive improvements
+  Garmin8.4       — v8.4: 2026 marathon plan, LLM validation enhancement
+  Garmin8.7       — v8.7: (intermediate)
+  Garmin8.8       — v8.8: SBU repeat fix (two-builder), ISO week numbering
