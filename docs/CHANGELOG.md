@@ -1,5 +1,29 @@
 ﻿# Changelog
 
+## 2026-03-31 — v9.0 (Pydantic Validation, CI/CD, Documentation Overhaul)
+
+### Added
+- `src/garmin_fit/plan_schema.py`: Pydantic v2 schema layer — discriminated union models for all 9 canonical step types (`dist_hr`, `time_hr`, `dist_pace`, `time_pace`, `dist_open`, `time_step`, `open_step`, `repeat`, `sbu_block`) + `WorkoutSchema` + `WorkoutPlanSchema`.
+- `WorkoutPlanSchema.model_json_schema()`: generates machine-readable JSON Schema for all step types — ready to embed directly in LLM prompts instead of text descriptions.
+- `garmin_fit/plan_schema.py`, `Scripts/plan_schema.py`: alias and shim layers (follows three-copy pattern).
+- `.github/workflows/ci.yml`: GitHub Actions CI pipeline — runs `ruff` lint + `pytest` on every push and PR to `main`.
+- `pyproject.toml`: dev optional-dependencies group (`pydantic>=2.0`, `pytest>=8.0`, `pytest-asyncio>=0.23`, `ruff>=0.4`); `[tool.pytest.ini_options]` and `[tool.ruff]` config sections.
+- `tests/test_plan_schema.py`: 38 new tests covering all step models, discriminated union dispatch, HR/pace ordering, duplicate filename detection, JSON Schema generation, and validator integration. Total test count: 60 → 98.
+
+### Changed
+- `plan_validator.py` — Pydantic structural pass (`_validate_with_pydantic`) prepended to `validate_plan_data_detailed()`; gracefully skipped if pydantic is unavailable.
+- `README.md` split into two separate files: `README.md` (English only, shown by default on GitHub) and `README.ru.md` (Russian only), each with a link to the other.
+- `user_profile.yaml` step removed from required workflow; documented as optional — only needed when the training plan uses zone names (Z2, easy) instead of explicit bpm values.
+- `CLAUDE.md` — removed personal User profile section (HR zones, drill names in Russian).
+
+### Documentation
+- `docs/YAML_GUIDE.md`: added SBU / running drills definition (СБУ = Специальные Беговые Упражнения = running drills / form drills).
+- `docs/LLM_CONNECTION_PROFILE.md`: reframed as example config (not personal settings); fixed corrupted code block (`\x08` backspace character).
+- `docs/TELEGRAM_SETUP.md`: removed duplicate "Preferred Bot Command" / "Compatibility Note" sections; fixed broken code fences.
+- `docs/README.md`: removed dead links (`YAML_VALIDATION.md`, `LLM_YAML_RULES.md`); removed duplicate appended sections.
+
+---
+
 ## 2026-03-30 — v8.9 (LLM Workout Count, Structural Refactor, Bug Fixes)
 
 ### Added

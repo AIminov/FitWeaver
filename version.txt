@@ -1,5 +1,5 @@
-Garmin8.8
-2026-03-18
+FitWeaver
+v9.0 — 2026-03-31
 
 History:
   Garmin          — v1: initial FIT generator, hardcoded templates
@@ -11,3 +11,5 @@ History:
   Garmin8.4       — v8.4: 2026 marathon plan, LLM validation enhancement
   Garmin8.7       — v8.7: (intermediate)
   Garmin8.8       — v8.8: SBU repeat fix (two-builder), ISO week numbering
+  Garmin8.9/v8.9  — v8.9: LLM workout count detection, structural refactor, phase plans
+  FitWeaver/v9.0  — v9.0: Pydantic v2 validation, CI/CD (GitHub Actions), README bilingual split, docs overhaul
