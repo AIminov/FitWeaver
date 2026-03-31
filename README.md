@@ -230,6 +230,11 @@ python -m garmin_fit.cli run
 Файлы появятся в `Output_fit/`.
 Files will appear in `Output_fit/`.
 
+- Скопируйте `.fit`-файлы в папку **`/GARMIN/New files`** на часах
+- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Часы обработают их автоматически — тренировки появятся в **`/GARMIN/Workouts`**
+- The watch will process them automatically — workouts will appear in **`/GARMIN/Workouts`**
+
 Также доступен скрипт-обёртка / A wrapper script is also available:
 
 ```bash
