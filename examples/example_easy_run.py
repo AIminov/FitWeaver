@@ -8,9 +8,12 @@ Purpose: Active recovery, building aerobic base
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent / "Scripts"))
 
-from workout_utils import dist_pace, EASY_F, EASY_S
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from garmin_fit.workout_utils import EASY_F, EASY_S, dist_pace
 
 
 def get_workout_info():
@@ -33,8 +36,7 @@ def get_workout_steps():
 
 # For testing this template standalone
 if __name__ == "__main__":
-    from workout_utils import save_workout
-    import os
+    from garmin_fit.workout_utils import save_workout
 
     info = get_workout_info()
     steps = get_workout_steps()

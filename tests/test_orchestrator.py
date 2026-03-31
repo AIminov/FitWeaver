@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import Scripts.orchestrator as orch
-import Scripts.plan_artifacts as plan_artifacts
+import garmin_fit.orchestrator as orch
+import garmin_fit.plan_artifacts as plan_artifacts
 
 
 class OrchestratorTests(unittest.TestCase):
@@ -25,9 +25,9 @@ class OrchestratorTests(unittest.TestCase):
                 selected = orch.select_active_yaml(prefer_latest=True)
                 self.assertEqual(selected.name, "b.yaml")
 
-    @patch("Scripts.orchestrator.archive_current_plan")
-    @patch("Scripts.orchestrator.validate_directory", return_value=(2, 2))
-    @patch("Scripts.orchestrator.build_all_fits_from_plan", return_value=(2, 2))
+    @patch("garmin_fit.orchestrator.archive_current_plan")
+    @patch("garmin_fit.orchestrator.validate_directory", return_value=(2, 2))
+    @patch("garmin_fit.orchestrator.build_all_fits_from_plan", return_value=(2, 2))
     def test_run_generation_pipeline_success_archives(
         self, _build, _validate, archive_mock
     ):
@@ -63,9 +63,9 @@ class OrchestratorTests(unittest.TestCase):
             self.assertTrue(result["repaired_yaml_path"].exists())
             archive_mock.assert_called_once()
 
-    @patch("Scripts.orchestrator.archive_current_plan")
-    @patch("Scripts.orchestrator.validate_directory", return_value=(1, 2))
-    @patch("Scripts.orchestrator.build_all_fits_from_plan", return_value=(2, 2))
+    @patch("garmin_fit.orchestrator.archive_current_plan")
+    @patch("garmin_fit.orchestrator.validate_directory", return_value=(1, 2))
+    @patch("garmin_fit.orchestrator.build_all_fits_from_plan", return_value=(2, 2))
     def test_run_generation_pipeline_failure_skips_archive(
         self, _build, _validate, archive_mock
     ):
@@ -92,9 +92,9 @@ class OrchestratorTests(unittest.TestCase):
             archive_mock.assert_not_called()
             self.assertTrue(any("Validation failed" in e for e in result["errors"]))
 
-    @patch("Scripts.orchestrator.archive_current_plan")
-    @patch("Scripts.orchestrator.validate_directory", return_value=(1, 1))
-    @patch("Scripts.orchestrator.build_all_fits_from_plan", return_value=(1, 2))
+    @patch("garmin_fit.orchestrator.archive_current_plan")
+    @patch("garmin_fit.orchestrator.validate_directory", return_value=(1, 1))
+    @patch("garmin_fit.orchestrator.build_all_fits_from_plan", return_value=(1, 2))
     def test_run_generation_pipeline_fails_on_partial_direct_build(
         self, _build, _validate, archive_mock
     ):
@@ -121,10 +121,10 @@ class OrchestratorTests(unittest.TestCase):
             archive_mock.assert_not_called()
             self.assertTrue(any("Direct build incomplete" in e for e in result["errors"]))
 
-    @patch("Scripts.orchestrator.archive_current_plan")
-    @patch("Scripts.orchestrator.validate_directory", return_value=(1, 1))
-    @patch("Scripts.orchestrator.build_all_fits", return_value=(1, 1))
-    @patch("Scripts.orchestrator.generate_all_templates", return_value=(1, 2))
+    @patch("garmin_fit.orchestrator.archive_current_plan")
+    @patch("garmin_fit.orchestrator.validate_directory", return_value=(1, 1))
+    @patch("garmin_fit.orchestrator.build_all_fits", return_value=(1, 1))
+    @patch("garmin_fit.orchestrator.generate_all_templates", return_value=(1, 2))
     def test_run_generation_pipeline_fails_on_partial_template_generation(
         self, _gen, _build, _validate, archive_mock
     ):
@@ -155,3 +155,4 @@ class OrchestratorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

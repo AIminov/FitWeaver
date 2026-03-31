@@ -17,7 +17,7 @@
 ## Рекомендуемая команда генерации YAML
 
 ```bash
-python -m Scripts.llm.request_cli \
+python -m garmin_fit.llm.request_cli \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
   --model qwen/qwen3.5-9b \
@@ -29,7 +29,7 @@ python -m Scripts.llm.request_cli \
 ## Быстрая проверка benchmark-набора
 
 ```bash
-python -m Scripts.llm.benchmark \
+python -m garmin_fit.llm.benchmark \
   --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml \
   --mode generate \
   --api openai \
@@ -43,23 +43,23 @@ python -m Scripts.llm.benchmark \
 
 ## Что сейчас зашито по умолчанию в коде
 
-- `Scripts/llm/request_cli.py`:
+- `src/garmin_fit/llm/request_cli.py`:
   - default `--api`: `ollama`
   - default URL для `openai`: `http://localhost:1234/v1`
   - default model для `openai`: `local-model`
   - default `--timeout-sec`: `1800`
-- `Scripts/llm/benchmark.py`:
+- `src/garmin_fit/llm/benchmark.py`:
   - default `--api`: `openai`
   - default URL: `http://127.0.0.1:1234/v1`
   - default model: `qwen/qwen3.5-9b`
   - default `--openai-mode`: `completions`
   - default `--timeout-sec`: `1800`
-- `Scripts/telegram_bot.py` использует `bot_config.yaml` и сейчас работает только в Ollama-режиме (`ollama_model`, `ollama_url`).
+- `src/garmin_fit/telegram_bot.py` использует `bot_config.yaml` и сейчас работает только в Ollama-режиме (`ollama_model`, `ollama_url`).
 
 ## Переключение на Ollama (если нужно)
 
 ```bash
-python -m Scripts.llm.request_cli \
+python -m garmin_fit.llm.request_cli \
   --api ollama \
   --url http://localhost:11434 \
   --model gemma2:2b
@@ -70,7 +70,7 @@ python -m Scripts.llm.request_cli \
 ## Doctor + LLM smoke check
 
 ```bash
-python get_fit.py --doctor --llm \
+python -m garmin_fit.cli doctor --llm \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
   --model qwen/qwen3.5-9b \
@@ -94,5 +94,5 @@ python -m garmin_fit.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_wee
 python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 120
 ```
 
-Scripts.* commands remain available for backward compatibility, but they are no longer the primary interface.
+Legacy source-checkout commands are documented in `docs/LEGACY_COMPAT.md`.
 

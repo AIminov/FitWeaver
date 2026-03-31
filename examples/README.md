@@ -2,6 +2,17 @@
 
 This directory contains example workout templates and documentation for creating custom Garmin FIT workout files.
 
+Primary package-first interfaces:
+
+```bash
+python -m garmin_fit.cli run
+python -m garmin_fit.validate_cli --plan Plan/plan.yaml
+python -m garmin_fit.check_fit Output_fit/
+python -m garmin_fit.legacy_cli templates --plan Plan/plan.yaml
+```
+
+`Scripts.*` commands remain available only as compatibility paths.
+
 ## Overview
 
 The workout generator uses a three-stage pipeline:
@@ -94,10 +105,10 @@ This generates a test FIT file in Output_fit/ for verification.
 
 ## Workout Building Blocks
 
-Import from `workout_utils`:
+Import from `garmin_fit.workout_utils`:
 
 ```python
-from workout_utils import (
+from garmin_fit.workout_utils import (
     # Distance steps
     dist_pace,   # Distance with pace target
     dist_open,   # Distance without pace target
@@ -292,19 +303,19 @@ dist_pace(0, 5.0, "5:00", "5:30")  # Correct: 5:00-5:30/km
 ### Validate a Single File
 
 ```bash
-python Scripts/check_fit.py Output_fit/workout.fit
+python -m garmin_fit.check_fit Output_fit/workout.fit
 ```
 
 ### Validate All Files
 
 ```bash
-python Scripts/check_fit.py Output_fit/
+python -m garmin_fit.check_fit Output_fit/
 ```
 
 ### Strict Validation
 
 ```bash
-python Scripts/check_fit.py --strict Output_fit/
+python -m garmin_fit.check_fit --strict Output_fit/
 ```
 
 Strict mode treats warnings as errors.
@@ -320,7 +331,7 @@ pip install fit_tool garmin-fit-sdk
 To generate templates automatically from the training plan:
 
 ```bash
-python -m Scripts.generate_from_yaml
+python -m garmin_fit.legacy_cli templates --plan Plan/plan.yaml
 ```
 
 Or ask Claude Code directly:
@@ -350,7 +361,7 @@ Final/Instructions/"
 
 **Cause**: Invalid FIT file structure
 
-**Fix**: Run `python Scripts/check_fit.py Output_fit/` to identify issues
+**Fix**: Run `python -m garmin_fit.check_fit Output_fit/` to identify issues
 
 ### "No templates found"
 

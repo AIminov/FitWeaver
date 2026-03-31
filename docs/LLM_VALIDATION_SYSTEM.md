@@ -53,7 +53,7 @@ The LLM validation system has **three complementary layers**:
 
 ## Layer 1: Structured Contract
 
-**File**: `Scripts/llm/llm_contract.yaml`
+**File**: `src/garmin_fit/llm/llm_contract.yaml`
 
 The contract defines all validation rules in structured YAML that the LLM prompt builder can easily render.
 
@@ -150,7 +150,7 @@ validation_rules:
 
 ### How It's Used:
 
-In `Scripts/llm/prompt.py`:
+In `src/garmin_fit/llm/prompt.py`:
 ```python
 def render_llm_contract(contract: dict[str, Any]) -> str:
     # Renders contract into human-readable prompt sections:
@@ -164,7 +164,7 @@ The rendered contract is included in every LLM system prompt.
 
 ## Layer 2: Learning Examples
 
-**File**: `Scripts/llm/strict_examples.yaml`
+**File**: `src/garmin_fit/llm/strict_examples.yaml`
 
 Contains two types of examples:
 
@@ -236,7 +236,7 @@ failure_examples:
 
 ### How Examples Are Selected:
 
-In `Scripts/llm/prompt.py`:
+In `src/garmin_fit/llm/prompt.py`:
 ```python
 def load_strict_examples(
     source_text: str | None = None,
@@ -252,7 +252,7 @@ The selected examples are included in the LLM system prompt.
 
 ## Layer 3: Runtime Validation
 
-**File**: `Scripts/llm/client.py` (line 632)
+**File**: `src/garmin_fit/llm/client.py` (line 632)
 
 After LLM generates YAML, runtime validation automatically checks it:
 
@@ -318,7 +318,7 @@ These are returned to the LLM (in some modes) for retry with feedback.
 
 ## Layer 4: Validation Checklist (New!)
 
-**File**: `Scripts/llm/prompt.py` (added to final instructions)
+**File**: `src/garmin_fit/llm/prompt.py` (added to final instructions)
 
 Added a **16-point validation checklist** that the LLM uses as a pre-submission guide:
 
@@ -382,7 +382,7 @@ The validation happens at **two levels**:
 ### Test LLM Generation + Validation:
 
 ```bash
-python -m Scripts.llm.request_cli \
+python -m garmin_fit.llm.request_cli \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
   --model qwen/qwen3.5-9b
@@ -394,7 +394,7 @@ If validation fails, error categories are returned.
 
 ```bash
 python -c "
-from Scripts.llm.prompt import render_llm_contract, load_llm_contract
+from garmin_fit.llm.prompt import render_llm_contract, load_llm_contract
 contract = load_llm_contract()
 print(render_llm_contract(contract))
 "
@@ -404,7 +404,7 @@ print(render_llm_contract(contract))
 
 ```bash
 python -c "
-from Scripts.llm.prompt import load_strict_examples
+from garmin_fit.llm.prompt import load_strict_examples
 print(load_strict_examples())
 "
 ```
@@ -413,18 +413,18 @@ print(load_strict_examples())
 
 ```bash
 python validate_yaml.py
-python get_fit.py --validate-yaml
+python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 ```
 
 ## Files Reference
 
 | File | Purpose |
 |------|---------|
-| `Scripts/llm/llm_contract.yaml` | Machine-readable validation rules and step schema |
-| `Scripts/llm/strict_examples.yaml` | Correct examples (10) + Failure examples (10+) |
-| `Scripts/llm/prompt.py` | Renders contract and examples into prompt; includes checklist |
-| `Scripts/plan_validator.py` | Runtime validation logic (source of truth) |
-| `Scripts/plan_domain.py` | Constants: STEP_REQUIRED_FIELDS, ALLOWED_INTENSITY, etc. |
+| `src/garmin_fit/llm/llm_contract.yaml` | Machine-readable validation rules and step schema |
+| `src/garmin_fit/llm/strict_examples.yaml` | Correct examples (10) + Failure examples (10+) |
+| `src/garmin_fit/llm/prompt.py` | Renders contract and examples into prompt; includes checklist |
+| `src/garmin_fit/plan_validator.py` | Runtime validation logic (source of truth) |
+| `src/garmin_fit/plan_domain.py` | Constants: STEP_REQUIRED_FIELDS, ALLOWED_INTENSITY, etc. |
 | `docs/LLM_YAML_RULES.md` | Human-readable LLM guide with examples |
 | `docs/YAML_GUIDE.md` | Complete YAML syntax reference |
 | `YAML_VALIDATION.md` | Validation guide for users |

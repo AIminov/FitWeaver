@@ -8,11 +8,12 @@ import logging
 import subprocess
 import sys
 import tempfile
+from importlib.util import find_spec
 from pathlib import Path
 from time import perf_counter
 
 from .compare_build_modes import compare_build_modes
-from .config import OUTPUT_DIR, PLAN_DIR, ROOT, SCRIPTS_DIR, TEMPLATES_DIR
+from .config import OUTPUT_DIR, PLAN_DIR, ROOT, TEMPLATES_DIR
 from .logging_utils import setup_file_logging as _setup_file_logging
 from .orchestrator import run_generation_pipeline, select_active_yaml
 
@@ -65,7 +66,7 @@ def run_step(step_name, script_path=None, args=None, module_name=None, run_id=No
 
 
 def check_prerequisites():
-    """Check that required directories, scripts and dependencies exist."""
+    """Check that required directories, modules and dependencies exist."""
     print_header("CHECKING PREREQUISITES")
     issues = []
 
@@ -76,23 +77,17 @@ def check_prerequisites():
     else:
         issues.append(f"No YAML training plan found in {PLAN_DIR} (expected .yaml/.yml)")
 
-    if not SCRIPTS_DIR.exists():
-        issues.append(f"Scripts directory not found: {SCRIPTS_DIR}")
-    else:
-        logger.info("[OK] Scripts directory found")
-
-    required_scripts = [
-        "workout_utils.py",
-        "state_manager.py",
-        "build_fits.py",
-        "check_fit.py",
+    required_modules = [
+        "garmin_fit.workout_utils",
+        "garmin_fit.state_manager",
+        "garmin_fit.build_fits",
+        "garmin_fit.check_fit",
     ]
-    for script in required_scripts:
-        script_path = SCRIPTS_DIR / script
-        if not script_path.exists():
-            issues.append(f"Required script missing: {script}")
+    for module_name in required_modules:
+        if find_spec(module_name) is None:
+            issues.append(f"Required module missing: {module_name}")
         else:
-            logger.info(f"[OK] {script} found")
+            logger.info(f"[OK] {module_name} import path found")
 
     logger.info("")
     logger.info("Checking Python packages...")
@@ -373,7 +368,7 @@ def workflow_validate_only(validate_strict=False, run_id=None):
         logger.info("Run without --validate-only to generate files first")
         return 1
     validate_args = ["--strict", str(OUTPUT_DIR)] if validate_strict else [str(OUTPUT_DIR)]
-    return run_step("Validate FIT Files", module_name="Scripts.check_fit", args=validate_args, run_id=run_id)
+    return run_step("Validate FIT Files", module_name="garmin_fit.check_fit", args=validate_args, run_id=run_id)
 
 
 def workflow_build_only(validate_strict=False, run_id=None):
@@ -385,10 +380,10 @@ def workflow_build_only(validate_strict=False, run_id=None):
 
     logger.info(f"Found {template_export_count} template export(s)")
     build_args = ["--run-id", run_id] if run_id else None
-    ret = run_step("Legacy Build FIT Files", module_name="Scripts.build_fits", args=build_args, run_id=run_id)
+    ret = run_step("Legacy Build FIT Files", module_name="garmin_fit.build_fits", args=build_args, run_id=run_id)
     if ret == 0:
         validate_args = ["--strict", str(OUTPUT_DIR)] if validate_strict else [str(OUTPUT_DIR)]
-        validate_ret = run_step("Validate FIT Files", module_name="Scripts.check_fit", args=validate_args, run_id=run_id)
+        validate_ret = run_step("Validate FIT Files", module_name="garmin_fit.check_fit", args=validate_args, run_id=run_id)
         if validate_ret != 0:
             return validate_ret
     return ret
@@ -407,7 +402,7 @@ def workflow_templates_only(run_id=None, plan_path=None):
         template_args.append(str(yaml_path))
     if not template_args:
         template_args = None
-    return run_step("Export Debug Templates", module_name="Scripts.generate_from_yaml", args=template_args, run_id=run_id)
+    return run_step("Export Debug Templates", module_name="garmin_fit.generate_from_yaml", args=template_args, run_id=run_id)
 
 
 def workflow_archive(run_id=None):
@@ -436,7 +431,7 @@ def workflow_archive(run_id=None):
     archive_args = ["archive"]
     if run_id:
         archive_args.extend(["--run-id", run_id])
-    ret = run_step("Archive Plan", module_name="Scripts.archive_manager", args=archive_args, run_id=run_id)
+    ret = run_step("Archive Plan", module_name="garmin_fit.archive_manager", args=archive_args, run_id=run_id)
     if ret == 0:
         logger.info("")
         logger.info("[OK] Plan archived successfully")
@@ -449,7 +444,7 @@ def workflow_archive(run_id=None):
 
 def workflow_list_archives():
     print_header("AVAILABLE ARCHIVES")
-    return run_step("List Archives", module_name="Scripts.archive_manager", args=["list"])
+    return run_step("List Archives", module_name="garmin_fit.archive_manager", args=["list"])
 
 
 def workflow_restore(archive_name):
@@ -462,7 +457,7 @@ def workflow_restore(archive_name):
         logger.info("Restore cancelled")
         return 0
 
-    ret = run_step("Restore from Archive", module_name="Scripts.archive_manager", args=["restore", archive_name])
+    ret = run_step("Restore from Archive", module_name="garmin_fit.archive_manager", args=["restore", archive_name])
     if ret == 0:
         logger.info("")
         logger.info("[OK] Restored successfully")
@@ -579,5 +574,5 @@ def workflow_validate_yaml(plan_path=None):
         return 1
     else:
         logger.info("[SUCCESS] YAML is VALID and ready to use!")
-        logger.info("You can now run: python get_fit.py")
+        logger.info("You can now run: python -m garmin_fit.cli run")
         return 0

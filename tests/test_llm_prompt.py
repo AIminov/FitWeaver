@@ -1,6 +1,6 @@
 import unittest
 
-from Scripts.llm.prompt import SYSTEM_PROMPT, create_system_prompt, load_llm_contract
+from garmin_fit.llm.prompt import SYSTEM_PROMPT, create_system_prompt, load_llm_contract
 
 
 class TestLlmPrompt(unittest.TestCase):
@@ -37,3 +37,4 @@ class TestLlmPrompt(unittest.TestCase):
 
         self.assertLess(len(targeted_prompt), len(generic_prompt))
         self.assertLess(len(targeted_prompt), 5600)
+

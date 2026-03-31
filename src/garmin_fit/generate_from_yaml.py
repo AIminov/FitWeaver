@@ -5,8 +5,8 @@ Reads a YAML file with workout definitions and generates Python template
 files in Workout_templates/ that can be compiled to FIT files.
 
 Usage:
-    python -m Scripts.generate_from_yaml
-    python -m Scripts.generate_from_yaml Plan/marathon_workouts.yaml
+    python -m garmin_fit.generate_from_yaml
+    python -m garmin_fit.generate_from_yaml Plan/marathon_workouts.yaml
 """
 
 import logging

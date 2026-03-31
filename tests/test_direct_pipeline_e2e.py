@@ -4,11 +4,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import Scripts.build_from_plan as build_from_plan
-import Scripts.check_fit as check_fit
-import Scripts.orchestrator as orch
-import Scripts.plan_artifacts as plan_artifacts
-import Scripts.state_manager as state_manager
+import garmin_fit.build_from_plan as build_from_plan
+import garmin_fit.check_fit as check_fit
+import garmin_fit.orchestrator as orch
+import garmin_fit.plan_artifacts as plan_artifacts
+import garmin_fit.state_manager as state_manager
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -155,3 +155,4 @@ class DirectPipelineE2ETests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

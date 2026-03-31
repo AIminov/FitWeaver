@@ -3,8 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import Scripts.runtime_layout as runtime_layout
-import src.garmin_fit.runtime_layout as runtime_layout_impl
+import garmin_fit.runtime_layout as runtime_layout
 
 
 class RuntimeLayoutTests(unittest.TestCase):
@@ -28,7 +27,7 @@ class RuntimeLayoutTests(unittest.TestCase):
             (project_root / "Output_fit" / "a.fit").write_text("fit", encoding="utf-8")
             (project_root / "state.json").write_text("{}", encoding="utf-8")
 
-            with patch.object(runtime_layout_impl, "PROJECT_ROOT", project_root):
+            with patch.object(runtime_layout, "PROJECT_ROOT", project_root):
                 summary = runtime_layout.copy_runtime_data(runtime_root)
 
             self.assertGreaterEqual(summary["copied"], 3)
@@ -36,3 +35,4 @@ class RuntimeLayoutTests(unittest.TestCase):
             self.assertTrue((runtime_root / "Plan" / "plan.yaml").exists())
             self.assertTrue((runtime_root / "Output_fit" / "a.fit").exists())
             self.assertTrue((runtime_root / "state.json").exists())
+

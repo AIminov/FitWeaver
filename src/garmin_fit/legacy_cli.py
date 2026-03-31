@@ -4,11 +4,6 @@ import argparse
 from typing import Sequence
 
 from ._shared_cli import configure_logging, generate_run_id
-from .workflow import (
-    workflow_build_only,
-    workflow_compare_build_modes,
-    workflow_templates_only,
-)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,13 +46,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     run_id = generate_run_id()
     validate_strict = getattr(args, "validate_mode", "soft") == "strict"
+    from . import workflow as workflow_module
 
     if args.command == "templates":
-        return workflow_templates_only(run_id=run_id, plan_path=args.plan)
+        return workflow_module.workflow_templates_only(run_id=run_id, plan_path=args.plan)
     if args.command == "build":
-        return workflow_build_only(validate_strict=validate_strict, run_id=run_id)
+        return workflow_module.workflow_build_only(validate_strict=validate_strict, run_id=run_id)
     if args.command == "compare":
-        return workflow_compare_build_modes(
+        return workflow_module.workflow_compare_build_modes(
             validate_strict=validate_strict,
             run_id=run_id,
             plan_path=args.plan,

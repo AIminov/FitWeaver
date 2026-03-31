@@ -28,18 +28,18 @@ dev = [
 [project.scripts]
 garmin-fit = "garmin_fit.cli:main"
 garmin-fit-legacy = "garmin_fit.legacy_cli:main"
-garmin-fit-runner = "run:main"
+garmin-fit-runner = "garmin_fit.runner:main"
 garmin-fit-bot = "garmin_fit.bot:main"
 garmin-fit-llm = "garmin_fit.llm_cli:main"
 garmin-fit-runtime = "garmin_fit.runtime_cli:main"
 garmin-fit-validate = "garmin_fit.validate_cli:main"
 
 [tool.setuptools]
-py-modules = ["get_fit", "run", "validate_yaml", "sitecustomize"]
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["Scripts*", "garmin_fit*", "src", "src.garmin_fit*"]
+where = ["src"]
+include = ["garmin_fit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -62,5 +62,4 @@ ignore = ["E501", "W191", "W291", "W292", "W293"]
 "garmin_fit/*" = ["F401", "I001"]
 
 [tool.setuptools.package-data]
-"Scripts.llm" = ["*.yaml", "*.txt"]
-"src.garmin_fit.llm" = ["*.yaml", "*.txt"]
+"garmin_fit.llm" = ["*.yaml", "*.txt"]

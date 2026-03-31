@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from Scripts.llm.client import GeneratedYamlResult, UnifiedLLMClient
+from garmin_fit.llm.client import GeneratedYamlResult, UnifiedLLMClient
 
 
 class TestUnifiedLLMClient(unittest.TestCase):
@@ -311,3 +311,4 @@ class TestUnifiedLLMClient(unittest.TestCase):
 
         UnifiedLLMClient._apply_source_fact_consistency_checks(result, [fact])
         self.assertTrue(any("source facts mismatch" in msg for msg in result.validation_errors))
+

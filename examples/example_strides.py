@@ -8,13 +8,12 @@ Purpose: Neuromuscular activation, maintaining speed while building endurance
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent / "Scripts"))
 
-from workout_utils import (
-    dist_pace, dist_open, repeat_step,
-    AERO_F, AERO_S, EASY_F,
-    Intensity, WU, CD, REC
-)
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from garmin_fit.workout_utils import AERO_F, AERO_S, CD, EASY_F, REC, WU, dist_open, dist_pace, repeat_step
 
 
 def get_workout_info():
@@ -53,8 +52,7 @@ def get_workout_steps():
 
 # For testing this template standalone
 if __name__ == "__main__":
-    from workout_utils import save_workout
-    import os
+    from garmin_fit.workout_utils import save_workout
 
     info = get_workout_info()
     steps = get_workout_steps()

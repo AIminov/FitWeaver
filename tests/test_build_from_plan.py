@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from Scripts.build_from_plan import (
+from garmin_fit.build_from_plan import (
     build_all_fits_from_plan,
     build_workout_steps,
     load_plan_build_input,
@@ -58,8 +58,8 @@ workouts:
         self.assertEqual(len(steps), 25)
         self.assertEqual([step.message_index for step in steps], list(range(25)))
 
-    @patch("Scripts.build_from_plan.save_workout")
-    @patch("Scripts.build_from_plan.get_next_serial_timestamp", return_value=[(10, 20), (11, 21)])
+    @patch("garmin_fit.build_from_plan.save_workout")
+    @patch("garmin_fit.build_from_plan.get_next_serial_timestamp", return_value=[(10, 20), (11, 21)])
     def test_build_all_fits_from_plan_saves_each_workout(self, _serials, save_workout_mock):
         yaml_text = """
 workouts:
@@ -86,3 +86,4 @@ workouts:
 
 if __name__ == "__main__":
     unittest.main()
+

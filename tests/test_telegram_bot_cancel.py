@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from zipfile import ZipFile
 
 try:
-    import Scripts.telegram_bot as telegram_bot
+    import garmin_fit.telegram_bot as telegram_bot
 except Exception:
     telegram_bot = None
 
@@ -31,7 +31,7 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
             message=SimpleNamespace(reply_text=_reply_text),
         )
 
-        with patch("Scripts.telegram_bot.ensure_user_allowed", new=AsyncMock(return_value=True)):
+        with patch("garmin_fit.telegram_bot.ensure_user_allowed", new=AsyncMock(return_value=True)):
             await telegram_bot.cancel(update, None)
 
         self.assertTrue(state.cancel_requested)
@@ -54,8 +54,8 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
         application = SimpleNamespace(bot=_Bot())
         job = telegram_bot.BuildJob(chat_id=77, user_id=user_id)
 
-        with patch("Scripts.telegram_bot.run_pipeline") as run_pipeline_mock, patch(
-            "Scripts.telegram_bot.archive_current_plan"
+        with patch("garmin_fit.telegram_bot.run_pipeline") as run_pipeline_mock, patch(
+            "garmin_fit.telegram_bot.archive_current_plan"
         ) as archive_mock:
             await telegram_bot._execute_build_job(application, job)
             run_pipeline_mock.assert_not_called()
@@ -85,7 +85,7 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
                 return 1, 1
 
             with patch.object(telegram_bot, "TEMPLATES_DIR", templates_dir), patch(
-                "Scripts.telegram_bot.generate_all_templates",
+                "garmin_fit.telegram_bot.generate_all_templates",
                 side_effect=_fake_generate_all_templates,
             ):
                 telegram_bot._create_plan_zip(zip_path, yaml_path, [fit_path], [report_path])
@@ -101,3 +101,4 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

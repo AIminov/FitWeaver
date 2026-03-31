@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 class ConfigTests(unittest.TestCase):
     def test_runtime_root_defaults_to_project_root(self):
-        import Scripts.config as config
+        import garmin_fit.config as config
 
         with patch.dict(os.environ, {}, clear=False):
             importlib.reload(config)
@@ -18,7 +18,7 @@ class ConfigTests(unittest.TestCase):
         importlib.reload(config)
 
     def test_runtime_root_can_be_overridden_via_env(self):
-        import Scripts.config as config
+        import garmin_fit.config as config
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "custom-runtime"
@@ -32,3 +32,4 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(config.STATE_FILE, runtime_root.resolve() / "state.json")
 
         importlib.reload(config)
+

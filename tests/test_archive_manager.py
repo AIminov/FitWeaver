@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import Scripts.archive_manager as archive_manager
+import garmin_fit.archive_manager as archive_manager
 
 
 class ArchiveManagerTests(unittest.TestCase):
@@ -145,3 +145,4 @@ workouts:
 
 if __name__ == "__main__":
     unittest.main()
+

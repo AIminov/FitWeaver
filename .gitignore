@@ -1,6 +1,7 @@
 # Python caches
 __pycache__/
 *.py[cod]
+*.egg-info/
 
 # Local virtual environments
 .venv/

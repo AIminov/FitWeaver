@@ -1,5 +1,7 @@
 # Garmin FIT Workout Generator
 
+Canonical repository: `https://github.com/AIminov/FitWeaver`
+
 Система преобразует текстовые планы тренировок в YAML и затем напрямую собирает FIT-файлы для Garmin.
 
 ## Актуальный pipeline
@@ -19,12 +21,12 @@
 
 ### Что изменилось
 
-- Полный workflow `python get_fit.py` больше не зависит от `Workout_templates/*.py`.
+- Полный workflow `python -m garmin_fit.cli run` больше не зависит от `Workout_templates/*.py`.
 - Python templates остались как optional debug/export слой:
-  - `python get_fit.py --templates-only`
-  - `python get_fit.py --build-only`
+  - `python -m garmin_fit.legacy_cli templates`
+  - `python -m garmin_fit.legacy_cli build`
 - Появился diagnostics-режим:
-  - `python get_fit.py --compare-build-modes`
+  - `python -m garmin_fit.legacy_cli compare`
 - Архивы и Telegram ZIP могут включать templates даже если в workspace их нет:
   система экспортирует их из YAML на лету.
 
@@ -33,7 +35,7 @@
 ### 1. Полный workflow
 
 ```bash
-python get_fit.py
+python -m garmin_fit.cli run
 ```
 
 Что делает:
@@ -47,7 +49,7 @@ python get_fit.py
 ### 2. Генерация YAML через LLM
 
 ```bash
-python -m Scripts.llm.request_cli
+python -m garmin_fit.llm.request_cli
 ```
 
 По умолчанию читает `Plan/plan.txt` или `Plan/plan.md` и пишет `Plan/plan.yaml`.
@@ -55,13 +57,13 @@ python -m Scripts.llm.request_cli
 Рекомендованный профиль для LM Studio:
 
 ```bash
-python -m Scripts.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800 --retries 3
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800 --retries 3
 ```
 
 Если план фазовый или свободной структуры — укажи число тренировок явно:
 
 ```bash
-python -m Scripts.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --workouts 48
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --workouts 48
 ```
 
 Если `--workouts` не передан и авто-детекция не сработала, скрипт спросит интерактивно.
@@ -71,7 +73,7 @@ python -m Scripts.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --
 ### 3. Optional debug export templates
 
 ```bash
-python get_fit.py --templates-only
+python -m garmin_fit.legacy_cli templates
 ```
 
 Используйте только если нужны Python templates для отладки, сравнения или legacy совместимости.
@@ -79,7 +81,7 @@ python get_fit.py --templates-only
 ### 4. Legacy build from templates
 
 ```bash
-python get_fit.py --build-only
+python -m garmin_fit.legacy_cli build
 ```
 
 Этот режим читает `Workout_templates/*.py` и собирает FIT по старому пути.
@@ -87,23 +89,23 @@ python get_fit.py --build-only
 ### 5. Проверка FIT
 
 ```bash
-python get_fit.py --validate-only
-python get_fit.py --validate-mode strict
-python Scripts/check_fit.py --strict Output_fit
-python Scripts/check_fit.py --strict --no-sdk-python-check Output_fit
+python -m garmin_fit.cli validate-fit
+python -m garmin_fit.cli validate-fit --validate-mode strict
+python -m garmin_fit.check_fit --strict Output_fit
+python -m garmin_fit.check_fit --strict --no-sdk-python-check Output_fit
 ```
 
 ### 5b. Doctor (environment + optional LLM smoke check)
 
 ```bash
-python get_fit.py --doctor
-python get_fit.py --doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 120
+python -m garmin_fit.cli doctor
+python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 120
 ```
 
 ### 6. Compare direct vs legacy build
 
 ```bash
-python get_fit.py --compare-build-modes
+python -m garmin_fit.legacy_cli compare
 ```
 
 Этот diagnostics-режим прогоняет один YAML по direct и legacy templates path,
@@ -113,7 +115,7 @@ python get_fit.py --compare-build-modes
 ### 7. LLM benchmark / regression
 
 ```bash
-python -m Scripts.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml --mode generate --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800
+python -m garmin_fit.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml --mode generate --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800
 ```
 
 Отчет сохраняется в `Build_artifacts/*.llm_benchmark_report.json`.
@@ -121,9 +123,9 @@ python -m Scripts.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2
 ## Архивы
 
 ```bash
-python get_fit.py --archive
-python get_fit.py --list-archives
-python get_fit.py --restore <archive_name>
+python -m garmin_fit.cli archive
+python -m garmin_fit.cli list-archives
+python -m garmin_fit.cli restore <archive_name>
 ```
 
 Архив содержит:
@@ -159,7 +161,7 @@ Plan/plan_done/
 ## Telegram-бот
 
 ```bash
-python -m Scripts.telegram_bot
+python -m garmin_fit.bot
 ```
 
 Бот:
@@ -191,26 +193,26 @@ Build_artifacts/                         # repaired YAML and build reports
 Archive/                                 # архивы запусков
   └── {plan_name}_{YYYYmmdd_HHMMSS}/    # полные архивы с артефактами
 Logs/                                    # логи
-Scripts/                                 # код проекта
+src/garmin_fit/                         # основной source tree
 tests/                                   # unit/regression tests
 ```
 
 ## Важные модули
 
 ```text
-Scripts/orchestrator.py      # общий pipeline orchestration
-Scripts/build_from_plan.py   # direct YAML/domain -> FIT builder
-Scripts/plan_artifacts.py    # repaired YAML + build_report.json
-Scripts/compare_build_modes.py # direct vs legacy compare tool
-Scripts/generate_from_yaml.py# optional template export
-Scripts/plan_domain.py       # domain objects and constants
-Scripts/plan_processing.py   # normalization and auto-repair
-Scripts/plan_validator.py    # schema + semantic validation
-Scripts/plan_service.py      # shared app services for LLM/bot
-Scripts/llm/prompt.py        # strict contract-first prompt builder
-Scripts/llm/benchmark.py     # LLM quality benchmark runner
-Scripts/telegram_bot.py      # thin Telegram adapter
-Scripts/archive_manager.py   # archive/restore logic
+src/garmin_fit/orchestrator.py      # общий pipeline orchestration
+src/garmin_fit/build_from_plan.py   # direct YAML/domain -> FIT builder
+src/garmin_fit/plan_artifacts.py    # repaired YAML + build_report.json
+src/garmin_fit/compare_build_modes.py # direct vs legacy compare tool
+src/garmin_fit/generate_from_yaml.py# optional template export
+src/garmin_fit/plan_domain.py       # domain objects and constants
+src/garmin_fit/plan_processing.py   # normalization and auto-repair
+src/garmin_fit/plan_validator.py    # schema + semantic validation
+src/garmin_fit/plan_service.py      # shared app services for LLM/bot
+src/garmin_fit/llm/prompt.py        # strict contract-first prompt builder
+src/garmin_fit/llm/benchmark.py     # LLM quality benchmark runner
+src/garmin_fit/telegram_bot.py      # thin Telegram adapter
+src/garmin_fit/archive_manager.py   # archive/restore logic
 ```
 
 ## Тесты

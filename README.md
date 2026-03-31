@@ -1,5 +1,7 @@
 # Garmin FIT Workout Generator
 
+Canonical repository: `https://github.com/AIminov/FitWeaver`
+
 > 🇷🇺 [Русская версия](README.ru.md)
 
 Generate Garmin `.fit` workout files from plain-text training plans using a local LLM.
@@ -136,7 +138,7 @@ python -m garmin_fit.cli run
 
 Or directly specifying the file:
 ```bash
-python get_fit.py --plan Plan/my_plan.yaml
+python -m garmin_fit.cli run --plan Plan/my_plan.yaml
 ```
 
 **6.** Copy files from `Output_fit/` to your watch:

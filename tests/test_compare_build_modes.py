@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import Scripts.compare_build_modes as compare_build_modes
+import garmin_fit.compare_build_modes as compare_build_modes
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -34,7 +34,7 @@ class CompareBuildModesTests(unittest.TestCase):
             self.assertTrue(report_data["matches"])
             self.assertEqual(report_data["mismatch_count"], 0)
 
-    @patch("Scripts.compare_build_modes._run_mode_in_temp")
+    @patch("garmin_fit.compare_build_modes._run_mode_in_temp")
     def test_compare_build_modes_reports_fit_content_mismatch(self, run_mode_mock):
         direct_snapshot = {
             "build_mode": "direct",
@@ -93,3 +93,4 @@ class CompareBuildModesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

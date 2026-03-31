@@ -2,10 +2,10 @@
 CLI for LLM-based YAML generation from training plan text.
 
 Usage:
-    python -m Scripts.llm.request_cli
-    python -m Scripts.llm.request_cli --plan Plan/plan.txt --output Plan/plan.yaml
-    python -m Scripts.llm.request_cli --api openai --url http://localhost:1234/v1
-    python -m Scripts.llm.request_cli --api openai --openai-mode completions
+    python -m garmin_fit.llm.request_cli
+    python -m garmin_fit.llm.request_cli --plan Plan/plan.txt --output Plan/plan.yaml
+    python -m garmin_fit.llm.request_cli --api openai --url http://localhost:1234/v1
+    python -m garmin_fit.llm.request_cli --api openai --openai-mode completions
 """
 
 import argparse

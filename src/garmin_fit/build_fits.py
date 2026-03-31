@@ -160,7 +160,7 @@ def build_all_fits(verify_with_csv=False):
 
     if not templates:
         logger.error("No template files found in Workout_templates/")
-        logger.info("Run Scripts.generate_from_yaml first or create templates manually")
+        logger.info("Run python -m garmin_fit.legacy_cli templates first or create templates manually")
         return 0, 0
 
     logger.info(f"Found {len(templates)} template(s)")

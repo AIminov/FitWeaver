@@ -1,6 +1,6 @@
 import unittest
 
-from Scripts.plan_validator import parse_and_validate_yaml_text, validate_plan_data_detailed
+from garmin_fit.plan_validator import parse_and_validate_yaml_text, validate_plan_data_detailed
 
 
 class PlanValidatorTests(unittest.TestCase):
@@ -73,3 +73,4 @@ workouts:
 
 if __name__ == "__main__":
     unittest.main()
+

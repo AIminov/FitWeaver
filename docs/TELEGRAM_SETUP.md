@@ -64,7 +64,7 @@ allowed_user_ids: []
 ### 4. Запустите бота
 
 ```powershell
-python -m Scripts.telegram_bot
+python -m garmin_fit.bot
 ```
 
 При старте бот проверяет:
@@ -186,7 +186,7 @@ ollama list
 Это допустимо. Templates — optional debug artifact. Для гарантированного export:
 
 ```powershell
-python get_fit.py --templates-only
+python -m garmin_fit.legacy_cli templates
 ```
 
 ## Обратная совместимость
@@ -198,10 +198,4 @@ python get_fit.py --templates-only
 
 ```powershell
 python -m garmin_fit.bot
-```
-
-Совместимый способ (для обратной совместимости):
-
-```powershell
-python -m Scripts.telegram_bot
 ```

@@ -4,15 +4,6 @@ import argparse
 from typing import Sequence
 
 from ._shared_cli import configure_logging, generate_run_id
-from .workflow import (
-    workflow_archive,
-    workflow_doctor,
-    workflow_full,
-    workflow_list_archives,
-    workflow_restore,
-    workflow_validate_only,
-    workflow_validate_yaml,
-)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,17 +61,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     run_id = generate_run_id()
     validate_strict = getattr(args, "validate_mode", "soft") == "strict"
+    from . import workflow as workflow_module
 
     if command == "run":
-        return workflow_full(validate_strict=validate_strict, run_id=run_id, plan_path=args.plan)
+        return workflow_module.workflow_full(
+            validate_strict=validate_strict,
+            run_id=run_id,
+            plan_path=args.plan,
+        )
     if command == "validate-yaml":
-        return workflow_validate_yaml(plan_path=args.plan)
+        return workflow_module.workflow_validate_yaml(plan_path=args.plan)
     if command == "validate-fit":
-        return workflow_validate_only(validate_strict=validate_strict, run_id=run_id)
+        return workflow_module.workflow_validate_only(
+            validate_strict=validate_strict,
+            run_id=run_id,
+        )
     if command == "doctor":
         doctor_url = args.url or ("http://localhost:11434" if args.api == "ollama" else "http://127.0.0.1:1234/v1")
         doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "qwen/qwen3.5-9b")
-        return workflow_doctor(
+        return workflow_module.workflow_doctor(
             llm_check=args.llm,
             llm_api=args.api,
             llm_url=doctor_url,
@@ -89,11 +88,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             llm_timeout_sec=args.timeout_sec,
         )
     if command == "archive":
-        return workflow_archive(run_id=run_id)
+        return workflow_module.workflow_archive(run_id=run_id)
     if command == "list-archives":
-        return workflow_list_archives()
+        return workflow_module.workflow_list_archives()
     if command == "restore":
-        return workflow_restore(args.archive_name)
+        return workflow_module.workflow_restore(args.archive_name)
 
     parser.error(f"Unsupported command: {command}")
     return 2

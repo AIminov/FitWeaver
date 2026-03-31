@@ -4,7 +4,6 @@ import argparse
 from typing import Sequence
 
 from ._shared_cli import configure_logging
-from .workflow import workflow_validate_yaml
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,4 +16,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
-    return workflow_validate_yaml(plan_path=args.plan)
+    from . import workflow as workflow_module
+
+    return workflow_module.workflow_validate_yaml(plan_path=args.plan)

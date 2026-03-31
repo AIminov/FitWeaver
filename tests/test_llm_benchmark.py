@@ -1,6 +1,6 @@
 import unittest
 
-from Scripts.llm.benchmark import evaluate_case_expectations
+from garmin_fit.llm.benchmark import evaluate_case_expectations
 
 
 class TestLlmBenchmark(unittest.TestCase):
@@ -55,3 +55,4 @@ class TestLlmBenchmark(unittest.TestCase):
         self.assertTrue(any(item.severity == "warning" and not item.passed for item in results))
         self.assertTrue(any(item.severity == "error" and item.passed for item in results))
         self.assertTrue(any("source facts" in item.message.lower() for item in results))
+

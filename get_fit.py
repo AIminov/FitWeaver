@@ -7,6 +7,8 @@ Primary supported CLI:
 
 Legacy/debug CLI:
     python -m garmin_fit.legacy_cli
+
+This file is intended for source-checkout compatibility only.
 """
 
 import argparse
@@ -14,21 +16,6 @@ import logging
 import sys
 from datetime import datetime, timezone
 from uuid import uuid4
-
-from garmin_fit.workflow import (
-    setup_file_logging,
-    workflow_archive,
-    workflow_build_only,
-    workflow_compare_build_modes,
-    workflow_doctor,
-    workflow_full,
-    workflow_list_archives,
-    workflow_restore,
-    workflow_templates_only,
-    workflow_validate_only,
-    workflow_validate_yaml,
-)
-
 
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -102,10 +89,11 @@ def main():
     args = build_parser().parse_args()
     run_id = _generate_run_id()
     validate_strict = args.validate_mode == "strict"
+    from garmin_fit import workflow as workflow_module
 
-    log_file = setup_file_logging(run_id=run_id)
+    log_file = workflow_module.setup_file_logging(run_id=run_id)
     logging.getLogger(__name__).info(
-        "Compatibility entry point in use; prefer `python -m garmin_fit.cli` for new workflows."
+        "Compatibility entry point in use from source checkout; prefer `python -m garmin_fit.cli`."
     )
     logging.getLogger(__name__).info(f"Logging to: {log_file}")
     logging.getLogger(__name__).info(f"Run ID: {run_id}")
@@ -122,9 +110,9 @@ def main():
 
     try:
         if args.validate_yaml:
-            return workflow_validate_yaml(plan_path=args.plan)
+            return workflow_module.workflow_validate_yaml(plan_path=args.plan)
         if args.compare_build_modes:
-            return workflow_compare_build_modes(
+            return workflow_module.workflow_compare_build_modes(
                 validate_strict=validate_strict,
                 run_id=run_id,
                 plan_path=args.plan,
@@ -134,7 +122,7 @@ def main():
             if not doctor_url:
                 doctor_url = "http://localhost:11434" if args.api == "ollama" else "http://127.0.0.1:1234/v1"
             doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "qwen/qwen3.5-9b")
-            return workflow_doctor(
+            return workflow_module.workflow_doctor(
                 llm_check=args.llm,
                 llm_api=args.api,
                 llm_url=doctor_url,
@@ -143,18 +131,18 @@ def main():
                 llm_timeout_sec=args.timeout_sec,
             )
         if args.validate_only:
-            return workflow_validate_only(validate_strict=validate_strict, run_id=run_id)
+            return workflow_module.workflow_validate_only(validate_strict=validate_strict, run_id=run_id)
         if args.build_only:
-            return workflow_build_only(validate_strict=validate_strict, run_id=run_id)
+            return workflow_module.workflow_build_only(validate_strict=validate_strict, run_id=run_id)
         if args.templates_only:
-            return workflow_templates_only(run_id=run_id, plan_path=args.plan)
+            return workflow_module.workflow_templates_only(run_id=run_id, plan_path=args.plan)
         if args.archive:
-            return workflow_archive(run_id=run_id)
+            return workflow_module.workflow_archive(run_id=run_id)
         if args.list_archives:
-            return workflow_list_archives()
+            return workflow_module.workflow_list_archives()
         if args.restore:
-            return workflow_restore(args.restore)
-        return workflow_full(validate_strict=validate_strict, run_id=run_id, plan_path=args.plan)
+            return workflow_module.workflow_restore(args.restore)
+        return workflow_module.workflow_full(validate_strict=validate_strict, run_id=run_id, plan_path=args.plan)
     except KeyboardInterrupt:
         logging.getLogger(__name__).info("\n\nWorkflow cancelled by user")
         return 130

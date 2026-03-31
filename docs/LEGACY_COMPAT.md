@@ -10,6 +10,10 @@ repository root without installation.
 `Scripts/` is now a legacy compatibility layer. Most modules there are thin
 aliases that forward to `garmin_fit` / `src.garmin_fit`.
 
+Installed packaging now ships `src/garmin_fit` only. `Scripts/` and the
+repository-root `garmin_fit/` wrappers are for source-checkout compatibility,
+not for the installed wheel.
+
 ## Supported Interfaces
 
 Primary interfaces:
@@ -30,6 +34,8 @@ python -m Scripts.llm.request_cli
 python Scripts/check_fit.py
 ```
 
+These legacy commands are intended for use from the repository checkout.
+
 `get_fit.py` remains available as a compatibility entry point, but new usage
 should go through `garmin_fit.cli` / `garmin_fit.legacy_cli`.
 
@@ -38,7 +44,6 @@ should go through `garmin_fit.cli` / `garmin_fit.legacy_cli`.
 The compatibility layer stays in place to avoid breaking:
 
 - existing local automation
-- tests importing `Scripts.*`
 - old shell aliases and ad hoc scripts
 
 New code should target `garmin_fit` and `src/garmin_fit`, not `Scripts`.

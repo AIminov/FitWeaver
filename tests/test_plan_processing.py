@@ -1,7 +1,7 @@
 import unittest
 
-from Scripts.plan_processing import normalize_source_text, repair_plan_data
-from Scripts.plan_service import count_workouts, has_default_sbu_block
+from garmin_fit.plan_processing import normalize_source_text, repair_plan_data
+from garmin_fit.plan_service import count_workouts, has_default_sbu_block
 
 
 class PlanProcessingTests(unittest.TestCase):
@@ -141,3 +141,4 @@ class PlanProcessingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
