@@ -33,13 +33,7 @@ Fully local pipeline: plain-language plan → LLM converts to YAML → FIT files
 pip install -r requirements.txt
 ```
 
-**2.** Configure your profile:
-```bash
-cp user_profile.yaml.example user_profile.yaml
-# Set your HR zones
-```
-
-**3.** Write your training plan in free form and save to `Plan/`:
+**2.** Write your training plan in free form and save to `Plan/`:
 ```
 Plan/my_plan.md
 ```
@@ -71,6 +65,12 @@ python -m garmin_fit.llm.request_cli \
   --api ollama \
   --model llama3
 ```
+
+> **Optional:** If your plan uses zone names ("Z2", "easy pace") instead of explicit bpm values,
+> create `user_profile.yaml` so the LLM knows your personal zones:
+> ```bash
+> cp user_profile.yaml.example user_profile.yaml
+> ```
 
 If the workout count is not auto-detected, the script will ask:
 ```
@@ -117,10 +117,9 @@ The schema is described here: https://github.com/AIminov/FitWeaver/blob/main/doc
 Plan/my_plan.yaml
 ```
 
-**3.** Install dependencies and configure profile (if not done yet):
+**3.** Install dependencies:
 ```bash
 pip install -r requirements.txt
-cp user_profile.yaml.example user_profile.yaml
 ```
 
 **4.** Optionally validate the plan before building:
@@ -160,13 +159,7 @@ select any running mode → **Training → Workouts** → choose the desired wor
 pip install -r requirements.txt
 ```
 
-**2.** Configure your profile:
-```bash
-cp user_profile.yaml.example user_profile.yaml
-# Edit your HR zone values
-```
-
-**3.** Place your plan in:
+**2.** Place your plan in:
 ```
 Plan/plan.md   or   Plan/plan.txt
 ```

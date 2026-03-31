@@ -33,13 +33,7 @@
 pip install -r requirements.txt
 ```
 
-**2.** Настройте профиль:
-```bash
-cp user_profile.yaml.example user_profile.yaml
-# Укажите ваши пульсовые зоны
-```
-
-**3.** Напишите план в свободной форме и сохраните в `Plan/`:
+**2.** Напишите план в свободной форме и сохраните в `Plan/`:
 ```
 Plan/my_plan.md
 ```
@@ -71,6 +65,12 @@ python -m garmin_fit.llm.request_cli \
   --api ollama \
   --model llama3
 ```
+
+> **Опционально:** Если в плане используются названия зон ("Z2", "лёгкий бег") вместо конкретных значений пульса,
+> создайте `user_profile.yaml` чтобы LLM знала ваши личные зоны:
+> ```bash
+> cp user_profile.yaml.example user_profile.yaml
+> ```
 
 Если количество тренировок не определилось автоматически, скрипт спросит:
 ```
@@ -117,10 +117,9 @@ python -m garmin_fit.cli run
 Plan/my_plan.yaml
 ```
 
-**3.** Установите зависимости и настройте профиль (если ещё не сделано):
+**3.** Установите зависимости:
 ```bash
 pip install -r requirements.txt
-cp user_profile.yaml.example user_profile.yaml
 ```
 
 **4.** Опционально — провалидируйте план перед сборкой:
@@ -160,13 +159,7 @@ python get_fit.py --plan Plan/my_plan.yaml
 pip install -r requirements.txt
 ```
 
-**2.** Настройте профиль:
-```bash
-cp user_profile.yaml.example user_profile.yaml
-# Отредактируйте значения пульсовых зон
-```
-
-**3.** Положите план в папку:
+**2.** Положите план в папку:
 ```
 Plan/plan.md   или   Plan/plan.txt
 ```
