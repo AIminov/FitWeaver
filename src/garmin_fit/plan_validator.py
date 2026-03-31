@@ -15,6 +15,74 @@ import yaml
 from .plan_domain import ALLOWED_INTENSITY, KNOWN_PACE_CONSTANTS, STEP_REQUIRED_FIELDS
 
 
+# ---------------------------------------------------------------------------
+# Pydantic structural validation (optional — gracefully skipped if unavailable)
+# ---------------------------------------------------------------------------
+
+def _loc_to_path(loc: tuple) -> str:
+    """Convert a Pydantic error location tuple to a dot/bracket path string."""
+    parts: list[str] = []
+    for part in loc:
+        if isinstance(part, int):
+            parts.append(f"[{part}]")
+        elif parts:
+            parts.append(f".{part}")
+        else:
+            parts.append(str(part))
+    return "".join(parts)
+
+
+_PYDANTIC_TYPE_TO_CATEGORY: dict[str, str] = {
+    "missing": "missing_field",
+    "literal_error": "unsupported_step_type",
+    "string_too_long": "invalid_value",
+    "greater_than": "invalid_value",
+    "greater_than_equal": "invalid_value",
+    "less_than": "invalid_value",
+    "less_than_equal": "invalid_value",
+    "int_type": "schema_error",
+    "float_type": "schema_error",
+    "str_type": "schema_error",
+    "bool_type": "schema_error",
+    "list_type": "schema_error",
+    "value_error": "invalid_value",
+}
+
+
+def _validate_with_pydantic(data: Any) -> List[ValidationIssue]:
+    """Run Pydantic structural validation and return issues. Returns [] on success."""
+    try:
+        from pydantic import ValidationError as PydanticValidationError
+
+        from .plan_schema import WorkoutPlanSchema
+
+        WorkoutPlanSchema.model_validate(data)
+        return []
+    except Exception as exc:
+        # Import error (pydantic not installed) or unexpected error — skip silently
+        try:
+            from pydantic import ValidationError as PydanticValidationError
+
+            if not isinstance(exc, PydanticValidationError):
+                return []
+        except ImportError:
+            return []
+
+        issues: List[ValidationIssue] = []
+        for err in exc.errors():
+            path = _loc_to_path(err["loc"])
+            category = _PYDANTIC_TYPE_TO_CATEGORY.get(err["type"], "schema_error")
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    detail=err["msg"],
+                    category=category,
+                    severity="error",
+                )
+            )
+        return issues
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationIssue:
     path: str
@@ -74,6 +142,9 @@ def validate_plan_data_detailed(
     """Validate already parsed YAML plan data and return structured issues."""
     errors: List[ValidationIssue] = []
     warnings: List[ValidationIssue] = []
+
+    # --- Pydantic structural pass (prepended, non-blocking) ---
+    errors.extend(_validate_with_pydantic(data))
 
     if not isinstance(data, dict):
         _issue(
