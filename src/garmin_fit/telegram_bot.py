@@ -63,7 +63,9 @@ class UserState:
     generated_at: Optional[datetime] = None
     fit_files: List[Path] = field(default_factory=list)
     pending_sbu_yaml_data: Optional[dict] = None
-    original_plan_text: Optional[str] = None       # saved input text for ZIP and re-generation
+    original_plan_text: Optional[str] = None       # exact user input, preserved for ZIP
+    active_plan_text: Optional[str] = None         # current generation input, may include clarification
+    pending_ambiguities: List[str] = field(default_factory=list)
     pending_clarification: Optional[str] = None    # ambiguity questions shown to user
     clarification_attempted: bool = False          # prevent re-asking after one clarification
     cancel_requested: bool = False
@@ -290,6 +292,12 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Plan text is too short. Please send more details.")
         return
 
+    state.clarification_attempted = False
+    state.pending_ambiguities = []
+    state.pending_clarification = None
+    state.pending_sbu_yaml_data = None
+    state.original_plan_text = text
+    state.active_plan_text = text
     state.last_request_time = datetime.now()
     await _process_plan(update, context, text)
 
@@ -345,6 +353,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
             return
 
+        state.clarification_attempted = False
+        state.pending_ambiguities = []
+        state.pending_clarification = None
+        state.pending_sbu_yaml_data = None
+        state.original_plan_text = plan_text
+        state.active_plan_text = plan_text
         state.last_request_time = datetime.now()
         await _process_plan(update, context, plan_text)
 
@@ -358,8 +372,7 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
 
     try:
         state.status = "generating"
-        # Keep original text for ZIP inclusion; on clarification re-runs this holds the enriched text
-        state.original_plan_text = plan_text
+        state.active_plan_text = plan_text
 
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
@@ -398,6 +411,8 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
 
         state.yaml_text = draft.yaml_text
         state.generated_at = datetime.now()
+        state.pending_ambiguities = list(draft.ambiguities)
+        state.pending_clarification = None
 
         if has_default_sbu_block(yaml_data):
             state.pending_sbu_yaml_data = yaml_data
@@ -446,9 +461,27 @@ async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return
 
     if user_text.strip().lower() in ("standard", "default", "1", "стандарт"):
-        state.status = "awaiting_confirm"
         state.pending_sbu_yaml_data = None
-        preview = state.yaml_text[:1500] + "..." if len(state.yaml_text) > 1500 else state.yaml_text
+        if state.yaml_text is None:
+            state.status = "idle"
+            await update.message.reply_text("YAML state expired. Send plan again.")
+            return
+
+        preview = state.yaml_text[:1500] + "..." if state.yaml_text and len(state.yaml_text) > 1500 else state.yaml_text
+        ambiguities = state.pending_ambiguities[:5]
+        if ambiguities and not state.clarification_attempted:
+            state.pending_ambiguities = list(ambiguities)
+            state.pending_clarification = "\n".join(f"• {a}" for a in ambiguities)
+            state.status = "awaiting_clarification"
+            await update.message.reply_text(
+                f"Using standard SBU.\n\n{preview}\n\n"
+                f"Ambiguities found:\n{state.pending_clarification}\n\n"
+                "Reply with clarification and I'll regenerate, or /build to proceed as-is."
+            )
+            return
+
+        state.pending_clarification = None
+        state.status = "awaiting_confirm"
         await update.message.reply_text(f"Using standard SBU.\n\n{preview}\n\nSend /build")
         return
 
@@ -459,10 +492,22 @@ async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         draft = await asyncio.to_thread(apply_custom_sbu_choice, llm, yaml_data, user_text)
         state.yaml_text = draft.yaml_text
-        state.status = "awaiting_confirm"
         state.pending_sbu_yaml_data = None
+        state.pending_ambiguities = list(draft.ambiguities)
 
         preview = format_plan_preview(draft)
+        if draft.ambiguities and not state.clarification_attempted:
+            state.pending_clarification = "\n".join(f"• {a}" for a in draft.ambiguities[:5])
+            state.status = "awaiting_clarification"
+            await update.message.reply_text(
+                f"Custom drills added.\n\n{preview}\n\n"
+                f"Ambiguities found:\n{state.pending_clarification}\n\n"
+                "Reply with clarification and I'll regenerate, or /build to proceed as-is."
+            )
+            return
+
+        state.pending_clarification = None
+        state.status = "awaiting_confirm"
         await update.message.reply_text(f"Custom drills added.\n\n{preview}\n\nSend /build")
 
     except Exception as e:
@@ -477,13 +522,13 @@ async def _handle_clarification(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.effective_user.id
     state = get_state(user_id)
 
-    if not state.original_plan_text:
+    if not state.active_plan_text:
         state.status = "idle"
         await update.message.reply_text("Context expired. Please send the plan again.")
         return
 
     state.clarification_attempted = True
-    clarified_text = state.original_plan_text + f"\n\nUser clarification: {user_text}"
+    clarified_text = state.active_plan_text + f"\n\nUser clarification: {user_text}"
     await _process_plan(update, context, clarified_text)
 
 

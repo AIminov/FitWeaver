@@ -10,10 +10,17 @@
 
 ### Added
 - `telegram_bot.py` — Ambiguity clarification flow: when LLM returns `ambiguities`, bot enters `awaiting_clarification` state and asks the user to clarify before building. User can reply with clarification text (triggers one re-generation) or send `/build` to proceed as-is.
-- `UserState.original_plan_text`: stores user's input for ZIP inclusion and clarification re-runs.
+- `UserState.original_plan_text`: stores the exact user input for ZIP inclusion.
+- `UserState.active_plan_text`: stores the current generation input and may include appended clarification text.
 - `UserState.pending_clarification`, `UserState.clarification_attempted`: state for one-round clarification loop.
 - `_handle_clarification()`: handler appending user clarification to original plan text and re-running `_process_plan`.
 - `_decade_label()`: helper returning decade folder name from a day-of-month integer.
+
+### Fixed
+- `telegram_bot.py` — `clarification_attempted` and related ambiguity state are reset when a user starts a new plan, so clarification flow works again for subsequent plans without requiring `/cancel`.
+- `telegram_bot.py` — ZIP export now keeps the exact original user plan text even after a clarification round; appended `User clarification: ...` text is used only for re-generation input.
+- `telegram_bot.py` — ambiguity handling now still runs after SBU resolution (`standard` or custom drills), so plans with both `sbu_block` and `ambiguities` no longer skip the clarification step.
+- `tests/test_telegram_bot_cancel.py` — added regression coverage for clarification reset, exact ZIP text preservation, and `SBU -> clarification` transitions.
 
 ### Removed
 - `telegram_bot.py` — unused imports: `TemporaryDirectory`, `InputMediaDocument`, `generate_all_templates`, `TEMPLATES_DIR`.
@@ -320,4 +327,3 @@
 - Recommended naming convention for logical watch ordering:
   - use identical `filename` and `name` in YAML
   - format example: `W0_01_Mon_Easy_6km`
-
