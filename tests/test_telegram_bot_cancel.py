@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -65,38 +66,23 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(state.cancel_requested)
         self.assertTrue(any("Build cancelled." in text for _, text in sent_messages))
 
-    async def test_create_plan_zip_exports_templates_when_workspace_is_empty(self):
+    async def test_create_plan_zip_contains_only_input_and_fit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            yaml_path = root / "plan.yaml"
             fit_path = root / "W01_TEST.fit"
             zip_path = root / "bundle.zip"
-            report_path = root / "plan.build_report.json"
-            templates_dir = root / "templates"
-            templates_dir.mkdir()
-            yaml_path.write_text("workouts: []", encoding="utf-8")
             fit_path.write_bytes(b"fit")
-            report_path.write_text("{}", encoding="utf-8")
+            plan_text = "Run 10km easy"
+            now = datetime(2026, 4, 6)  # decade-1
 
-            def _fake_generate_all_templates(source_yaml, *, output_dir=None, cleanup_output=False):
-                output = Path(output_dir)
-                output.mkdir(parents=True, exist_ok=True)
-                (output / "W01_TEST.py").write_text("# template", encoding="utf-8")
-                return 1, 1
-
-            with patch.object(telegram_bot, "TEMPLATES_DIR", templates_dir), patch(
-                "garmin_fit.telegram_bot.generate_all_templates",
-                side_effect=_fake_generate_all_templates,
-            ):
-                telegram_bot._create_plan_zip(zip_path, yaml_path, [fit_path], [report_path])
+            telegram_bot._create_plan_zip(zip_path, plan_text, [fit_path], now=now)
 
             with ZipFile(zip_path) as archive:
                 names = set(archive.namelist())
 
-            self.assertIn("plan/plan.yaml", names)
-            self.assertIn("artifacts/plan.build_report.json", names)
-            self.assertIn("templates/W01_TEST.py", names)
-            self.assertIn("fit/W01_TEST.fit", names)
+            self.assertIn("2026/04/decade-1/input_plan.txt", names)
+            self.assertIn("2026/04/decade-1/W01_TEST.fit", names)
+            self.assertEqual(len(names), 2)  # nothing else in the archive
 
 
 if __name__ == "__main__":

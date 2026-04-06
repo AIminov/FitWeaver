@@ -9,12 +9,12 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from tempfile import TemporaryDirectory, gettempdir
+from tempfile import gettempdir
 from typing import Dict, List, Optional
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import yaml
-from telegram import Document, InputMediaDocument, Update
+from telegram import Document, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -25,8 +25,7 @@ from telegram.ext import (
 )
 
 from .archive_manager import archive_current_plan, get_archive_name
-from .config import ARCHIVE_DIR, ARTIFACTS_DIR, BOT_CONFIG_FILE, OUTPUT_DIR, PLAN_DIR, TEMPLATES_DIR
-from .generate_from_yaml import generate_all_templates
+from .config import ARCHIVE_DIR, ARTIFACTS_DIR, BOT_CONFIG_FILE, OUTPUT_DIR, PLAN_DIR
 from .llm.client import UnifiedLLMClient
 from .pipeline_runner import run_pipeline, save_yaml_to_plan_dir
 from .plan_service import (
@@ -60,10 +59,13 @@ def check_required_directories() -> None:
 class UserState:
     yaml_text: Optional[str] = None
     yaml_path: Optional[Path] = None
-    status: str = "idle"  # idle/generating/awaiting_sbu_choice/awaiting_confirm/queued/building
+    status: str = "idle"  # idle/generating/awaiting_sbu_choice/awaiting_clarification/awaiting_confirm/queued/building
     generated_at: Optional[datetime] = None
     fit_files: List[Path] = field(default_factory=list)
     pending_sbu_yaml_data: Optional[dict] = None
+    original_plan_text: Optional[str] = None       # saved input text for ZIP and re-generation
+    pending_clarification: Optional[str] = None    # ambiguity questions shown to user
+    clarification_attempted: bool = False          # prevent re-asking after one clarification
     cancel_requested: bool = False
     last_request_time: Optional[datetime] = None
 
@@ -161,39 +163,31 @@ def _build_llm_client() -> UnifiedLLMClient:
     )
 
 
+def _decade_label(day: int) -> str:
+    if day <= 10:
+        return "decade-1"
+    elif day <= 20:
+        return "decade-2"
+    else:
+        return "decade-3"
+
+
 def _create_plan_zip(
     zip_path: Path,
-    yaml_path: Optional[Path],
+    plan_text: Optional[str],
     fit_files: List[Path],
-    artifact_paths: Optional[List[Path]] = None,
+    now: Optional[datetime] = None,
 ) -> None:
-    """Create ZIP with generated plan artifacts for bulk download."""
+    """Create ZIP with user plan text and FIT files, organized by year/month/decade."""
+    if now is None:
+        now = datetime.now()
+    folder = f"{now.year}/{now.month:02d}/{_decade_label(now.day)}"
+
     with ZipFile(zip_path, "w", compression=ZIP_DEFLATED) as archive:
-        if yaml_path and yaml_path.exists():
-            archive.write(yaml_path, arcname=f"plan/{yaml_path.name}")
-
-        for artifact_path in sorted(Path(path) for path in (artifact_paths or [])):
-            if artifact_path.exists() and artifact_path.is_file():
-                archive.write(artifact_path, arcname=f"artifacts/{artifact_path.name}")
-
-        template_files = sorted(TEMPLATES_DIR.glob("*.py"))
-        if template_files:
-            for template_file in template_files:
-                archive.write(template_file, arcname=f"templates/{template_file.name}")
-        elif yaml_path and yaml_path.exists():
-            with TemporaryDirectory(prefix="garmin_templates_") as tmp:
-                temp_dir = Path(tmp)
-                generated, total = generate_all_templates(
-                    yaml_path,
-                    output_dir=temp_dir,
-                    cleanup_output=True,
-                )
-                if total > 0 and generated == total:
-                    for template_file in sorted(temp_dir.glob("*.py")):
-                        archive.write(template_file, arcname=f"templates/{template_file.name}")
-
+        if plan_text:
+            archive.writestr(f"{folder}/input_plan.txt", plan_text)
         for fit_file in fit_files:
-            archive.write(fit_file, arcname=f"fit/{fit_file.name}")
+            archive.write(fit_file, arcname=f"{folder}/{fit_file.name}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -261,6 +255,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if state.status == "awaiting_sbu_choice":
         await _handle_sbu_choice(update, context, text)
+        return
+
+    if state.status == "awaiting_clarification":
+        await _handle_clarification(update, context, text)
         return
 
     if state.status in ("generating", "queued", "building"):
@@ -360,6 +358,8 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
 
     try:
         state.status = "generating"
+        # Keep original text for ZIP inclusion; on clarification re-runs this holds the enriched text
+        state.original_plan_text = plan_text
 
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
@@ -408,6 +408,17 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
                 "SBU block found. Reply with:\n"
                 "- 'standard' to keep default drills\n"
                 "- custom drill text to generate custom drills"
+            )
+            return
+
+        if draft.ambiguities and not state.clarification_attempted:
+            state.pending_clarification = "\n".join(f"• {a}" for a in draft.ambiguities[:5])
+            state.status = "awaiting_clarification"
+            await update.message.reply_text(
+                f"YAML ready. Workouts: {workout_count}.\n\n"
+                f"{preview}\n\n"
+                f"Ambiguities found:\n{state.pending_clarification}\n\n"
+                "Reply with clarification and I'll regenerate, or /build to proceed as-is."
             )
             return
 
@@ -462,12 +473,30 @@ async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE,
         )
 
 
+async def _handle_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE, user_text: str) -> None:
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+
+    if not state.original_plan_text:
+        state.status = "idle"
+        await update.message.reply_text("Context expired. Please send the plan again.")
+        return
+
+    state.clarification_attempted = True
+    clarified_text = state.original_plan_text + f"\n\nUser clarification: {user_text}"
+    await _process_plan(update, context, clarified_text)
+
+
 async def build(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await ensure_user_allowed(update):
         return
 
     user_id = update.effective_user.id
     state = get_state(user_id)
+
+    if state.status == "awaiting_clarification":
+        # User chose to skip clarification and build as-is
+        state.status = "awaiting_confirm"
 
     if state.status not in {"awaiting_confirm", "queued"}:
         await update.message.reply_text("No confirmed YAML plan. Send plan text first.")
@@ -548,33 +577,20 @@ async def _execute_build_job(application: Application, job: BuildJob) -> None:
             ),
         )
 
-        if len(fit_files) <= 10:
-            media = []
-            file_handles = []
-            try:
-                for idx, fit_path in enumerate(fit_files):
-                    handle = open(fit_path, "rb")
-                    file_handles.append(handle)
-                    caption = f"FIT files: {len(fit_files)}" if idx == 0 else None
-                    media.append(InputMediaDocument(media=handle, filename=fit_path.name, caption=caption))
-                await application.bot.send_media_group(chat_id=job.chat_id, media=media)
-            finally:
-                for handle in file_handles:
-                    handle.close()
-        else:
-            zip_path = Path(gettempdir()) / f"plan_bundle_u{job.user_id}_{ts}.zip"
-            artifact_paths = result.get("artifact_paths", [])
-            _create_plan_zip(zip_path, state.yaml_path, fit_files, artifact_paths)
-            try:
-                with open(zip_path, "rb") as f:
-                    await application.bot.send_document(
-                        chat_id=job.chat_id,
-                        document=f,
-                        filename=zip_path.name,
-                        caption=f"Bundle with {len(fit_files)} FIT files and plan artifacts",
-                    )
-            finally:
-                zip_path.unlink(missing_ok=True)
+        now = datetime.now()
+        zip_name = f"garmin_{now.strftime('%Y-%m')}_u{job.user_id}_{ts}.zip"
+        zip_path = Path(gettempdir()) / zip_name
+        _create_plan_zip(zip_path, state.original_plan_text, fit_files, now)
+        try:
+            with open(zip_path, "rb") as f:
+                await application.bot.send_document(
+                    chat_id=job.chat_id,
+                    document=f,
+                    filename=zip_path.name,
+                    caption=f"{len(fit_files)} FIT file(s)",
+                )
+        finally:
+            zip_path.unlink(missing_ok=True)
 
         if state.cancel_requested:
             state.status = "idle"

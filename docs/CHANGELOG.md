@@ -1,5 +1,25 @@
 ﻿# Changelog
 
+## 2026-04-06 — v9.2 (Telegram Bot — Clean ZIP, Clarification Flow)
+
+### Changed
+- `telegram_bot.py` — `_create_plan_zip()`: rewritten. ZIP now contains only `input_plan.txt` (user's original plan text) and `.fit` files. Artifacts, build reports, and Python templates removed from user-facing output.
+- `telegram_bot.py` — ZIP always sent regardless of file count (previously: media group for ≤10 files, ZIP for >10).
+- `telegram_bot.py` — ZIP folder structure changed to `YYYY/MM/decade-N/` (decade-1: days 1–10, decade-2: 11–20, decade-3: 21–31).
+- `tests/test_telegram_bot_cancel.py` — `test_create_plan_zip_exports_templates_when_workspace_is_empty` replaced with `test_create_plan_zip_contains_only_input_and_fit` to match new ZIP contract.
+
+### Added
+- `telegram_bot.py` — Ambiguity clarification flow: when LLM returns `ambiguities`, bot enters `awaiting_clarification` state and asks the user to clarify before building. User can reply with clarification text (triggers one re-generation) or send `/build` to proceed as-is.
+- `UserState.original_plan_text`: stores user's input for ZIP inclusion and clarification re-runs.
+- `UserState.pending_clarification`, `UserState.clarification_attempted`: state for one-round clarification loop.
+- `_handle_clarification()`: handler appending user clarification to original plan text and re-running `_process_plan`.
+- `_decade_label()`: helper returning decade folder name from a day-of-month integer.
+
+### Removed
+- `telegram_bot.py` — unused imports: `TemporaryDirectory`, `InputMediaDocument`, `generate_all_templates`, `TEMPLATES_DIR`.
+
+---
+
 ## 2026-03-31 — v9.1 (Clean Packaging, Import Migration, Runner Fix)
 
 ### Changed

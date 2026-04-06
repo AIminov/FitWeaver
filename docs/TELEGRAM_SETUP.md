@@ -98,10 +98,13 @@ python -m garmin_fit.bot
 3. Бот делает `text -> YAML draft` (с таймаутом 5 мин)
 4. Бот применяет auto-repair и показывает preview
 5. Если найден `sbu_block` без drills, бот спрашивает: standard или custom
-6. После `/build` запускается:
+6. Если LLM вернул неоднозначности (`ambiguities`), бот задаёт уточняющий вопрос.
+   - Ответьте текстом — YAML перегенерируется с учётом уточнения (один раунд)
+   - Отправьте `/build` — продолжить с текущим YAML как есть
+7. После `/build` запускается:
 
 ```text
-YAML -> repaired YAML/report -> FIT -> validate -> send -> archive
+YAML -> repaired YAML/report -> FIT -> validate -> ZIP -> archive
 ```
 
 ## Что видит пользователь
@@ -109,27 +112,20 @@ YAML -> repaired YAML/report -> FIT -> validate -> send -> archive
 Preview может включать:
 
 - `Auto-repair` — автоматические исправления
-- `Ambiguities` — неоднозначности
+- `Ambiguities` — неоднозначности (при наличии бот задаст уточняющий вопрос)
 - `Warnings` — предупреждения
 - YAML preview
 
-Это помогает заметить сомнительные места до сборки FIT.
-
 ## Отправка результатов
 
-### Если FIT-файлов 10 или меньше
-
-Бот отправляет их как media group.
-
-### Если FIT-файлов больше 10
-
-Бот отправляет ZIP bundle со структурой:
+Бот всегда отправляет ZIP-архив со структурой:
 
 ```text
-plan/          # Исходный YAML
-artifacts/     # *.repaired.yaml, *.build_report.json
-fit/           # *.fit файлы
-templates/     # Debug templates (опционально)
+YYYY/
+  MM/
+    decade-N/        # decade-1: 1–10, decade-2: 11–20, decade-3: 21–31
+      input_plan.txt # Исходный текст плана от пользователя
+      *.fit          # Файлы тренировок
 ```
 
 ## Архитектура
@@ -180,14 +176,6 @@ ollama list
 - Проблемы с LLM сервером
 
 Попробуйте меньший план или более быструю модель.
-
-### ZIP без templates
-
-Это допустимо. Templates — optional debug artifact. Для гарантированного export:
-
-```powershell
-python -m garmin_fit.legacy_cli templates
-```
 
 ## Обратная совместимость
 
