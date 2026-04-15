@@ -26,6 +26,7 @@ from telegram.ext import (
 
 from .archive_manager import archive_current_plan, get_archive_name
 from .config import ARCHIVE_DIR, ARTIFACTS_DIR, BOT_CONFIG_FILE, OUTPUT_DIR, PLAN_DIR
+from .garmin_auth_manager import is_available as _garmin_auth_available
 from .llm.client import UnifiedLLMClient
 from .pipeline_runner import run_pipeline, save_yaml_to_plan_dir
 from .plan_service import (
@@ -59,7 +60,9 @@ def check_required_directories() -> None:
 class UserState:
     yaml_text: Optional[str] = None
     yaml_path: Optional[Path] = None
-    status: str = "idle"  # idle/generating/awaiting_sbu_choice/awaiting_clarification/awaiting_confirm/queued/building
+    # idle/generating/awaiting_sbu_choice/awaiting_clarification/awaiting_confirm/
+    # queued/building/awaiting_garmin_email/awaiting_garmin_password/awaiting_garmin_mfa
+    status: str = "idle"
     generated_at: Optional[datetime] = None
     fit_files: List[Path] = field(default_factory=list)
     pending_sbu_yaml_data: Optional[dict] = None
@@ -70,6 +73,11 @@ class UserState:
     clarification_attempted: bool = False          # prevent re-asking after one clarification
     cancel_requested: bool = False
     last_request_time: Optional[datetime] = None
+    # Garmin Calendar fields
+    garmin_client: object = None                   # authenticated garminconnect.Garmin client
+    garmin_manager: object = None                  # GarminAuthManager instance (for MFA resume)
+    garmin_email: Optional[str] = None             # stored for token-dir lookup only
+    garmin_pending_email: Optional[str] = None     # temporary during connect flow
 
 
 @dataclass
@@ -192,6 +200,224 @@ def _create_plan_zip(
             archive.write(fit_file, arcname=f"{folder}/{fit_file.name}")
 
 
+def _garmin_token_dir(user_id: int) -> Path:
+    """Per-user token storage directory under ~/.garminconnect/."""
+    return Path.home() / ".garminconnect" / f"tg_{user_id}"
+
+
+# ---------------------------------------------------------------------------
+# Garmin Calendar helpers
+# ---------------------------------------------------------------------------
+
+async def _garmin_upload_and_report(
+    application,
+    chat_id: int,
+    user_id: int,
+    year: int | None = None,
+) -> None:
+    """Upload the last built plan to Garmin Calendar and send a result message."""
+    state = get_state(user_id)
+
+    if not state.garmin_client:
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text="Not connected to Garmin. Use /connect_garmin first.",
+        )
+        return
+
+    if not state.yaml_path or not state.yaml_path.exists():
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text="No built plan found. Use /build first.",
+        )
+        return
+
+    await application.bot.send_message(chat_id=chat_id, text="Uploading to Garmin Connect Calendar...")
+
+    try:
+        import yaml as _yaml
+        from .garmin_calendar_export import GarminCalendarExporter
+        from .plan_domain import plan_from_data
+
+        plan_data = _yaml.safe_load(state.yaml_path.read_text(encoding="utf-8"))
+        plan = plan_from_data(plan_data)
+
+        exporter = GarminCalendarExporter(state.garmin_client)
+        result = await asyncio.to_thread(
+            exporter.upload_plan, plan, True, False, year
+        )
+
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"Garmin Calendar upload complete.\n"
+                f"{result.summary()}"
+                + (
+                    "\n\nSync your watch to see the scheduled workouts."
+                    if result.uploaded > 0 else ""
+                )
+            ),
+        )
+    except Exception as exc:
+        await application.bot.send_message(
+            chat_id=chat_id,
+            text=f"Garmin Calendar upload error: {exc}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Garmin Calendar command handlers
+# ---------------------------------------------------------------------------
+
+async def connect_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /connect_garmin — start Garmin Connect auth flow.
+
+    Usage:
+      /connect_garmin                → bot asks for email then password
+      /connect_garmin email password → connect directly (password visible in chat)
+    """
+    if not await ensure_user_allowed(update):
+        return
+
+    if not _garmin_auth_available():
+        await update.message.reply_text(
+            "garmin-auth not installed.\n"
+            "Run: pip install garminconnect garmin-auth"
+        )
+        return
+
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+
+    # Allow /connect_garmin email password as a single command for convenience
+    if context.args and len(context.args) >= 2:
+        email = context.args[0].strip()
+        password = context.args[1].strip()
+        await _do_garmin_connect(update, context, user_id, state, email, password)
+        return
+
+    # Two-step interactive flow
+    state.status = "awaiting_garmin_email"
+    state.garmin_pending_email = None
+    await update.message.reply_text(
+        "Garmin Connect login.\n"
+        "Reply with your Garmin account email:"
+    )
+
+
+async def disconnect_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /disconnect_garmin — clear stored Garmin session and tokens.
+    """
+    if not await ensure_user_allowed(update):
+        return
+
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+    state.garmin_client = None
+    state.garmin_manager = None
+    state.garmin_email = None
+    state.garmin_pending_email = None
+
+    # Remove token directory so next connect re-authenticates fully
+    token_dir = _garmin_token_dir(user_id)
+    if token_dir.exists():
+        import shutil
+        shutil.rmtree(token_dir, ignore_errors=True)
+
+    await update.message.reply_text("Garmin session cleared. Use /connect_garmin to reconnect.")
+
+
+async def send_to_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /send_to_garmin [year] — upload the last built plan to Garmin Connect Calendar.
+    """
+    if not await ensure_user_allowed(update):
+        return
+
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+
+    year: int | None = None
+    if context.args:
+        try:
+            year = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Usage: /send_to_garmin [year]  e.g. /send_to_garmin 2026")
+            return
+
+    if not state.garmin_client:
+        await update.message.reply_text(
+            "Not connected to Garmin Connect.\n"
+            "Use /connect_garmin first."
+        )
+        return
+
+    if not state.fit_files:
+        await update.message.reply_text(
+            "No FIT files from last build.\n"
+            "Use /build first."
+        )
+        return
+
+    await _garmin_upload_and_report(
+        context.application, update.effective_chat.id, user_id, year=year
+    )
+
+
+# ---------------------------------------------------------------------------
+# Internal: complete Garmin auth after email + password are known
+# ---------------------------------------------------------------------------
+
+async def _do_garmin_connect(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    state: UserState,
+    email: str,
+    password: str,
+) -> None:
+    from .garmin_auth_manager import GarminAuthManager
+
+    state.status = "idle"
+    await update.message.reply_text("Connecting to Garmin Connect...")
+
+    token_dir = _garmin_token_dir(user_id)
+    token_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        manager = GarminAuthManager(
+            email=email,
+            password=password,
+            token_dir=token_dir,
+            return_on_mfa=True,
+        )
+        result = await asyncio.to_thread(manager.connect)
+
+        if result == "needs_mfa":
+            state.garmin_manager = manager
+            state.garmin_email = email
+            state.status = "awaiting_garmin_mfa"
+            await update.message.reply_text(
+                "Two-factor authentication required.\n"
+                "Reply with your MFA code:"
+            )
+            return
+
+        state.garmin_client = result
+        state.garmin_manager = manager
+        state.garmin_email = email
+        await update.message.reply_text(
+            "Connected to Garmin Connect.\n"
+            "Use /send_to_garmin after building a plan."
+        )
+
+    except Exception as exc:
+        state.status = "idle"
+        await update.message.reply_text(f"Garmin authentication failed: {exc}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await ensure_user_allowed(update):
         return
@@ -210,7 +436,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/help\n"
         "/status\n"
         "/cancel\n"
-        "/build"
+        "/build\n"
+        "\n"
+        "Garmin Calendar (no USB):\n"
+        "/connect_garmin [email password] — log in to Garmin Connect\n"
+        "/send_to_garmin [year]          — upload last built plan to calendar\n"
+        "/disconnect_garmin              — clear session"
     )
 
 
@@ -222,6 +453,19 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if state.status in {"queued", "building"}:
         state.cancel_requested = True
         await update.message.reply_text("Cancellation requested. Current build job will be stopped.")
+        return
+
+    if state.status in {"awaiting_garmin_email", "awaiting_garmin_password", "awaiting_garmin_mfa"}:
+        # Preserve any already-connected Garmin client while resetting the flow
+        garmin_client = state.garmin_client
+        garmin_manager = state.garmin_manager
+        garmin_email = state.garmin_email
+        reset_state(user_id)
+        new_state = get_state(user_id)
+        new_state.garmin_client = garmin_client
+        new_state.garmin_manager = garmin_manager
+        new_state.garmin_email = garmin_email
+        await update.message.reply_text("Garmin login cancelled.")
         return
 
     reset_state(user_id)
@@ -254,6 +498,18 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     state = get_state(user_id)
     text = update.message.text
+
+    if state.status == "awaiting_garmin_email":
+        await _handle_garmin_email(update, context, text)
+        return
+
+    if state.status == "awaiting_garmin_password":
+        await _handle_garmin_password(update, context, text)
+        return
+
+    if state.status == "awaiting_garmin_mfa":
+        await _handle_garmin_mfa(update, context, text)
+        return
 
     if state.status == "awaiting_sbu_choice":
         await _handle_sbu_choice(update, context, text)
@@ -447,6 +703,58 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
     except Exception as e:
         state.status = "idle"
         await update.message.reply_text(f"Plan processing error: {e}")
+
+
+async def _handle_garmin_email(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+    email = text.strip()
+    if "@" not in email or "." not in email:
+        await update.message.reply_text("That doesn't look like a valid email. Try again:")
+        return
+    state.garmin_pending_email = email
+    state.status = "awaiting_garmin_password"
+    await update.message.reply_text("Reply with your Garmin account password:")
+
+
+async def _handle_garmin_password(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+    password = text.strip()
+    if not password:
+        await update.message.reply_text("Password cannot be empty. Try again:")
+        return
+    email = state.garmin_pending_email or ""
+    state.garmin_pending_email = None
+    await _do_garmin_connect(update, context, user_id, state, email, password)
+
+
+async def _handle_garmin_mfa(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+    mfa_code = text.strip()
+    manager = state.garmin_manager
+
+    if manager is None:
+        state.status = "idle"
+        await update.message.reply_text("MFA session expired. Use /connect_garmin to start again.")
+        return
+
+    try:
+        client = await asyncio.to_thread(manager.resume, mfa_code)
+        state.garmin_client = client
+        state.status = "idle"
+        await update.message.reply_text(
+            "Garmin Connect authenticated.\n"
+            "Use /send_to_garmin after building a plan."
+        )
+    except Exception as exc:
+        state.status = "idle"
+        state.garmin_manager = None
+        await update.message.reply_text(
+            f"MFA failed: {exc}\n"
+            "Use /connect_garmin to try again."
+        )
 
 
 async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE, user_text: str) -> None:
@@ -652,11 +960,19 @@ async def _execute_build_job(application: Application, job: BuildJob) -> None:
             artifact_paths=result.get("artifact_paths", []),
         )
 
+        garmin_hint = ""
+        state_check = get_state(job.user_id)
+        if state_check.garmin_client:
+            garmin_hint = "\n\nUse /send_to_garmin to upload to Garmin Calendar."
+        elif _garmin_auth_available():
+            garmin_hint = "\n\nTip: /connect_garmin to upload directly to Garmin Calendar (no USB)."
+
         await application.bot.send_message(
             chat_id=job.chat_id,
             text=(
                 f"Done. Sent {len(fit_files)} file(s).\n"
                 f"Archive: {archive_path.name}"
+                f"{garmin_hint}"
             ),
         )
 
@@ -699,6 +1015,9 @@ def main() -> None:
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("build", build))
+    application.add_handler(CommandHandler("connect_garmin", connect_garmin))
+    application.add_handler(CommandHandler("disconnect_garmin", disconnect_garmin))
+    application.add_handler(CommandHandler("send_to_garmin", send_to_garmin))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
