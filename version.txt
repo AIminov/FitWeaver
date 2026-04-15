@@ -1,5 +1,5 @@
 FitWeaver
-v9.2 — 2026-04-06
+v10.0 — 2026-04-15
 
 History:
   Garmin          — v1: initial FIT generator, hardcoded templates
@@ -15,3 +15,4 @@ History:
   FitWeaver/v9.0  — v9.0: Pydantic v2 validation, CI/CD (GitHub Actions), README bilingual split, docs overhaul
   FitWeaver/v9.1  — v9.1: clean src-layout packaging, garmin_fit bridge, all imports migrated, runner fixed
   FitWeaver/v9.2  — v9.2: Telegram bot — clean ZIP output, decade folder structure, ambiguity clarification flow
+  FitWeaver/v10.0 — v10.0: Garmin Calendar Export — cloud upload to Garmin Connect, no USB required

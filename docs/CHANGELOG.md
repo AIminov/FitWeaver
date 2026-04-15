@@ -1,5 +1,40 @@
 ﻿# Changelog
 
+## 2026-04-15 — v10.0 (Garmin Calendar Export — cloud delivery, no USB)
+
+### Added
+- `src/garmin_fit/garmin_auth_manager.py` — thin wrapper over `garmin-auth`.
+  `GarminAuthManager.connect()` returns an authenticated `garminconnect` client.
+  Factories: `from_env()` (reads `GARMIN_EMAIL` / `GARMIN_PASSWORD`), `for_telegram()` (async MFA).
+  `resume(mfa_code)` completes MFA in two-step flow.
+- `src/garmin_fit/garmin_step_mapper.py` — maps all 9 YAML step types to Garmin
+  workout-service REST API dicts (`ExecutableStepDTO`, `RepeatGroupDTO`).
+  `map_workout()` builds a complete payload; `extract_date_from_filename()` auto-detects
+  workout calendar date from filename pattern `W{week}_{MM-DD}_…`.
+- `src/garmin_fit/garmin_calendar_export.py` — `GarminCalendarExporter` class.
+  `upload_plan()` uploads and schedules all workouts; `dry_run` mode previews without
+  API calls; 1.2 s rate-limit delay between uploads.  `publish_plan_to_garmin()`
+  one-shot convenience function.
+- `docs/GARMIN_PAYLOAD_SPEC.md` — reverse-engineered Garmin workout-service REST API
+  specification (ExecutableStepDTO, RepeatGroupDTO, HR/pace target field names).
+- `docs/GARMIN_CALENDAR.md` — user setup guide: install, credentials, MFA, CLI flags,
+  date mapping, rate limits, troubleshooting.
+- `pyproject.toml` — optional dependency group `[garmin-calendar]`
+  (`garminconnect>=0.3.0,<0.4.0`, `garmin-auth>=0.3.0,<0.4.0`).
+- `tests/test_garmin_step_mapper.py` — 64 tests covering all step types,
+  repeat-body consumption, sbu_block expansion, date extraction, payload shape.
+- `cli.py` — new `garmin-calendar` subcommand with `--plan`, `--email`, `--password`,
+  `--token-dir`, `--year`, `--no-schedule`, `--dry-run` flags.
+- `workflow.py` — `workflow_garmin_calendar()` orchestrator function.
+- `runner.py` — menu options **G** (live upload) and **D** (dry run).
+
+### Fixed
+- `garmin_step_mapper.py` — `map_steps()` repeat-body-consumption bug: body steps were
+  emitted as both standalone steps and repeat-group children.  Fixed by pre-scanning
+  repeat boundaries before the emit loop.
+
+---
+
 ## 2026-04-15 — Research: Garmin Calendar Export (planned v10)
 
 Investigated direct delivery of workouts to Garmin Connect Calendar (no USB required).

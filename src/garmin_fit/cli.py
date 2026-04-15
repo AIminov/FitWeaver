@@ -46,6 +46,18 @@ def build_parser() -> argparse.ArgumentParser:
     restore_parser = subparsers.add_parser("restore", help="Restore a named archive")
     restore_parser.add_argument("archive_name")
 
+    gc_parser = subparsers.add_parser(
+        "garmin-calendar",
+        help="Upload plan to Garmin Connect Calendar (no USB required)",
+    )
+    gc_parser.add_argument("--plan", metavar="YAML_PATH", help="Path to YAML plan file")
+    gc_parser.add_argument("--email", metavar="EMAIL", help="Garmin account email (or GARMIN_EMAIL env)")
+    gc_parser.add_argument("--password", metavar="PASSWORD", help="Garmin account password (or GARMIN_PASSWORD env)")
+    gc_parser.add_argument("--token-dir", metavar="DIR", help="Directory for token storage (default: ~/.garminconnect)")
+    gc_parser.add_argument("--year", type=int, metavar="YEAR", help="Override year for date extraction")
+    gc_parser.add_argument("--no-schedule", action="store_true", help="Upload workouts without scheduling to calendar")
+    gc_parser.add_argument("--dry-run", action="store_true", help="Build payloads but make no API calls")
+
     return parser
 
 
@@ -93,6 +105,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return workflow_module.workflow_list_archives()
     if command == "restore":
         return workflow_module.workflow_restore(args.archive_name)
+    if command == "garmin-calendar":
+        return workflow_module.workflow_garmin_calendar(
+            plan_path=args.plan,
+            email=args.email,
+            password=args.password,
+            token_dir=args.token_dir,
+            year=args.year,
+            schedule=not args.no_schedule,
+            dry_run=args.dry_run,
+        )
 
     parser.error(f"Unsupported command: {command}")
     return 2

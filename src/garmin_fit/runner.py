@@ -45,9 +45,11 @@ def main(argv: list[str] | None = None) -> int:
     print("7) List archives (primary CLI)")
     print("8) Restore from archive (primary CLI)")
     print("9) Compare direct vs legacy build (legacy/debug)")
+    print("G) Upload plan to Garmin Calendar (cloud, no USB)")
+    print("D) Garmin Calendar dry run (preview only)")
     print("0) Exit")
 
-    choice = input("\nSelect option [0-9]: ").strip()
+    choice = input("\nSelect option [0-9 / G / D]: ").strip().upper()
 
     if choice == "0":
         print("Exit.")
@@ -78,8 +80,12 @@ def main(argv: list[str] | None = None) -> int:
     if choice == "9":
         mode = ask_mode()
         return run_module("garmin_fit.legacy_cli", ["compare", "--validate-mode", mode])
+    if choice == "G":
+        return run_module("garmin_fit.cli", ["garmin-calendar"])
+    if choice == "D":
+        return run_module("garmin_fit.cli", ["garmin-calendar", "--dry-run"])
 
-    print("Invalid choice. Use 0..9.")
+    print("Invalid choice.")
     return 1
 
 

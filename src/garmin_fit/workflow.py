@@ -465,6 +465,119 @@ def workflow_restore(archive_name):
     return ret
 
 
+def workflow_garmin_calendar(
+    plan_path=None,
+    email=None,
+    password=None,
+    token_dir=None,
+    year=None,
+    schedule=True,
+    dry_run=False,
+):
+    """
+    Upload a YAML workout plan to Garmin Connect Calendar.
+
+    Authentication falls back to GARMIN_EMAIL / GARMIN_PASSWORD env vars.
+    In dry-run mode payloads are built and logged but no API calls are made.
+    """
+    print_header("GARMIN CONNECT CALENDAR UPLOAD")
+
+    # ------------------------------------------------------------------ deps
+    from .garmin_auth_manager import is_available as _garmin_auth_available
+
+    if not _garmin_auth_available():
+        logger.error("[FAIL] garmin-auth / garminconnect not installed.")
+        logger.error("  Run:  pip install 'garmin-fit-generator[garmin-calendar]'")
+        logger.error("  Or:   pip install garminconnect garmin-auth")
+        return 1
+
+    # ------------------------------------------------------------------ YAML
+    try:
+        if plan_path:
+            yaml_path = Path(plan_path).resolve()
+            if not yaml_path.exists():
+                logger.error(f"YAML plan not found: {yaml_path}")
+                return 1
+        else:
+            yaml_path = select_active_yaml(prefer_latest=True, interactive=True)
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        return 1
+
+    logger.info(f"Plan: {yaml_path.name}")
+    logger.info(f"Schedule: {schedule}")
+    logger.info(f"Year override: {year or 'auto'}")
+    logger.info(f"Dry run: {dry_run}")
+    logger.info("")
+
+    import yaml as _yaml
+
+    try:
+        plan_data = _yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.error(f"Failed to read YAML: {exc}")
+        return 1
+
+    from .plan_domain import plan_from_data
+
+    plan = plan_from_data(plan_data)
+    logger.info(f"Loaded {len(plan.workouts)} workout(s) from plan")
+
+    if not plan.workouts:
+        logger.error("No workouts found in plan")
+        return 1
+
+    # ------------------------------------------------------------------ auth
+    if not dry_run:
+        from .garmin_auth_manager import GarminAuthManager
+
+        logger.info("Authenticating with Garmin Connect …")
+        try:
+            manager = GarminAuthManager(
+                email=email,
+                password=password,
+                token_dir=Path(token_dir) if token_dir else None,
+                prompt_mfa=lambda: input("Garmin MFA code: "),
+            )
+            client = manager.connect()
+            if client == "needs_mfa":
+                logger.error("MFA required but could not be completed interactively.")
+                return 1
+        except Exception as exc:
+            logger.error(f"Authentication failed: {exc}")
+            return 1
+        logger.info("[OK] Authenticated")
+    else:
+        client = None
+
+    # ------------------------------------------------------------------ upload
+    from .garmin_calendar_export import GarminCalendarExporter
+
+    exporter = GarminCalendarExporter(client) if client else GarminCalendarExporter.__new__(GarminCalendarExporter)
+    if client is None:
+        exporter._client = None
+        exporter._delay = 1.2
+
+    result = exporter.upload_plan(plan, schedule=schedule, dry_run=dry_run, year=year)
+
+    # ------------------------------------------------------------------ summary
+    print_header("UPLOAD SUMMARY")
+    logger.info(result.summary())
+    logger.info("")
+
+    if result.failed:
+        logger.error(f"{result.failed} workout(s) failed to upload:")
+        for r in result.results:
+            if not r.ok:
+                logger.error(f"  - {r.filename}: {r.error}")
+        return 1
+
+    if not dry_run:
+        logger.info("[OK] All workouts uploaded to Garmin Connect Calendar")
+        logger.info("Sync your watch to see the scheduled workouts.")
+    return 0
+
+
 def workflow_validate_yaml(plan_path=None):
     """Validate YAML plan by SDK rules.
 
