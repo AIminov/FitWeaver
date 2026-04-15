@@ -480,7 +480,7 @@ def workflow_validate_yaml(plan_path=None):
 
     # Select YAML file
     if plan_path:
-        yaml_file = Path(plan_path)
+        yaml_file = Path(plan_path).resolve()
     else:
         yaml_file = select_active_yaml(interactive=True)
 
