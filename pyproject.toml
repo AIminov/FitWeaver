@@ -24,6 +24,10 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
 ]
+garmin-calendar = [
+    "garminconnect>=0.3.0,<0.4.0",
+    "garmin-auth>=0.3.0,<0.4.0",
+]
 
 [project.scripts]
 garmin-fit = "garmin_fit.cli:main"
