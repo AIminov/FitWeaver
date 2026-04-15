@@ -124,7 +124,31 @@ Exit criteria:
 
 - Iteration 1 completed.
 - Iteration 2 completed with `GARMIN_FIT_RUNTIME_DIR` support and runtime bootstrap tooling.
-- Iteration 3 is largely completed: primary modules now live in `src/garmin_fit`, with root-level compatibility wrappers in `garmin_fit/` and shims in `Scripts/`.
-- Iteration 4 is in progress: primary and legacy/debug CLIs are separated, and historical scripts are being isolated or rewritten as compatibility utilities.
-- Iteration 5 completed for the current red test set: prompt contract drift and archive layout expectations were aligned, and package/runtime smoke tests were added.
-- Iteration 6 is in progress: the root README is being updated to reflect the package-first CLI and runtime layout.
+- Iteration 3 completed: `src/garmin_fit` is canonical, `garmin_fit/` is a bridge, `Scripts/` is compatibility-only and not packaged.
+- Iteration 4 completed: primary and legacy/debug CLIs fully separated.
+- Iteration 5 completed: prompt contract, archive layout, and Pydantic schema tests aligned. 98 tests total.
+- Iteration 6 completed: README split (EN + RU), docs updated to package-first CLI, SCRIPTS_DEPENDENCY_AUDIT.md added.
+
+## Planned: Garmin Calendar Export (v10)
+
+**Goal:** deliver workouts directly to Garmin Connect Calendar — no USB required.
+After publishing, workouts appear on the watch automatically on next Garmin Connect sync.
+
+**Stack (no official API approval needed):**
+- `garminconnect` (cyberjunky) — `upload_running_workout()`, `schedule_workout()`
+- `garmin-auth` (drkostas) — token persistence, MFA, rate limit handling
+
+**Architecture:**
+```
+YAML → domain objects ──┬── FitExporter        → .fit → USB (current, kept)
+                        └── GarminCalendarExporter → Garmin Connect → watch
+```
+
+**New module:** `src/garmin_fit/garmin_calendar_export.py`
+
+**Key mapping work:**
+- YAML step types → garminconnect step helpers (`create_warmup_step`, `create_interval_step`, `create_repeat_group`, `create_cooldown_step`)
+- Workout date from YAML filename pattern (`W11_03-14_...`)
+- Auth: FileTokenStore for local, DBTokenStore for Telegram/cloud deployments
+
+**Risk:** unofficial/reverse-engineered API — can break if Garmin changes auth infrastructure.

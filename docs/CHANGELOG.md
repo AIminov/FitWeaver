@@ -1,5 +1,22 @@
 ﻿# Changelog
 
+## 2026-04-15 — Research: Garmin Calendar Export (planned v10)
+
+Investigated direct delivery of workouts to Garmin Connect Calendar (no USB required).
+
+**Finding:** unofficial Python libraries cover the full flow without official API approval:
+- `garminconnect` (cyberjunky) — `upload_running_workout()`, `schedule_workout(workout_id, date)`, step helpers
+- `garmin-auth` (drkostas) — token persistence (file/PostgreSQL), MFA support, rate limit handling
+
+**Planned architecture:** two export backends from the same YAML domain objects —
+`FitExporter` (current, kept as fallback) + `GarminCalendarExporter` (new).
+
+Reference implementation: [hevy2garmin](https://github.com/drkostas/hevy2garmin) — same stack for completed activity upload.
+
+See `docs/ROADMAP.md` → "Planned: Garmin Calendar Export (v10)" for full plan.
+
+---
+
 ## 2026-04-06 — v9.2 (Telegram Bot — Clean ZIP, Clarification Flow)
 
 ### Changed
