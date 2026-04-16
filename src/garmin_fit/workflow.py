@@ -473,6 +473,7 @@ def workflow_garmin_calendar(
     year=None,
     schedule=True,
     dry_run=False,
+    week_pause=3.0,
 ):
     """
     Upload a YAML workout plan to Garmin Connect Calendar.
@@ -557,7 +558,8 @@ def workflow_garmin_calendar(
         exporter._client = None
         exporter._delay = 1.2
 
-    result = exporter.upload_plan(plan, schedule=schedule, dry_run=dry_run, year=year)
+    result = exporter.upload_plan(plan, schedule=schedule, dry_run=dry_run, year=year,
+                                   week_pause=week_pause)
 
     # ------------------------------------------------------------------ summary
     print_header("UPLOAD SUMMARY")

@@ -28,6 +28,7 @@ Payload spec: docs/GARMIN_PAYLOAD_SPEC.md
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -37,8 +38,18 @@ from .plan_domain import Workout, WorkoutPlan
 
 logger = logging.getLogger(__name__)
 
-# Delay between uploads to respect Garmin rate limits
-_UPLOAD_DELAY_SECS = 1.2
+# Delays to respect Garmin rate limits
+_UPLOAD_DELAY_SECS = 1.2   # between individual workouts within a week
+_WEEK_PAUSE_SECS   = 3.0   # extra pause between calendar weeks
+
+
+def _week_label(filename: str | None) -> str:
+    """Extract week label ('W18') from filename, or 'W??' if not found."""
+    if filename:
+        m = re.match(r"(W\d+)_", filename)
+        if m:
+            return m.group(1)
+    return "W??"
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +220,14 @@ class GarminCalendarExporter:
         schedule: bool = True,
         dry_run: bool = False,
         year: int | None = None,
+        week_pause: float = _WEEK_PAUSE_SECS,
     ) -> PlanUploadResult:
         """
         Upload all workouts in a plan to Garmin Connect Calendar.
+
+        Workouts are grouped by calendar week (W01, W02, ...).
+        Within a week the delay is ``self._delay`` (1.2 s).
+        Between weeks an extra ``week_pause`` (default 3 s) is added.
 
         Parameters
         ----------
@@ -223,33 +239,58 @@ class GarminCalendarExporter:
             Build payloads but make no API calls.
         year:
             Override year for date extraction. If None, auto-detected.
-
-        Returns
-        -------
-        PlanUploadResult
+        week_pause:
+            Extra seconds to sleep between calendar weeks (default 3.0).
         """
         plan_result = PlanUploadResult()
         total = len(plan.workouts)
-        logger.info("Starting %s upload of %d workouts ...",
-                    "dry-run" if dry_run else "live", total)
 
-        for i, workout in enumerate(plan.workouts, start=1):
-            logger.info("[%d/%d] Processing %r ...", i, total, workout.filename)
+        # ------------------------------------------------------------------ group by week
+        weeks: dict[str, list[Workout]] = {}
+        for w in plan.workouts:
+            weeks.setdefault(_week_label(w.filename), []).append(w)
 
-            date: str | None = None
-            if schedule:
-                date = extract_date_from_filename(workout.filename or "", year=year)
-                if date is None:
-                    logger.warning(
-                        "Could not extract date from filename %r — will upload without scheduling",
-                        workout.filename,
-                    )
+        n_weeks = len(weeks)
+        logger.info(
+            "Starting %s upload: %d workouts across %d week(s) ...",
+            "dry-run" if dry_run else "live", total, n_weeks,
+        )
 
-            result = self.upload_and_schedule(workout, date=date, dry_run=dry_run)
-            plan_result.results.append(result)
+        uploaded_total = 0
+        for week_idx, (label, week_workouts) in enumerate(weeks.items()):
+            logger.info(
+                "--- %s (%d workout(s)) ---", label, len(week_workouts),
+            )
 
-            if not dry_run and i < total:
-                time.sleep(self._delay)
+            for j, workout in enumerate(week_workouts):
+                uploaded_total += 1
+                logger.info(
+                    "[%d/%d] Processing %r ...", uploaded_total, total, workout.filename,
+                )
+
+                date: str | None = None
+                if schedule:
+                    date = extract_date_from_filename(workout.filename or "", year=year)
+                    if date is None:
+                        logger.warning(
+                            "Could not extract date from %r — uploading without scheduling",
+                            workout.filename,
+                        )
+
+                result = self.upload_and_schedule(workout, date=date, dry_run=dry_run)
+                plan_result.results.append(result)
+
+                # delay between workouts within a week (skip after last in week)
+                if not dry_run and j < len(week_workouts) - 1:
+                    time.sleep(self._delay)
+
+            # longer pause between weeks (skip after last week)
+            if not dry_run and week_idx < n_weeks - 1:
+                logger.info(
+                    "Week %s done — pausing %.1f s before next week ...",
+                    label, week_pause,
+                )
+                time.sleep(week_pause)
 
         logger.info(plan_result.summary())
         return plan_result
