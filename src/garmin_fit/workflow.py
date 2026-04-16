@@ -562,7 +562,6 @@ def workflow_garmin_calendar(
     # ------------------------------------------------------------------ summary
     print_header("UPLOAD SUMMARY")
     print(result.summary())
-    print("")
 
     if result.failed:
         print(f"[FAIL] {result.failed} workout(s) failed:")

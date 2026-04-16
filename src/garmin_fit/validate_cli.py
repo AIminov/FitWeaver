@@ -19,3 +19,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from . import workflow as workflow_module
 
     return workflow_module.workflow_validate_yaml(plan_path=args.plan)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

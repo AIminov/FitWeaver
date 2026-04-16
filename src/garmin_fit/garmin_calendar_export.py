@@ -125,10 +125,10 @@ class GarminCalendarExporter:
             The assigned workout_id from Garmin Connect.
         """
         payload = map_workout(workout)
-        logger.debug("Uploading workout %r …", workout.filename)
+        logger.debug("Uploading workout %r ...", workout.filename)
         response = self._client.upload_workout(payload)
         workout_id = self._extract_workout_id(response)
-        logger.info("Uploaded %r → workout_id=%s", workout.filename, workout_id)
+        logger.info("Uploaded %r -> workout_id=%s", workout.filename, workout_id)
         return workout_id
 
     def schedule_workout(self, workout_id: str, date: str) -> None:
@@ -180,7 +180,7 @@ class GarminCalendarExporter:
                 payload.get("workoutSegments", [{}])[0].get("workoutSteps", [])
             )
             logger.info(
-                "[DRY RUN] %r → %d top-level steps, date=%s",
+                "[DRY RUN] %r -> %d top-level steps, date=%s",
                 result.filename, step_count, resolved_date,
             )
             return result
@@ -230,11 +230,11 @@ class GarminCalendarExporter:
         """
         plan_result = PlanUploadResult()
         total = len(plan.workouts)
-        logger.info("Starting %s upload of %d workouts …",
+        logger.info("Starting %s upload of %d workouts ...",
                     "dry-run" if dry_run else "live", total)
 
         for i, workout in enumerate(plan.workouts, start=1):
-            logger.info("[%d/%d] Processing %r …", i, total, workout.filename)
+            logger.info("[%d/%d] Processing %r ...", i, total, workout.filename)
 
             date: str | None = None
             if schedule:
