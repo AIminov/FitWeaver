@@ -1,5 +1,28 @@
 ﻿# Changelog
 
+## 2026-04-16 - v10.1 (Garmin Calendar SBU Notes)
+
+### Changed
+- `src/garmin_fit/garmin_step_mapper.py` - Garmin Calendar SBU export now uses
+  one repeat group per drill, preserving each drill's `name`, `seconds`, and
+  `reps` instead of flattening SBU into a generic fixed-time block.
+- SBU active steps now set `ExecutableStepDTO.description`, the Garmin Connect
+  "workout step note" field, so mobile Garmin Connect shows the drill
+  instruction for the current step. Recovery steps are labeled `Recovery`.
+
+### Added
+- `garmin-calendar` CLI date-range filters are documented:
+  `--from-date YYYY-MM-DD` and `--to-date YYYY-MM-DD`.
+- `docs/GARMIN_PAYLOAD_SPEC.md` documents `ExecutableStepDTO.description`
+  and the SBU repeat-group shape used for Calendar uploads.
+
+### Verified
+- Unit suite: `python -m unittest discover -q` - 178 tests passing.
+- Live Garmin Connect mobile check on 2026-04-16: SBU step notes are visible
+  after direct Calendar upload.
+
+---
+
 ## 2026-04-15 — v10.0 (Garmin Calendar Export — cloud delivery, no USB)
 
 ### Added

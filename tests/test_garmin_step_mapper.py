@@ -84,12 +84,20 @@ class TestEndConditionIds(unittest.TestCase):
 
 
 class TestTargetTypeIds(unittest.TestCase):
-    """Guard against wrong target type IDs (real-world regression: zone vs custom)."""
+    """Guard against wrong target type IDs (real-world regression: zone vs custom).
 
-    def test_hr_is_custom_not_zone(self):
-        # id=6 "heart.rate" = custom BPM; id=4 "heart.rate.zone" = Garmin Z1-Z5
-        self.assertEqual(TARGET_HR["workoutTargetTypeId"], 6)
-        self.assertEqual(TARGET_HR["workoutTargetTypeKey"], "heart.rate")
+    Empirically confirmed via Garmin Connect web UI:
+      id=6 "heart.rate"       → displayed as pace "0-0 мин/км"  ← WRONG, do not use
+      id=4 "heart.rate.zone"  → displayed as "X-Y уд/мин"       ← correct for BPM
+      id=7 "speed"            → displayed as pace range          ← correct for m/s
+    Field names must be targetValueOne / targetValueTwo (not Low/High).
+    """
+
+    def test_hr_uses_id4_heart_rate_zone(self):
+        # id=4 with targetValueOne/Two accepts raw BPM and displays correctly
+        # id=6 "heart.rate" is misinterpreted as pace — do NOT use
+        self.assertEqual(TARGET_HR["workoutTargetTypeId"], 4)
+        self.assertEqual(TARGET_HR["workoutTargetTypeKey"], "heart.rate.zone")
 
     def test_spd_is_custom_not_zone(self):
         # id=7 "speed" = custom m/s; id=5 "speed.zone" = predefined zones
@@ -186,8 +194,8 @@ class TestDistHr(unittest.TestCase):
         self.assertEqual(self.result["targetType"], TARGET_HR)
 
     def test_hr_values(self):
-        self.assertEqual(self.result["targetValueLow"], 130)
-        self.assertEqual(self.result["targetValueHigh"], 145)
+        self.assertEqual(self.result["targetValueOne"], 130)
+        self.assertEqual(self.result["targetValueTwo"], 145)
 
     def test_step_order(self):
         self.assertEqual(self.result["stepOrder"], 1)
@@ -226,14 +234,15 @@ class TestDistPace(unittest.TestCase):
     def test_target_speed(self):
         self.assertEqual(self.result["targetType"], TARGET_SPD)
 
-    def test_pace_fast_is_high(self):
-        # pace_fast (faster = higher speed) → targetValueHigh
-        expected_high = _pace_to_mps("4:30")
-        self.assertAlmostEqual(self.result["targetValueHigh"], expected_high, places=4)
+    def test_pace_fast_is_two(self):
+        # pace_fast (faster = higher m/s) → targetValueTwo (upper bound)
+        expected_two = _pace_to_mps("4:30")
+        self.assertAlmostEqual(self.result["targetValueTwo"], expected_two, places=4)
 
-    def test_pace_slow_is_low(self):
-        expected_low = _pace_to_mps("5:00")
-        self.assertAlmostEqual(self.result["targetValueLow"], expected_low, places=4)
+    def test_pace_slow_is_one(self):
+        # pace_slow (slower = lower m/s) → targetValueOne (lower bound)
+        expected_one = _pace_to_mps("5:00")
+        self.assertAlmostEqual(self.result["targetValueOne"], expected_one, places=4)
 
 
 class TestTimePace(unittest.TestCase):
@@ -266,6 +275,9 @@ class TestDistOpen(unittest.TestCase):
         self.assertEqual(self.result["targetType"], TARGET_NO)
 
     def test_no_target_value_fields(self):
+        self.assertNotIn("targetValueOne", self.result)
+        self.assertNotIn("targetValueTwo", self.result)
+        # Ensure old field names are also absent
         self.assertNotIn("targetValueLow", self.result)
         self.assertNotIn("targetValueHigh", self.result)
 
@@ -310,28 +322,59 @@ class TestOpenStep(unittest.TestCase):
 class TestSbuBlock(unittest.TestCase):
 
     def test_default_drills_and_reps(self):
-        """No drills list → 4 drills × 2 reps = 8 iterations."""
-        step = _step(step_type="sbu_block", extra={"reps": 2})
-        result = map_steps([step])[0]
-        self.assertEqual(result["type"], "RepeatGroupDTO")
-        self.assertEqual(result["numberOfIterations"], 8)
-        self.assertAlmostEqual(result["endConditionValue"], 8.0)
+        """No drills list -> default drill set, one repeat group per drill."""
+        step = _step(step_type="sbu_block")
+        result = map_steps([step])
+        self.assertEqual(len(result), 5)
+        self.assertTrue(all(group["type"] == "RepeatGroupDTO" for group in result))
+        self.assertEqual(result[0]["numberOfIterations"], 2)
+        self.assertAlmostEqual(result[0]["endConditionValue"], 2.0)
 
     def test_custom_drill_count(self):
         drills = [Drill(name=f"Drill{i}", seconds=30, reps=2) for i in range(3)]
-        step = _step(step_type="sbu_block", drills=drills, extra={"reps": 2})
-        result = map_steps([step])[0]
-        # 3 drills × 2 reps = 6
-        self.assertEqual(result["numberOfIterations"], 6)
+        step = _step(step_type="sbu_block", drills=drills)
+        result = map_steps([step])
+        self.assertEqual(len(result), 3)
 
     def test_child_steps_structure(self):
-        """Must have exactly 2 child steps: active (30 s) + recovery (90 s)."""
-        step = _step(step_type="sbu_block")
+        """Each drill group has active+recovery child steps."""
+        drills = [Drill(name="Bounds", seconds=20, reps=2)]
+        step = _step(step_type="sbu_block", drills=drills)
         result = map_steps([step])[0]
         children = result["workoutSteps"]
         self.assertEqual(len(children), 2)
-        self.assertAlmostEqual(children[0]["endConditionValue"], 30.0)
+        self.assertAlmostEqual(children[0]["endConditionValue"], 20.0)
         self.assertAlmostEqual(children[1]["endConditionValue"], 90.0)
+        self.assertEqual(result["numberOfIterations"], 2)
+
+    def test_child_steps_orders_sequential(self):
+        """Child step orders must be 1,2 within each drill group."""
+        drills = [Drill(name="Bounds", seconds=20, reps=2)]
+        step = _step(step_type="sbu_block", drills=drills)
+        result = map_steps([step])[0]
+        orders = [c["stepOrder"] for c in result["workoutSteps"]]
+        self.assertEqual(orders, [1, 2])
+
+    def test_total_time_unchanged(self):
+        """Total time uses each drill's own seconds and reps."""
+        drills = [
+            Drill(name="Bounds", seconds=20, reps=2),
+            Drill(name="Ankling", seconds=30, reps=1),
+        ]
+        result = map_steps([_step(step_type="sbu_block", drills=drills)])
+        total_time = sum(
+            group["numberOfIterations"]
+            * sum(child["endConditionValue"] for child in group["workoutSteps"])
+            for group in result
+        )
+        self.assertAlmostEqual(total_time, 2 * (20 + 90) + 1 * (30 + 90))
+
+    def test_drill_description_is_step_note(self):
+        drills = [Drill(name="Bounds", seconds=20, reps=2)]
+        result = map_steps([_step(step_type="sbu_block", drills=drills)])
+        children = result[0]["workoutSteps"]
+        self.assertEqual(children[0]["description"], "Bounds")
+        self.assertEqual(children[1]["description"], "Recovery")
 
     def test_end_condition_iterations(self):
         step = _step(step_type="sbu_block")

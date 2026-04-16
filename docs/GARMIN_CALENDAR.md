@@ -116,6 +116,19 @@ python -m garmin_fit.cli garmin-calendar --plan Plan/my_plan.yaml --year 2026
 python -m garmin_fit.cli garmin-calendar --token-dir /path/to/tokens
 ```
 
+### CLI - upload only a date range
+
+```bash
+python -m garmin_fit.cli garmin-calendar \
+  --plan Plan/my_plan.yaml \
+  --year 2026 \
+  --from-date 2026-05-01 \
+  --to-date 2026-05-17
+```
+
+Use `--dry-run` with the same filters first to verify which workouts will be
+uploaded.
+
 ---
 
 ## All flags
@@ -133,6 +146,28 @@ python -m garmin_fit.cli garmin-calendar --token-dir /path/to/tokens
 ---
 
 ## Filename → calendar date mapping
+
+Additional upload filters: `--week-pause SECS`, `--skip-past`,
+`--from-date YYYY-MM-DD`, and `--to-date YYYY-MM-DD`.
+
+---
+
+## SBU / Drill Step Notes
+
+Garmin Calendar upload stores the Garmin Connect "workout step note" as
+`ExecutableStepDTO.description`.
+
+For `sbu_block`, FitWeaver creates one repeat group per drill:
+
+```text
+Bounds 2x [active step note "Bounds" + Recovery]
+Ankling 1x [active step note "Ankling" + Recovery]
+```
+
+The active drill step preserves the YAML drill `name`, `seconds`, and `reps`.
+Garmin Connect mobile shows these notes after direct Calendar upload.
+
+---
 
 FitWeaver extracts the workout date from the filename pattern:
 

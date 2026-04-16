@@ -14,7 +14,7 @@ dist_open  → distance, no target
 time_step  → time, no target (recovery / rest)
 open_step  → converted to 60 s recovery (lap-button not supported by REST API)
 repeat     → RepeatGroupDTO wrapping steps from back_to_offset..current
-sbu_block  → RepeatGroupDTO (each drill = active 30 s + recovery 90 s)
+sbu_block  → RepeatGroupDTO list (one repeat group per drill, with step notes)
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import re
 from typing import Any
 
 from .plan_domain import Workout, WorkoutStep
+from .sbu_block import DEFAULT_DRILLS as SBU_DEFAULT_DRILLS
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,12 @@ END_COND_ITERATIONS = {
     "displayOrder": 7, "displayable": False,
 }
 
-TARGET_NO  = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target",  "displayOrder": 1}
-# id=4 "heart.rate.zone" = predefined Garmin zones (Z1-Z5) — needs zone number, not BPM
-# id=6 "heart.rate"      = custom BPM range, targetValueLow/High are raw bpm  ← correct
-TARGET_HR  = {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "heart.rate", "displayOrder": 6}
-# id=5 "speed.zone" = predefined speed zones — needs zone number
-# id=7 "speed"      = custom m/s range, targetValueLow/High are m/s           ← correct
-TARGET_SPD = {"workoutTargetTypeId": 7, "workoutTargetTypeKey": "speed",      "displayOrder": 7}
+TARGET_NO  = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target",       "displayOrder": 1}
+# id=4 "heart.rate.zone" — accepts raw BPM range via targetValueOne / targetValueTwo
+#   (id=6 "heart.rate" is interpreted as pace/speed by Garmin Connect — do NOT use)
+TARGET_HR  = {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4}
+# id=7 "speed" — custom m/s range via targetValueOne / targetValueTwo
+TARGET_SPD = {"workoutTargetTypeId": 7, "workoutTargetTypeKey": "speed",           "displayOrder": 7}
 
 # intensity field → Garmin stepTypeKey
 _INTENSITY_TO_STEP_TYPE: dict[str, str] = {
@@ -77,10 +77,8 @@ _INTENSITY_TO_STEP_TYPE: dict[str, str] = {
 _DEFAULT_STEP_TYPE = "interval"
 
 # SBU drill defaults (seconds)
-_SBU_ACTIVE_SECS  = 30.0
 _SBU_RECOVERY_SECS = 90.0
-_SBU_DEFAULT_DRILLS = 4
-_SBU_DEFAULT_REPS   = 2
+_SBU_DEFAULT_REPS = 2
 
 # open_step fallback
 _OPEN_STEP_FALLBACK_SECS = 60.0
@@ -117,9 +115,20 @@ def _executable_step(
     end_condition: dict[str, Any],
     end_condition_value: float,
     target_type: dict[str, Any],
-    target_value_low: float | int | None = None,
-    target_value_high: float | int | None = None,
+    target_value_one: float | int | None = None,
+    target_value_two: float | int | None = None,
+    description: str | None = None,
 ) -> dict[str, Any]:
+    """
+    Build a single ExecutableStepDTO dict.
+
+    target_value_one — lower bound (lower BPM / lower m/s / slower pace)
+    target_value_two — upper bound (upper BPM / higher m/s / faster pace)
+
+    description — Garmin Connect "workout step note" shown for the current step.
+
+    Garmin Connect REST API uses targetValueOne / targetValueTwo (not Low/High).
+    """
     step: dict[str, Any] = {
         "type": "ExecutableStepDTO",
         "stepOrder": step_order,
@@ -128,10 +137,12 @@ def _executable_step(
         "endConditionValue": float(end_condition_value),
         "targetType": target_type,
     }
-    if target_value_low is not None:
-        step["targetValueLow"] = target_value_low
-    if target_value_high is not None:
-        step["targetValueHigh"] = target_value_high
+    if target_value_one is not None:
+        step["targetValueOne"] = target_value_one
+    if target_value_two is not None:
+        step["targetValueTwo"] = target_value_two
+    if description:
+        step["description"] = description
     return step
 
 
@@ -163,8 +174,8 @@ def _map_dist_hr(step: WorkoutStep, order: int) -> dict[str, Any]:
         end_condition=END_COND_DISTANCE,
         end_condition_value=_km_to_m(step.km),
         target_type=TARGET_HR,
-        target_value_low=int(step.hr_low),
-        target_value_high=int(step.hr_high),
+        target_value_one=int(step.hr_low),
+        target_value_two=int(step.hr_high),
     )
 
 
@@ -175,22 +186,22 @@ def _map_time_hr(step: WorkoutStep, order: int) -> dict[str, Any]:
         end_condition=END_COND_TIME,
         end_condition_value=float(step.seconds),
         target_type=TARGET_HR,
-        target_value_low=int(step.hr_low),
-        target_value_high=int(step.hr_high),
+        target_value_one=int(step.hr_low),
+        target_value_two=int(step.hr_high),
     )
 
 
 def _map_dist_pace(step: WorkoutStep, order: int) -> dict[str, Any]:
-    # pace_fast (faster = higher speed) → targetValueHigh
-    # pace_slow (slower = lower speed)  → targetValueLow
+    # pace_fast (faster = higher m/s) → targetValueTwo (upper bound)
+    # pace_slow (slower = lower m/s)  → targetValueOne (lower bound)
     return _executable_step(
         step_order=order,
         step_type_key=_intensity_to_step_key(step.intensity),
         end_condition=END_COND_DISTANCE,
         end_condition_value=_km_to_m(step.km),
         target_type=TARGET_SPD,
-        target_value_low=_pace_to_mps(str(step.pace_slow)),
-        target_value_high=_pace_to_mps(str(step.pace_fast)),
+        target_value_one=_pace_to_mps(str(step.pace_slow)),
+        target_value_two=_pace_to_mps(str(step.pace_fast)),
     )
 
 
@@ -201,8 +212,8 @@ def _map_time_pace(step: WorkoutStep, order: int) -> dict[str, Any]:
         end_condition=END_COND_TIME,
         end_condition_value=float(step.seconds),
         target_type=TARGET_SPD,
-        target_value_low=_pace_to_mps(str(step.pace_slow)),
-        target_value_high=_pace_to_mps(str(step.pace_fast)),
+        target_value_one=_pace_to_mps(str(step.pace_slow)),
+        target_value_two=_pace_to_mps(str(step.pace_fast)),
     )
 
 
@@ -238,25 +249,55 @@ def _map_open_step(_step: WorkoutStep, order: int) -> dict[str, Any]:
     )
 
 
-def _map_sbu_block(step: WorkoutStep, order: int) -> dict[str, Any]:
+def _map_sbu_block(step: WorkoutStep, order: int) -> list[dict[str, Any]]:
     """
-    SBU block → RepeatGroupDTO.
+    SBU block → one RepeatGroupDTO per drill.
 
-    Each drill = active (30 s) + recovery (90 s).
-    Number of drills read from step.drills list; falls back to default (4).
-    Reps from step.extra.get("reps", 2).
+    Each drill becomes: Repeat reps × [active step with description + recovery].
+    Garmin Connect stores the step note as ExecutableStepDTO.description.
+
+    Drill name/seconds/reps come from step.drills; if absent, use the same
+    default drill set as the FIT builder.
     """
-    drills = step.drills or []
-    n_drills = len(drills) if drills else _SBU_DEFAULT_DRILLS
-    reps = int(step.extra.get("reps", _SBU_DEFAULT_REPS))
+    if step.drills:
+        drills = [
+            {
+                "name": drill.name or f"Drill {idx}",
+                "seconds": drill.seconds or 60,
+                "reps": drill.reps or _SBU_DEFAULT_REPS,
+            }
+            for idx, drill in enumerate(step.drills, start=1)
+        ]
+    else:
+        drills = SBU_DEFAULT_DRILLS
 
-    child_steps = [
-        _executable_step(1, "interval", END_COND_TIME, _SBU_ACTIVE_SECS,  TARGET_NO),
-        _executable_step(2, "recovery", END_COND_TIME, _SBU_RECOVERY_SECS, TARGET_NO),
-    ]
-    # n_drills × reps = total iterations
-    iterations = n_drills * reps
-    return _repeat_group(step_order=order, iterations=iterations, child_steps=child_steps)
+    groups: list[dict[str, Any]] = []
+    for offset, drill in enumerate(drills):
+        name = str(drill.get("name") or f"Drill {offset + 1}")
+        seconds = float(drill.get("seconds") or 60)
+        reps = int(drill.get("reps") or _SBU_DEFAULT_REPS)
+
+        child_steps = [
+            _executable_step(
+                1,
+                "interval",
+                END_COND_TIME,
+                seconds,
+                TARGET_NO,
+                description=name,
+            ),
+            _executable_step(
+                2,
+                "recovery",
+                END_COND_TIME,
+                _SBU_RECOVERY_SECS,
+                TARGET_NO,
+                description="Recovery",
+            ),
+        ]
+        groups.append(_repeat_group(order + offset, reps, child_steps))
+
+    return groups
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +333,9 @@ def _map_repeat(
             else:
                 child_steps.append(mapped)
 
+    for child_order, child_step in enumerate(child_steps, start=1):
+        child_step["stepOrder"] = child_order
+
     return _repeat_group(
         step_order=order,
         iterations=count,
@@ -320,7 +364,7 @@ def _map_single_step(
     order: int,
     all_steps: list[WorkoutStep],
     current_idx: int,
-) -> dict[str, Any] | None:
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     stype = step.step_type
     if stype == "repeat":
         return _map_repeat(step, order, all_steps, current_idx)
@@ -366,7 +410,9 @@ def map_steps(steps: list[WorkoutStep]) -> list[dict[str, Any]]:
             result.append(mapped)
         else:
             mapped_s = _map_single_step(step, len(result) + 1, steps, idx)
-            if mapped_s is not None:
+            if isinstance(mapped_s, list):
+                result.extend(mapped_s)
+            elif mapped_s is not None:
                 result.append(mapped_s)
 
     return result

@@ -57,10 +57,15 @@
     "workoutTargetTypeKey": "heart.rate.zone",
     "displayOrder": 4
   },
-  "targetValueLow": 130,
-  "targetValueHigh": 145
+  "description": "optional step note, max 200 chars",
+  "targetValueOne": 130,
+  "targetValueTwo": 145
 }
 ```
+
+`description` is the Garmin Connect "workout step note" field. It is stored on
+`ExecutableStepDTO` and is used for SBU/drill instructions such as
+`"High Knees"` or `"Bounds"`. Garmin Web UI shows a 200 character limit.
 
 ### stepType IDs
 
@@ -88,29 +93,32 @@
 
 ### targetType IDs
 
-| workoutTargetTypeId | workoutTargetTypeKey | targetValueLow / targetValueHigh |
+| workoutTargetTypeId | workoutTargetTypeKey | targetValueOne / targetValueTwo |
 |--------------------|---------------------|----------------------------------|
 | 1 | no.target | — (поля отсутствуют) |
-| 4 | heart.rate.zone | номер зоны Garmin (1–5) — **НЕ bpm** |
+| 4 | **heart.rate.zone** | raw bpm: 130 / 145 ← **используем** (не номер зоны!) |
 | 5 | speed.zone | номер зоны скорости — **НЕ м/с** |
-| 6 | **heart.rate** | raw bpm: 130 / 145 ← используем |
 | 7 | **speed** | м/с: 1000/pace_seconds ← используем |
 
-> ⚠️ `heart.rate.zone` (id=4) и `speed.zone` (id=5) — зонные таргеты Garmin, требуют номер зоны.
-> Для кастомных диапазонов BPM/м/с нужны `heart.rate` (id=6) и `speed` (id=7).
+> ⚠️ **Поля для значений таргета: `targetValueOne` / `targetValueTwo`** (не `targetValueLow`/`targetValueHigh`!)
+> `targetValueOne` = нижняя граница (медленнее / меньше BPM)
+> `targetValueTwo` = верхняя граница (быстрее / больше BPM)
+
+> ⚠️ **id=6 `heart.rate` НЕ использовать!** Garmin Connect интерпретирует его как темп/скорость
+> и отображает "0-0 мин/км" вместо пульса. Для кастомного BPM диапазона — только id=4.
 
 ### Конвертация темпа (pace → speed)
 
 ```python
-# "5:00" → 1000 / 300 = 3.333 м/с (это targetValueHigh — быстрый темп = высокая скорость)
-# "5:30" → 1000 / 330 = 3.030 м/с (это targetValueLow  — медленный темп = низкая скорость)
+# "5:00" → 1000 / 300 = 3.333 м/с (это targetValueTwo  — быстрый темп = высокая скорость)
+# "5:30" → 1000 / 330 = 3.030 м/с (это targetValueOne  — медленный темп = низкая скорость)
 
 def pace_to_mps(pace_str: str) -> float:
     m, s = pace_str.split(":")
     return round(1000.0 / (int(m) * 60 + int(s)), 4)
 
-# pace_fast (быстрее) → targetValueHigh
-# pace_slow (медленнее) → targetValueLow
+# pace_fast (быстрее = выше м/с) → targetValueTwo  (верхняя граница)
+# pace_slow (медленнее = ниже м/с) → targetValueOne (нижняя граница)
 ```
 
 ---
@@ -161,11 +169,11 @@ def pace_to_mps(pace_str: str) -> float:
         "type": "ExecutableStepDTO",
         "stepOrder": 1,
         "stepType": { "stepTypeId": 1, "stepTypeKey": "warmup", "displayOrder": 1 },
-        "endCondition": { "conditionTypeId": 1, "conditionTypeKey": "distance", "displayOrder": 1, "displayable": true },
+        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance", "displayOrder": 3, "displayable": true },
         "endConditionValue": 2000.0,
         "targetType": { "workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4 },
-        "targetValueLow": 130,
-        "targetValueHigh": 145
+        "targetValueOne": 130,
+        "targetValueTwo": 145
       },
       {
         "type": "RepeatGroupDTO",
@@ -180,11 +188,11 @@ def pace_to_mps(pace_str: str) -> float:
             "type": "ExecutableStepDTO",
             "stepOrder": 1,
             "stepType": { "stepTypeId": 3, "stepTypeKey": "interval", "displayOrder": 3 },
-            "endCondition": { "conditionTypeId": 1, "conditionTypeKey": "distance", "displayOrder": 1, "displayable": true },
+            "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance", "displayOrder": 3, "displayable": true },
             "endConditionValue": 1000.0,
-            "targetType": { "workoutTargetTypeId": 5, "workoutTargetTypeKey": "speed.zone", "displayOrder": 5 },
-            "targetValueLow": 3.226,
-            "targetValueHigh": 3.448
+            "targetType": { "workoutTargetTypeId": 7, "workoutTargetTypeKey": "speed", "displayOrder": 7 },
+            "targetValueOne": 3.226,
+            "targetValueTwo": 3.448
           },
           {
             "type": "ExecutableStepDTO",
@@ -200,11 +208,11 @@ def pace_to_mps(pace_str: str) -> float:
         "type": "ExecutableStepDTO",
         "stepOrder": 3,
         "stepType": { "stepTypeId": 2, "stepTypeKey": "cooldown", "displayOrder": 2 },
-        "endCondition": { "conditionTypeId": 1, "conditionTypeKey": "distance", "displayOrder": 1, "displayable": true },
+        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance", "displayOrder": 3, "displayable": true },
         "endConditionValue": 1000.0,
         "targetType": { "workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4 },
-        "targetValueLow": 120,
-        "targetValueHigh": 135
+        "targetValueOne": 120,
+        "targetValueTwo": 135
       }
     ]
   }]
@@ -229,5 +237,6 @@ Body: { "date": "2026-03-14" }
 ## Ограничения
 
 - `open_step` (lap button) не поддерживается → заменяется на 60 сек recovery
-- `sbu_block` представляется как repeat group из active (30 сек) + recovery (90 сек)
+- `sbu_block` is represented as one repeat group per drill:
+  `reps × [active step with description + recovery]`.
 - Только running в первой итерации (sportTypeId=1)

@@ -213,6 +213,19 @@ python -m garmin_fit.cli list-archives
 python -m garmin_fit.cli restore <name>
 ```
 
+### Garmin Calendar Upload
+
+```bash
+python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --dry-run
+python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --year 2026
+python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --from-date 2026-05-01 --to-date 2026-05-17
+```
+
+Garmin Calendar upload sends workouts directly to Garmin Connect and can
+schedule them by the date encoded in filenames such as `W11_03-14_Sat_Run`.
+SBU drill steps include Garmin step notes through `ExecutableStepDTO.description`,
+so Garmin Connect can show the current drill instruction during the workout.
+
 ### LLM Generation
 
 ```bash
