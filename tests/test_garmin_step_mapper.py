@@ -83,6 +83,23 @@ class TestEndConditionIds(unittest.TestCase):
                             END_COND_LAP_BUTTON["conditionTypeId"])
 
 
+class TestTargetTypeIds(unittest.TestCase):
+    """Guard against wrong target type IDs (real-world regression: zone vs custom)."""
+
+    def test_hr_is_custom_not_zone(self):
+        # id=6 "heart.rate" = custom BPM; id=4 "heart.rate.zone" = Garmin Z1-Z5
+        self.assertEqual(TARGET_HR["workoutTargetTypeId"], 6)
+        self.assertEqual(TARGET_HR["workoutTargetTypeKey"], "heart.rate")
+
+    def test_spd_is_custom_not_zone(self):
+        # id=7 "speed" = custom m/s; id=5 "speed.zone" = predefined zones
+        self.assertEqual(TARGET_SPD["workoutTargetTypeId"], 7)
+        self.assertEqual(TARGET_SPD["workoutTargetTypeKey"], "speed")
+
+    def test_no_target_is_1(self):
+        self.assertEqual(TARGET_NO["workoutTargetTypeId"], 1)
+
+
 class TestPaceToMps(unittest.TestCase):
 
     def test_5_00_per_km(self):

@@ -59,9 +59,13 @@ END_COND_ITERATIONS = {
     "displayOrder": 7, "displayable": False,
 }
 
-TARGET_NO = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target",     "displayOrder": 1}
-TARGET_HR =  {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4}
-TARGET_SPD = {"workoutTargetTypeId": 5, "workoutTargetTypeKey": "speed.zone",    "displayOrder": 5}
+TARGET_NO  = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target",  "displayOrder": 1}
+# id=4 "heart.rate.zone" = predefined Garmin zones (Z1-Z5) — needs zone number, not BPM
+# id=6 "heart.rate"      = custom BPM range, targetValueLow/High are raw bpm  ← correct
+TARGET_HR  = {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "heart.rate", "displayOrder": 6}
+# id=5 "speed.zone" = predefined speed zones — needs zone number
+# id=7 "speed"      = custom m/s range, targetValueLow/High are m/s           ← correct
+TARGET_SPD = {"workoutTargetTypeId": 7, "workoutTargetTypeKey": "speed",      "displayOrder": 7}
 
 # intensity field → Garmin stepTypeKey
 _INTENSITY_TO_STEP_TYPE: dict[str, str] = {

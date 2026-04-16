@@ -91,8 +91,13 @@
 | workoutTargetTypeId | workoutTargetTypeKey | targetValueLow / targetValueHigh |
 |--------------------|---------------------|----------------------------------|
 | 1 | no.target | — (поля отсутствуют) |
-| 4 | heart.rate.zone | bpm напрямую: 130 / 145 |
-| 5 | speed.zone | м/с: 1000/pace_seconds |
+| 4 | heart.rate.zone | номер зоны Garmin (1–5) — **НЕ bpm** |
+| 5 | speed.zone | номер зоны скорости — **НЕ м/с** |
+| 6 | **heart.rate** | raw bpm: 130 / 145 ← используем |
+| 7 | **speed** | м/с: 1000/pace_seconds ← используем |
+
+> ⚠️ `heart.rate.zone` (id=4) и `speed.zone` (id=5) — зонные таргеты Garmin, требуют номер зоны.
+> Для кастомных диапазонов BPM/м/с нужны `heart.rate` (id=6) и `speed` (id=7).
 
 ### Конвертация темпа (pace → speed)
 
