@@ -486,9 +486,8 @@ def workflow_garmin_calendar(
     from .garmin_auth_manager import is_available as _garmin_auth_available
 
     if not _garmin_auth_available():
-        logger.error("[FAIL] garmin-auth / garminconnect not installed.")
-        logger.error("  Run:  pip install 'garmin-fit-generator[garmin-calendar]'")
-        logger.error("  Or:   pip install garminconnect garmin-auth")
+        print("[FAIL] garmin-auth / garminconnect not installed.")
+        print("  Run:  pip install garminconnect garmin-auth")
         return 1
 
     # ------------------------------------------------------------------ YAML
@@ -496,42 +495,42 @@ def workflow_garmin_calendar(
         if plan_path:
             yaml_path = Path(plan_path).resolve()
             if not yaml_path.exists():
-                logger.error(f"YAML plan not found: {yaml_path}")
+                print(f"[FAIL] YAML plan not found: {yaml_path}")
                 return 1
         else:
             yaml_path = select_active_yaml(prefer_latest=True, interactive=True)
     except FileNotFoundError as e:
-        logger.error(str(e))
+        print(f"[FAIL] {e}")
         return 1
 
-    logger.info(f"Plan: {yaml_path.name}")
-    logger.info(f"Schedule: {schedule}")
-    logger.info(f"Year override: {year or 'auto'}")
-    logger.info(f"Dry run: {dry_run}")
-    logger.info("")
+    print(f"Plan:         {yaml_path.name}")
+    print(f"Schedule:     {schedule}")
+    print(f"Year:         {year or 'auto'}")
+    print(f"Dry run:      {dry_run}")
+    print("")
 
     import yaml as _yaml
 
     try:
         plan_data = _yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     except Exception as exc:
-        logger.error(f"Failed to read YAML: {exc}")
+        print(f"[FAIL] Failed to read YAML: {exc}")
         return 1
 
     from .plan_domain import plan_from_data
 
     plan = plan_from_data(plan_data)
-    logger.info(f"Loaded {len(plan.workouts)} workout(s) from plan")
+    print(f"Workouts:     {len(plan.workouts)}")
 
     if not plan.workouts:
-        logger.error("No workouts found in plan")
+        print("[FAIL] No workouts found in plan")
         return 1
 
     # ------------------------------------------------------------------ auth
     if not dry_run:
         from .garmin_auth_manager import GarminAuthManager
 
-        logger.info("Authenticating with Garmin Connect …")
+        print("Authenticating with Garmin Connect...")
         try:
             manager = GarminAuthManager(
                 email=email,
@@ -541,12 +540,12 @@ def workflow_garmin_calendar(
             )
             client = manager.connect()
             if client == "needs_mfa":
-                logger.error("MFA required but could not be completed interactively.")
+                print("[FAIL] MFA required but could not be completed interactively.")
                 return 1
         except Exception as exc:
-            logger.error(f"Authentication failed: {exc}")
+            print(f"[FAIL] Authentication failed: {exc}")
             return 1
-        logger.info("[OK] Authenticated")
+        print("[OK] Authenticated")
     else:
         client = None
 
@@ -562,19 +561,19 @@ def workflow_garmin_calendar(
 
     # ------------------------------------------------------------------ summary
     print_header("UPLOAD SUMMARY")
-    logger.info(result.summary())
-    logger.info("")
+    print(result.summary())
+    print("")
 
     if result.failed:
-        logger.error(f"{result.failed} workout(s) failed to upload:")
+        print(f"[FAIL] {result.failed} workout(s) failed:")
         for r in result.results:
             if not r.ok:
-                logger.error(f"  - {r.filename}: {r.error}")
+                print(f"  - {r.filename}: {r.error}")
         return 1
 
     if not dry_run:
-        logger.info("[OK] All workouts uploaded to Garmin Connect Calendar")
-        logger.info("Sync your watch to see the scheduled workouts.")
+        print("[OK] All workouts uploaded to Garmin Connect Calendar")
+        print("Sync your watch to see the scheduled workouts.")
     return 0
 
 
