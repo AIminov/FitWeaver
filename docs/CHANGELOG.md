@@ -32,6 +32,16 @@
 - `garmin_step_mapper.py` — `map_steps()` repeat-body-consumption bug: body steps were
   emitted as both standalone steps and repeat-group children.  Fixed by pre-scanning
   repeat boundaries before the emit loop.
+- `cli.py`, `legacy_cli.py`, `validate_cli.py` — missing `if __name__ == "__main__":`
+  guard caused complete silence when invoked via `python -m`.
+- `garmin_calendar_export.py` — replaced `→` and `…` with ASCII equivalents for
+  Windows cp1252 terminal compatibility.
+- `workflow_garmin_calendar()` — replaced `logger.info/error` with `print()` for
+  reliable terminal output.
+
+### Verified
+- End-to-end test on 2026-04-16: 1 workout uploaded (workout_id=1538061488),
+  scheduled to 2026-05-01, confirmed visible in Garmin Connect Calendar.
 
 ---
 
