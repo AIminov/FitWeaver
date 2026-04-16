@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--dry-run", action="store_true", help="Build payloads but make no API calls")
     gc_parser.add_argument("--week-pause", type=float, default=3.0, metavar="SECS",
                            help="Extra pause between calendar weeks (default: 3.0 s)")
+    gc_parser.add_argument("--skip-past", action="store_true",
+                           help="Skip workouts whose date is before today")
+    gc_parser.add_argument("--from-date", metavar="YYYY-MM-DD",
+                           help="Only upload workouts on or after this date")
+    gc_parser.add_argument("--to-date", metavar="YYYY-MM-DD",
+                           help="Only upload workouts on or before this date")
 
     return parser
 
@@ -117,6 +123,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             schedule=not args.no_schedule,
             dry_run=args.dry_run,
             week_pause=args.week_pause,
+            skip_past=args.skip_past,
+            from_date=args.from_date,
+            to_date=args.to_date,
         )
 
     parser.error(f"Unsupported command: {command}")

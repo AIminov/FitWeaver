@@ -27,6 +27,7 @@ Payload spec: docs/GARMIN_PAYLOAD_SPEC.md
 
 from __future__ import annotations
 
+import datetime
 import logging
 import re
 import time
@@ -50,6 +51,41 @@ def _week_label(filename: str | None) -> str:
         if m:
             return m.group(1)
     return "W??"
+
+
+def _parse_date(date_str: str | None) -> datetime.date | None:
+    """Parse 'YYYY-MM-DD' string to date, return None on failure."""
+    if not date_str:
+        return None
+    try:
+        return datetime.date.fromisoformat(date_str)
+    except ValueError:
+        return None
+
+
+def _date_in_range(
+    date_str: str | None,
+    from_date: datetime.date | None,
+    to_date: datetime.date | None,
+    skip_past: bool,
+) -> tuple[bool, str]:
+    """
+    Return (should_upload, reason_if_skipped).
+    ``skip_past=True`` means dates strictly before today are skipped.
+    """
+    today = datetime.date.today()
+    d = _parse_date(date_str)
+
+    if d is None:
+        # No date extracted — always include (will upload without scheduling)
+        return True, ""
+    if skip_past and d < today:
+        return False, f"past date {date_str} (before {today})"
+    if from_date and d < from_date:
+        return False, f"before --from-date {from_date}"
+    if to_date and d > to_date:
+        return False, f"after --to-date {to_date}"
+    return True, ""
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +257,9 @@ class GarminCalendarExporter:
         dry_run: bool = False,
         year: int | None = None,
         week_pause: float = _WEEK_PAUSE_SECS,
+        skip_past: bool = False,
+        from_date: str | None = None,
+        to_date: str | None = None,
     ) -> PlanUploadResult:
         """
         Upload all workouts in a plan to Garmin Connect Calendar.
@@ -241,13 +280,42 @@ class GarminCalendarExporter:
             Override year for date extraction. If None, auto-detected.
         week_pause:
             Extra seconds to sleep between calendar weeks (default 3.0).
+        skip_past:
+            Skip workouts whose date is strictly before today.
+        from_date:
+            Only upload workouts on or after this date ('YYYY-MM-DD').
+        to_date:
+            Only upload workouts on or before this date ('YYYY-MM-DD').
         """
         plan_result = PlanUploadResult()
-        total = len(plan.workouts)
+
+        from_d = _parse_date(from_date)
+        to_d = _parse_date(to_date)
+
+        # ------------------------------------------------------------------ pre-filter
+        included: list[Workout] = []
+        skipped = 0
+        for w in plan.workouts:
+            raw_date = extract_date_from_filename(w.filename or "", year=year)
+            ok, reason = _date_in_range(raw_date, from_d, to_d, skip_past)
+            if ok:
+                included.append(w)
+            else:
+                logger.debug("Skipping %r: %s", w.filename, reason)
+                skipped += 1
+
+        if skipped:
+            logger.info("Skipped %d workout(s) by date filter (%d remaining).",
+                        skipped, len(included))
+
+        total = len(included)
+        if total == 0:
+            logger.info("No workouts to upload after date filtering.")
+            return plan_result
 
         # ------------------------------------------------------------------ group by week
         weeks: dict[str, list[Workout]] = {}
-        for w in plan.workouts:
+        for w in included:
             weeks.setdefault(_week_label(w.filename), []).append(w)
 
         n_weeks = len(weeks)
