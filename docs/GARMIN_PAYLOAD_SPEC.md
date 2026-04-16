@@ -77,9 +77,12 @@
 
 | conditionTypeId | conditionTypeKey | endConditionValue |
 |----------------|-----------------|-------------------|
-| 1 | distance | метры (float), напр. 1000.0 = 1 км |
+| 1 | **lap.button** | null — шаг до нажатия Lap |
 | 2 | time | секунды (float), напр. 300.0 = 5 мин |
+| 3 | distance | метры (float), напр. 1000.0 = 1 км |
 | 7 | iterations | кол-во повторов (float) — только в RepeatGroupDTO |
+
+> ⚠️ **conditionTypeId=1 это lap.button, НЕ distance!** Ошибка в ранней версии приводила к отображению всех шагов как "Нажатие кнопки Lap".
 
 > `open_step` (до нажатия lap) — **не поддерживается** REST API. Замена: `time` 60.0 сек.
 

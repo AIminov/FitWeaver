@@ -42,13 +42,17 @@ STEP_TYPE = {
     "repeat":   {"stepTypeId": 6, "stepTypeKey": "repeat",   "displayOrder": 6},
 }
 
-END_COND_DISTANCE = {
-    "conditionTypeId": 1, "conditionTypeKey": "distance",
+END_COND_LAP_BUTTON = {
+    "conditionTypeId": 1, "conditionTypeKey": "lap.button",
     "displayOrder": 1, "displayable": True,
 }
 END_COND_TIME = {
     "conditionTypeId": 2, "conditionTypeKey": "time",
     "displayOrder": 2, "displayable": True,
+}
+END_COND_DISTANCE = {
+    "conditionTypeId": 3, "conditionTypeKey": "distance",
+    "displayOrder": 3, "displayable": True,
 }
 END_COND_ITERATIONS = {
     "conditionTypeId": 7, "conditionTypeKey": "iterations",

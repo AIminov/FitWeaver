@@ -17,6 +17,7 @@ from unittest.mock import patch
 from garmin_fit.garmin_step_mapper import (
     END_COND_DISTANCE,
     END_COND_ITERATIONS,
+    END_COND_LAP_BUTTON,
     END_COND_TIME,
     SPORT_TYPE_RUNNING,
     TARGET_HR,
@@ -58,6 +59,29 @@ def _workout(steps: list[WorkoutStep], **kwargs) -> Workout:
 # ---------------------------------------------------------------------------
 # _pace_to_mps
 # ---------------------------------------------------------------------------
+
+class TestEndConditionIds(unittest.TestCase):
+    """Guard against swapped conditionTypeId values (real-world regression)."""
+
+    def test_distance_is_3(self):
+        self.assertEqual(END_COND_DISTANCE["conditionTypeId"], 3)
+
+    def test_time_is_2(self):
+        self.assertEqual(END_COND_TIME["conditionTypeId"], 2)
+
+    def test_iterations_is_7(self):
+        self.assertEqual(END_COND_ITERATIONS["conditionTypeId"], 7)
+
+    def test_lap_button_is_1(self):
+        self.assertEqual(END_COND_LAP_BUTTON["conditionTypeId"], 1)
+
+    def test_distance_key(self):
+        self.assertEqual(END_COND_DISTANCE["conditionTypeKey"], "distance")
+
+    def test_distance_is_not_lap_button(self):
+        self.assertNotEqual(END_COND_DISTANCE["conditionTypeId"],
+                            END_COND_LAP_BUTTON["conditionTypeId"])
+
 
 class TestPaceToMps(unittest.TestCase):
 
