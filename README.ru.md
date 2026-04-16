@@ -1,19 +1,30 @@
-# Garmin FIT Workout Generator
+# FitWeaver — Генератор тренировок Garmin
 
 > 🇬🇧 [English version](README.md)
 
-Генерация тренировочных `.fit`-файлов для часов Garmin из текстовых планов с помощью локальной LLM.
+Генерация структурированных тренировок Garmin из текстовых планов с помощью локальной LLM.
+Доставка на часы через USB или напрямую в **Garmin Connect Calendar** — без кабеля.
 
 ---
 
 ## Pipeline
 
 ```
-Текст плана  →  LLM  →  YAML  →  direct build  →  .fit  →  Garmin
+Текст плана  →  LLM  →  YAML  →  direct build  ─┬─  .fit  →  USB  →  Часы
+                                                 └─  Garmin Connect Calendar  →  Синхронизация
 ```
 
 Полный workflow не требует промежуточных Python-шаблонов.
 Режимы `--templates-only` и `--build-only` сохранены как legacy/debug инструменты.
+
+---
+
+## Варианты доставки
+
+| Метод | Как | Для чего |
+|-------|-----|----------|
+| **USB** | Копировать `.fit` в `/GARMIN/New files` | Отдельные тренировки, оффлайн |
+| **Garmin Calendar** | Команда `garmin-calendar` | Целые планы, автоматическое расписание |
 
 ---
 
@@ -100,7 +111,7 @@ python -m garmin_fit.cli run
 
 ### Сценарий 2 — Готовый план от Claude / ChatGPT
 
-Если у вас уже есть готовый YAML (сгенерированный Claude, ChatGPT или написанный вручную) — локальная LLM не нужна совсем.
+Если у вас уже есть готовый YAML (сгенерированный Claude, ChatGPT или написанный вручную) — локальная LLM не нужна.
 
 **Шаги:**
 
@@ -149,6 +160,59 @@ python -m garmin_fit.cli run --plan Plan/my_plan.yaml
 
 > **Совет:** Если YAML написан Claude или ChatGPT и не прошёл валидацию —
 > покажи ошибки модели и попроси исправить. Обычно хватает одной итерации.
+
+---
+
+### Сценарий 3 — Garmin Connect Calendar (без USB)
+
+Загрузить весь план напрямую в Garmin Connect. Тренировки появятся на часах после следующей синхронизации — без кабеля.
+
+**Требования:**
+- Аккаунт Garmin Connect
+- Имена воркаутов в формате `W{неделя}_{ММ-ДД}_{...}` (напр. `W11_03-14_Sat_Long_14km`) — дата извлекается автоматически
+
+**Загрузить весь план:**
+```bash
+python -m garmin_fit.cli garmin-calendar \
+  --plan Plan/my_plan.yaml \
+  --email your@email.com \
+  --password yourpassword \
+  --year 2026
+```
+
+**Проверить без обращений к API:**
+```bash
+python -m garmin_fit.cli garmin-calendar --plan Plan/my_plan.yaml --dry-run
+```
+
+**Загрузить конкретный период:**
+```bash
+python -m garmin_fit.cli garmin-calendar \
+  --plan Plan/my_plan.yaml \
+  --year 2026 \
+  --from-date 2026-06-01 \
+  --to-date 2026-06-30
+```
+
+**Все параметры:**
+
+| Флаг | По умолчанию | Описание |
+|------|-------------|----------|
+| `--plan` | авто | Путь к YAML-плану |
+| `--email` | env `GARMIN_EMAIL` | Email Garmin Connect |
+| `--password` | env `GARMIN_PASSWORD` | Пароль Garmin Connect |
+| `--token-dir` | `~/.garminconnect` | Папка для хранения токенов |
+| `--year` | текущий/следующий | Переопределить год |
+| `--dry-run` | выкл | Собрать данные без вызовов API |
+| `--no-schedule` | выкл | Загрузить без постановки в календарь |
+| `--skip-past` | выкл | Пропустить тренировки с датой до сегодня |
+| `--from-date` | нет | Загружать только с этой даты (YYYY-MM-DD) |
+| `--to-date` | нет | Загружать только до этой даты (YYYY-MM-DD) |
+| `--week-pause` | 3.0 с | Пауза между неделями (защита от rate limit) |
+
+Токены кешируются после первого входа — повторные запуски авторизацию пропускают.
+
+> **СБУ-блоки:** каждое упражнение получает свою группу повторений с именем дрила в примечании к шагу — на часах и в Garmin Connect отображается название упражнения (напр. "Высок.Бедро", "Захлёст").
 
 ---
 
@@ -213,17 +277,14 @@ python -m garmin_fit.cli restore <name>
 
 ### Garmin Calendar Upload
 
+См. [Сценарий 3](#сценарий-3--garmin-connect-calendar-без-usb) для полного описания и всех флагов.
+
 ```bash
 python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --dry-run
 python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --year 2026
-python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --from-date 2026-05-01 --to-date 2026-05-17
+python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --from-date 2026-06-01 --to-date 2026-06-30
+python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --skip-past --year 2026
 ```
-
-Garmin Calendar upload отправляет тренировки напрямую в Garmin Connect и
-может ставить их в календарь по дате из имени файла, например
-`W11_03-14_Sat_Run`. Для SBU-шагов передаются примечания Garmin step notes
-через `ExecutableStepDTO.description`, чтобы Garmin Connect показывал
-инструкцию текущего упражнения.
 
 ### LLM-генерация
 
@@ -307,6 +368,8 @@ python -m garmin_fit.bot
 ## Документация
 
 - [YAML Guide](docs/YAML_GUIDE.md)
+- [Garmin Payload Spec](docs/GARMIN_PAYLOAD_SPEC.md) — проверенные имена полей API (ID, targetValueOne/Two, description)
+- [Garmin Calendar](docs/GARMIN_CALENDAR.md) — настройка и детали облачной загрузки
 - [Project Flow](docs/PROJECT_FLOW.md)
 - [LLM Connection Profile](docs/LLM_CONNECTION_PROFILE.md)
 - [Telegram Setup](docs/TELEGRAM_SETUP.md)
@@ -317,5 +380,5 @@ python -m garmin_fit.bot
 ## Тесты
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py" -v
+python -m pytest tests/
 ```
