@@ -78,6 +78,7 @@ class UserState:
     garmin_manager: object = None                  # GarminAuthManager instance (for MFA resume)
     garmin_email: Optional[str] = None             # stored for token-dir lookup only
     garmin_pending_email: Optional[str] = None     # temporary during connect flow
+    last_garmin_workout_ids: List[str] = field(default_factory=list)  # IDs from last upload
 
 
 @dataclass
@@ -247,6 +248,12 @@ async def _garmin_upload_and_report(
             exporter.upload_plan, plan, True, False, year
         )
 
+        # Store uploaded IDs so /delete_workout can reference them
+        state = get_state(user_id)
+        state.last_garmin_workout_ids = [
+            r.workout_id for r in result.results if r.workout_id
+        ]
+
         await application.bot.send_message(
             chat_id=chat_id,
             text=(
@@ -366,6 +373,92 @@ async def send_to_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
+async def delete_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /delete_workout        — delete the last uploaded batch of workouts
+    /delete_workout list   — list all workouts stored in Garmin Connect
+    /delete_workout all    — delete ALL workouts from the account (asks confirmation)
+    """
+    if not await ensure_user_allowed(update):
+        return
+
+    user_id = update.effective_user.id
+    state = get_state(user_id)
+
+    if not state.garmin_client:
+        await update.message.reply_text(
+            "Not connected to Garmin Connect.\nUse /connect_garmin first."
+        )
+        return
+
+    subcommand = (context.args[0].lower() if context.args else "last")
+
+    # ── list ──────────────────────────────────────────────────────────────
+    if subcommand == "list":
+        try:
+            workouts = await asyncio.to_thread(state.garmin_client.get_workouts, 0, 30)
+            if not workouts:
+                await update.message.reply_text("No workouts found in Garmin Connect.")
+                return
+            lines = [f"Workouts in Garmin Connect ({len(workouts)}):"]
+            for w in workouts:
+                lines.append(f"  {w['workoutId']}  {w.get('workoutName','?')}")
+            await update.message.reply_text("\n".join(lines))
+        except Exception as exc:
+            await update.message.reply_text(f"Error listing workouts: {exc}")
+        return
+
+    # ── all ───────────────────────────────────────────────────────────────
+    if subcommand == "all":
+        try:
+            workouts = await asyncio.to_thread(state.garmin_client.get_workouts, 0, 200)
+            if not workouts:
+                await update.message.reply_text("No workouts to delete.")
+                return
+            await update.message.reply_text(
+                f"Deleting {len(workouts)} workouts from Garmin Connect..."
+            )
+            deleted, failed = 0, 0
+            for w in workouts:
+                try:
+                    await asyncio.to_thread(
+                        state.garmin_client.delete_workout, w["workoutId"]
+                    )
+                    deleted += 1
+                except Exception:
+                    failed += 1
+            state.last_garmin_workout_ids = []
+            await update.message.reply_text(
+                f"Done. Deleted {deleted}, failed {failed}."
+            )
+        except Exception as exc:
+            await update.message.reply_text(f"Error deleting workouts: {exc}")
+        return
+
+    # ── last (default) ────────────────────────────────────────────────────
+    ids = state.last_garmin_workout_ids
+    if not ids:
+        await update.message.reply_text(
+            "No recent upload found.\n"
+            "Use /delete_workout list to see all workouts,\n"
+            "or /delete_workout all to delete everything."
+        )
+        return
+
+    await update.message.reply_text(f"Deleting {len(ids)} workout(s) from last upload...")
+    deleted, failed = 0, 0
+    for wid in ids:
+        try:
+            await asyncio.to_thread(state.garmin_client.delete_workout, wid)
+            deleted += 1
+        except Exception:
+            failed += 1
+    state.last_garmin_workout_ids = []
+    await update.message.reply_text(
+        f"Done. Deleted {deleted}, failed {failed}."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Internal: complete Garmin auth after email + password are known
 # ---------------------------------------------------------------------------
@@ -432,16 +525,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     await update.message.reply_text(
         "Commands:\n"
-        "/start\n"
-        "/help\n"
-        "/status\n"
-        "/cancel\n"
-        "/build\n"
+        "/start  /help  /status  /cancel\n"
+        "/build — build FIT files from confirmed YAML\n"
+        "\n"
+        "Files accepted:\n"
+        "  .txt / .md  — training plan text (LLM generates YAML)\n"
+        "  .yaml / .yml — ready-made YAML plan (skip LLM, go straight to /build)\n"
         "\n"
         "Garmin Calendar (no USB):\n"
         "/connect_garmin [email password] — log in to Garmin Connect\n"
-        "/send_to_garmin [year]          — upload last built plan to calendar\n"
-        "/disconnect_garmin              — clear session"
+        "/send_to_garmin [year]           — upload last built plan to calendar\n"
+        "/delete_workout                  — delete last uploaded batch\n"
+        "/delete_workout list             — list all workouts in Garmin Connect\n"
+        "/delete_workout all              — delete ALL workouts from account\n"
+        "/disconnect_garmin               — clear session"
     )
 
 
@@ -576,8 +673,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     document: Document = update.message.document
-    if not document.file_name or not document.file_name.endswith((".txt", ".md")):
-        await update.message.reply_text("Only .txt and .md files are supported.")
+    fname = document.file_name or ""
+    is_plan_text = fname.endswith((".txt", ".md"))
+    is_yaml = fname.endswith((".yaml", ".yml"))
+    if not is_plan_text and not is_yaml:
+        await update.message.reply_text("Supported formats: .txt, .md (plan text) or .yaml/.yml (ready plan).")
         return
 
     # Rate limiting: cooldown between requests
@@ -606,6 +706,29 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text(
                 f"Plan file is too long ({len(plan_text)} chars). "
                 f"Maximum allowed: {MAX_PLAN_TEXT_LENGTH} chars."
+            )
+            return
+
+        if is_yaml:
+            # YAML plan — skip LLM, go straight to build
+            import yaml as _yaml
+            try:
+                _yaml.safe_load(plan_text)  # validate it parses
+            except Exception as ye:
+                await update.message.reply_text(f"Invalid YAML: {ye}")
+                return
+            state.yaml_text = plan_text
+            state.yaml_path = None
+            state.original_plan_text = plan_text
+            state.active_plan_text = plan_text
+            state.generated_at = datetime.now()
+            state.pending_ambiguities = []
+            state.pending_clarification = None
+            state.pending_sbu_yaml_data = None
+            state.last_request_time = datetime.now()
+            state.status = "awaiting_confirm"
+            await update.message.reply_text(
+                f"YAML plan loaded from {fname}.\n\nSend /build to generate FIT files."
             )
             return
 
@@ -1018,6 +1141,7 @@ def main() -> None:
     application.add_handler(CommandHandler("connect_garmin", connect_garmin))
     application.add_handler(CommandHandler("disconnect_garmin", disconnect_garmin))
     application.add_handler(CommandHandler("send_to_garmin", send_to_garmin))
+    application.add_handler(CommandHandler("delete_workout", delete_workout))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
