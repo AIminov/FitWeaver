@@ -1,5 +1,28 @@
 ﻿# Changelog
 
+## 2026-04-20 — v10.3 (LLM Speed Fix)
+
+### Fixed
+- **Thinking mode causing 3+ minute hangs on Gemma-4 / Qwen3:**
+  `_call_openai_chat` now passes `extra_body={"chat_template_kwargs": {"enable_thinking": false}, "thinking": {"type": "disabled"}}`.
+  LM Studio forwards these to llama.cpp, preventing the model from silently reasoning for 180+ seconds.
+- **`source_fact_mismatch` triggering retries:** demoted from validation error to warning.
+  This soft date/distance heuristic check was the trigger for retries; a retry with
+  feedback is what activated thinking mode on the second call.
+- **Excessive retries:** `MAX_RETRIES` reduced 3→1; `SUSPICIOUS_SEGMENT_RETRIES` 1→0.
+
+### Changed
+- System prompt compressed: VALIDATION CHECKLIST 16 lines → 5 lines.
+  Token count ~1419 → ~1141 (~275 tokens saved, ~20% faster prompt processing).
+
+### Expected timings after fix
+| Plan size | Before | After |
+|-----------|--------|-------|
+| 1 workout | ~73s (ok) + potential 236s retry | ~70s, no retry |
+| 2 workouts | timeout (300s) | ~140s |
+
+---
+
 ## 2026-04-20 — v10.2 (Telegram Bot UX Overhaul)
 
 ### Added

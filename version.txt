@@ -1,5 +1,5 @@
 FitWeaver
-v10.2 - 2026-04-20
+v10.3 - 2026-04-20
 
 History:
   Garmin          - v1: initial FIT generator, hardcoded templates
@@ -18,3 +18,4 @@ History:
   FitWeaver/v10.0 - v10.0: Garmin Calendar Export - cloud upload to Garmin Connect, no USB required
   FitWeaver/v10.1 - v10.1: Garmin Calendar SBU step notes and date-range upload filters
   FitWeaver/v10.2 - v10.2: Telegram bot UX overhaul — bilingual RU/EN, delivery choice buttons, /howto, LM Studio /v1 fix
+  FitWeaver/v10.3 - v10.3: LLM speed fix — disable thinking mode, reduce retries, compress prompt
