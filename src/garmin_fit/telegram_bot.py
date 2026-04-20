@@ -60,13 +60,13 @@ _EXAMPLE_WORKOUTS_RU = [
     """\
 📋 Пример 1 — Лёгкий бег
 
-2026-05-04 (Пн) — Лёгкий бег
+04.05.2026 (Пн) — Лёгкий бег
 Дистанция: 10 км, пульс 125–140 уд/мин
 """,
     """\
 📋 Пример 2 — Темповый бег
 
-2026-05-06 (Ср) — Темповый бег
+06.05.2026 (Ср) — Темповый бег
 Разминка: 2 км, пульс до 140 уд/мин
 Основная часть: 6 км, пульс 160–170 уд/мин
 Заминка: 2 км, пульс до 140 уд/мин
@@ -74,7 +74,7 @@ _EXAMPLE_WORKOUTS_RU = [
     """\
 📋 Пример 3 — Интервалы
 
-2026-05-07 (Чт) — Интервальная тренировка
+07.05.2026 (Чт) — Интервальная тренировка
 Разминка: 2 км, пульс до 140 уд/мин
 Интервалы: 6 × 800 м, пульс 175–185 уд/мин, отдых 90 сек трусцой
 Заминка: 1.5 км, пульс до 140 уд/мин
@@ -82,7 +82,7 @@ _EXAMPLE_WORKOUTS_RU = [
     """\
 📋 Пример 4 — Длинный бег
 
-2026-05-10 (Вс) — Длинный бег
+10.05.2026 (Вс) — Длинный бег
 Дистанция: 22 км, пульс 120–135 уд/мин
 """,
     """\
@@ -166,33 +166,31 @@ Cool-down: 2 km, HR up to 140 bpm
 
 MSG: dict[str, dict[str, str]] = {
     "ru": {
-        # /start
+        # /start — onboarding
         "choose_lang": "Выберите язык / Choose language:",
-        "welcome": (
-            "🏃 FitWeaver — генератор тренировок для Garmin\n\n"
-            "Отправьте план тренировок текстом или файлом .txt / .md и я:\n"
-            "1. Разберу план через LLM → создам структурированный YAML\n"
-            "   ↳ YAML можно редактировать вручную и отправить обратно — "
-            "идеально если план меняется незначительно (обновить дистанции, пульс) "
-            "и не хочется тратить время на LLM\n"
-            "2. Покажу превью для подтверждения\n"
-            "3. Соберу FIT-файлы, готовые для Garmin\n\n"
+        "welcome": "🏃 FitWeaver — тренировки для Garmin\n\nОтправьте план тренировок текстом — я создам FIT-файлы для ваших часов.",
+        "welcome_btn_how": "📖 Как это работает",
+        "welcome_btn_yaml": "📄 У меня есть YAML",
+        "onboard_how": (
+            "📖 Как работает бот\n\n"
+            "1. Отправьте план текстом (.txt / .md)\n"
+            "2. LLM разберёт план → YAML\n"
+            "3. YAML → FIT-файлы для часов\n\n"
+            "Доставка:\n"
+            "• 📁 ZIP → скопируйте на часы через USB (/howto)\n"
+            "• 📅 Garmin Calendar → синхронизация без USB\n\n"
             "💡 Советы:\n"
-            "• Указывайте даты (не «Понедельник») — тренировки привяжутся к конкретным дням\n"
-            "• Пульс прямо в тексте — укажите диапазон уд/мин для каждого отрезка, "
-            "и бот точно настроит цели на часах\n"
-            "• Есть готовый YAML? Отправьте .yaml файл или вставьте YAML текстом — LLM пропускается, "
-            "сборка занимает секунды\n\n"
-            "📦 Варианты доставки (после сборки):\n"
-            "• 📁 FIT-файлы в ZIP — скопируйте файлы на часы через USB "
-            "(инструкция: /howto)\n"
-            "• 📅 Garmin Calendar — нужен аккаунт Garmin Connect; тренировки "
-            "загружаются напрямую и синхронизируются на часы без USB. "
-            "Пароль используется только библиотекой-загрузчиком и не сохраняется "
-            "после сессии\n\n"
-            "Ниже — примеры тренировок, которые можно скопировать и отправить 👇"
+            "• Даты: 04.05.2026 (Пн) — не «Понедельник»\n"
+            "• Пульс: диапазон уд/мин для каждого отрезка"
         ),
-        "examples_intro": "📌 Примеры тренировок — скопируйте любой и отправьте боту:",
+        "onboard_btn_examples": "📋 Примеры",
+        "onboard_btn_start": "✅ Начать",
+        "onboard_yaml": (
+            "📄 Отправьте .yaml файл или вставьте YAML текстом прямо в чат.\n\n"
+            "Бот сразу предложит /build — LLM не нужен."
+        ),
+        "onboard_start_nudge": "Отправьте текст плана или файл 👇",
+        "examples_intro": "📋 Примеры — скопируйте любой и отправьте:",
         # /help
         "help": (
             "Команды:\n"
@@ -335,33 +333,31 @@ MSG: dict[str, dict[str, str]] = {
         "status_msg": "статус={status}\nyaml_готов={yaml}\nfit_файлов={fits}\nочередь={queue}",
     },
     "en": {
-        # /start
+        # /start — onboarding
         "choose_lang": "Выберите язык / Choose language:",
-        "welcome": (
-            "🏃 FitWeaver — Garmin Workout Generator\n\n"
-            "Send your training plan as text or a .txt / .md file and I will:\n"
-            "1. Parse it via LLM → generate structured YAML\n"
-            "   ↳ You can edit the YAML and send it back — great when the plan "
-            "barely changes week to week (just update distances or HR targets) "
-            "and you don't want to re-run the LLM\n"
-            "2. Show a preview for confirmation\n"
-            "3. Build FIT files ready for Garmin\n\n"
+        "welcome": "🏃 FitWeaver — Garmin Workout Generator\n\nSend your training plan as text — I'll create FIT files for your watch.",
+        "welcome_btn_how": "📖 How it works",
+        "welcome_btn_yaml": "📄 I have a YAML",
+        "onboard_how": (
+            "📖 How the bot works\n\n"
+            "1. Send your plan as text (.txt / .md)\n"
+            "2. LLM parses it → YAML\n"
+            "3. YAML → FIT files for your watch\n\n"
+            "Delivery:\n"
+            "• 📁 ZIP → copy to watch via USB (/howto)\n"
+            "• 📅 Garmin Calendar → syncs wirelessly\n\n"
             "💡 Tips:\n"
-            "• Use dates (not just 'Monday') — workouts map to exact calendar days\n"
-            "• Add HR ranges in bpm for each segment — the bot sets exact targets "
-            "on your watch\n"
-            "• Have a ready YAML? Send a .yaml file or paste YAML text — LLM is skipped, "
-            "build takes seconds\n\n"
-            "📦 Delivery options (after build):\n"
-            "• 📁 FIT files in ZIP — copy to your watch via USB "
-            "(guide: /howto)\n"
-            "• 📅 Garmin Calendar — requires a Garmin Connect account; workouts "
-            "upload directly and sync to watch without USB. "
-            "Your password is only used by the upload library and is never stored "
-            "after the session\n\n"
-            "Example workouts to copy & send are below 👇"
+            "• Use dates: 2026-05-04 (Mon) — not just 'Monday'\n"
+            "• Add HR ranges in bpm for each segment"
         ),
-        "examples_intro": "📌 Example workouts — copy any one and send it to the bot:",
+        "onboard_btn_examples": "📋 Examples",
+        "onboard_btn_start": "✅ Let's start",
+        "onboard_yaml": (
+            "📄 Send a .yaml file or paste YAML text directly in the chat.\n\n"
+            "The bot will offer /build straight away — no LLM needed."
+        ),
+        "onboard_start_nudge": "Send your plan text or file 👇",
+        "examples_intro": "📋 Examples — copy any one and send it:",
         # /help
         "help": (
             "Commands:\n"
@@ -1121,6 +1117,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+def _welcome_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(_m(user_id, "welcome_btn_how"), callback_data="onboard:how")],
+        [InlineKeyboardButton(_m(user_id, "welcome_btn_yaml"), callback_data="onboard:yaml")],
+    ])
+
+
+def _how_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(_m(user_id, "onboard_btn_examples"), callback_data="onboard:examples"),
+        InlineKeyboardButton(_m(user_id, "onboard_btn_start"), callback_data="onboard:start"),
+    ]])
+
+
 async def handle_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle language selection inline keyboard."""
     query = update.callback_query
@@ -1140,17 +1150,44 @@ async def handle_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(
         "🇷🇺 Выбран русский язык." if lang == "ru" else "🇬🇧 English selected."
     )
-    # Send welcome message
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text=_m(user_id, "welcome"),
+        reply_markup=_welcome_keyboard(user_id),
     )
-    # Send example workouts as separate messages (easy to copy-paste)
-    for example in _examples(user_id):
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=example.strip(),
+
+
+async def handle_onboard_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle onboarding inline keyboard steps."""
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    user_id = query.from_user.id
+    if not user_is_allowed(user_id):
+        await query.edit_message_text("Access denied.")
+        return
+
+    step = (query.data or "").split(":", 1)[1]  # "how" | "examples" | "start" | "yaml"
+    chat_id = query.message.chat_id
+
+    if step == "how":
+        await query.edit_message_text(
+            _m(user_id, "onboard_how"),
+            reply_markup=_how_keyboard(user_id),
         )
+
+    elif step == "examples":
+        await query.edit_message_text(_m(user_id, "examples_intro"))
+        for example in _examples(user_id):
+            await context.bot.send_message(chat_id=chat_id, text=example.strip())
+
+    elif step == "start":
+        await query.edit_message_text(_m(user_id, "onboard_start_nudge"))
+
+    elif step == "yaml":
+        await query.edit_message_text(_m(user_id, "onboard_yaml"))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1851,6 +1888,7 @@ def main() -> None:
     application.add_handler(CommandHandler("send_to_garmin", send_to_garmin))
     application.add_handler(CommandHandler("delete_workout", delete_workout))
     application.add_handler(CallbackQueryHandler(handle_lang_choice, pattern="^lang:"))
+    application.add_handler(CallbackQueryHandler(handle_onboard_choice, pattern="^onboard:"))
     application.add_handler(CallbackQueryHandler(handle_delivery_choice, pattern="^delivery:"))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
