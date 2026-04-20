@@ -73,6 +73,8 @@ python -m garmin_fit.bot
 
 ## Команды
 
+### Основные
+
 | Команда | Описание |
 |---------|----------|
 | `/start` | Приветствие |
@@ -80,6 +82,24 @@ python -m garmin_fit.bot
 | `/status` | Текущее состояние (status, yaml_ready, queue_size) |
 | `/cancel` | Отмена текущей операции / сброс состояния |
 | `/build` | Запуск сборки FIT после подтверждения YAML |
+
+### Garmin Calendar (без USB)
+
+| Команда | Описание |
+|---------|----------|
+| `/connect_garmin` | Войти в Garmin Connect (бот спросит email и пароль) |
+| `/connect_garmin email password` | Войти сразу одной командой |
+| `/send_to_garmin` | Загрузить последний собранный план в Garmin Calendar |
+| `/send_to_garmin 2026` | То же с явным указанием года |
+| `/disconnect_garmin` | Выйти из Garmin Connect, удалить токены |
+
+**Типичный Garmin flow:**
+1. `/connect_garmin` → бот спрашивает email, потом пароль (или MFA-код если включена 2FA)
+2. Отправьте план → дождитесь `/build`
+3. `/send_to_garmin 2026` → тренировки появятся в Garmin Connect Calendar
+4. Синхронизируйте часы → тренировки на часах
+
+Токены кешируются в `~/.garminconnect/tg_{user_id}/` — повторные входы не требуют пароля.
 
 ## Rate Limiting
 
@@ -140,7 +160,8 @@ telegram_bot.py
     ├─→ llm/client.py (YAML generation)
     ├─→ plan_service.py (preview, SBU choice)
     ├─→ pipeline_runner.py → orchestrator.py → build_from_plan.py
-    └─→ archive_manager.py
+    ├─→ archive_manager.py
+    └─→ garmin_auth_manager.py + garmin_calendar_export.py (Garmin Calendar)
 ```
 
 Бот является тонким adapter layer:
@@ -181,6 +202,24 @@ ollama list
 - Проблемы с LLM сервером
 
 Попробуйте меньший план или более быструю модель.
+
+### Garmin: `garmin-auth not installed`
+
+```
+pip install garminconnect garmin-auth
+```
+
+### Garmin: ошибка аутентификации (429)
+
+Garmin временно блокирует множество попыток входа. Подождите несколько минут и попробуйте снова. Библиотека автоматически ретраит.
+
+### Garmin: MFA
+
+После ввода пароля бот попросит одноразовый код — отправьте его в ответ в течение нескольких минут.
+
+### Garmin: тренировки не появились на часах
+
+Нажмите синхронизацию в приложении Garmin Connect на телефоне.
 
 ## Обратная совместимость
 

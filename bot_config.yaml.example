@@ -1,12 +1,42 @@
 # Telegram bot configuration
 # Copy this file to bot_config.yaml and fill in your values
 
+# -----------------------------------------------------------------------
+# Telegram
+# -----------------------------------------------------------------------
+
 # Get your token from @BotFather on Telegram
 telegram_bot_token: "YOUR_TELEGRAM_BOT_TOKEN_HERE"
 
-# LLM settings for the bot
-llm_api: "openai"                        # "openai" (LM Studio) or "ollama"
-llm_url: "http://127.0.0.1:1234/v1"     # LM Studio default; use http://localhost:11434 for Ollama
-llm_model: "local-model"                 # Model name as shown in LM Studio / Ollama
-llm_openai_mode: "auto"                  # "auto", "chat", or "completions"
-llm_timeout_sec: 1800                    # Timeout per LLM request (seconds)
+# Optional: restrict bot to specific Telegram user IDs.
+# Leave empty (or remove) to allow everyone.
+# Find your ID by messaging @userinfobot on Telegram.
+allowed_user_ids: []
+# allowed_user_ids:
+#   - 123456789
+#   - 987654321
+
+# -----------------------------------------------------------------------
+# LLM settings
+# -----------------------------------------------------------------------
+
+# API type: "openai" for LM Studio / OpenAI-compatible, "ollama" for Ollama
+llm_api_type: "openai"
+
+# LM Studio default endpoint:
+llm_url: "http://127.0.0.1:1234/v1"
+# Ollama default endpoint:
+# llm_url: "http://localhost:11434"
+
+# Model name as shown in LM Studio / Ollama
+llm_model: "local-model"
+
+# -----------------------------------------------------------------------
+# Garmin Connect (optional — enables /connect_garmin and /send_to_garmin)
+# -----------------------------------------------------------------------
+# Credentials are entered interactively via /connect_garmin in the bot.
+# No need to store them here. Tokens are cached per user after first login.
+#
+# To pre-set credentials for a single-user setup (optional):
+# garmin_email: "your@email.com"
+# garmin_password: "yourpassword"
