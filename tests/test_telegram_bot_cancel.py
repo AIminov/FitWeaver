@@ -332,7 +332,9 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
         with patch("garmin_fit.telegram_bot.ensure_user_allowed", new=AsyncMock(return_value=True)), patch(
             "garmin_fit.telegram_bot._garmin_upload_and_report",
             new=AsyncMock(return_value=True),
-        ) as upload_mock, patch.object(Path, "unlink") as unlink_mock:
+        ) as upload_mock, patch.object(Path, "unlink") as unlink_mock, patch.object(
+            Path, "exists", return_value=True
+        ):
             await telegram_bot.send_to_garmin(update, context)
 
         upload_mock.assert_awaited_once()

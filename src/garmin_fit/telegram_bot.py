@@ -268,7 +268,6 @@ MSG: dict[str, dict[str, str]] = {
             "он поможет автоматически синхронизировать часы с компьютером."
         ),
         "garmin_hint_connect": "\n\nСовет: /connect_garmin → /send_to_garmin — следующий раз загрузит прямо в календарь.",
-        "delivery_choice_busy": "Пожалуйста, выберите вариант доставки выше (📁 или 📅),\nили /cancel чтобы отменить и начать заново.",
         "op_in_progress": "Операция выполняется (статус: {status}).\nДождитесь завершения или отправьте /cancel.",
         "cooldown": "Пожалуйста, подождите ещё {sec} сек перед отправкой нового плана.",
         "plan_too_long": "Текст плана слишком длинный ({chars} симв.). Максимум: {max} симв.",
@@ -435,7 +434,6 @@ MSG: dict[str, dict[str, str]] = {
             "it automatically syncs your watch with your computer."
         ),
         "garmin_hint_connect": "\n\nTip: /connect_garmin → /send_to_garmin uploads directly to calendar next time.",
-        "delivery_choice_busy": "Please choose a delivery option above (📁 or 📅),\nor send /cancel to discard and start over.",
         "op_in_progress": "Operation in progress (status: {status}).\nWait for it to finish, or send /cancel to reset.",
         "cooldown": "Please wait {sec} more seconds before sending another plan.",
         "plan_too_long": "Plan text is too long ({chars} chars). Maximum: {max} chars.",
@@ -790,11 +788,6 @@ def _delivery_keyboard(user_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-def _garmin_post_upload_next_steps(user_id: int, state: UserState) -> str:
-    has_zip = bool(state.pending_zip_path and state.pending_zip_path.exists())
-    key = "garmin_next_steps_with_zip" if has_zip else "garmin_next_steps_no_zip"
-    return _m(user_id, key)
-
 
 def _garmin_token_dir(user_id: int) -> Path:
     """Per-user token storage directory under ~/.garminconnect/."""
@@ -850,7 +843,8 @@ async def _garmin_upload_and_report(
         ]
 
         sync_hint = _m(user_id, "garmin_sync_hint") if result.uploaded > 0 else ""
-        next_steps = _garmin_post_upload_next_steps(user_id, state)
+        has_zip = bool(state.pending_zip_path and state.pending_zip_path.exists())
+        next_steps = _m(user_id, "garmin_next_steps_with_zip" if has_zip else "garmin_next_steps_no_zip")
         await application.bot.send_message(
             chat_id=chat_id,
             text=_m(
@@ -861,6 +855,14 @@ async def _garmin_upload_and_report(
                 next_steps=next_steps,
             ),
         )
+        # If a ZIP is still available, re-show the delivery keyboard so the user
+        # can download it without having to type /build again.
+        if has_zip:
+            await application.bot.send_message(
+                chat_id=chat_id,
+                text=_m(user_id, "delivery_ask"),
+                reply_markup=_delivery_keyboard(user_id),
+            )
         return True
     except Exception as exc:
         await application.bot.send_message(
@@ -960,7 +962,9 @@ async def send_to_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.application, update.effective_chat.id, user_id, year=year
     )
     if uploaded:
-        state.status = "awaiting_delivery_choice" if state.pending_zip_path else "idle"
+        # _garmin_upload_and_report already sends a new delivery keyboard when ZIP
+        # is available, so just update the status to match.
+        state.status = "awaiting_delivery_choice" if (state.pending_zip_path and state.pending_zip_path.exists()) else "idle"
 
 
 async def delete_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1750,7 +1754,9 @@ async def handle_delivery_choice(update: Update, context: ContextTypes.DEFAULT_T
             user_id,
         )
         if uploaded:
-            state.status = "awaiting_delivery_choice" if state.pending_zip_path else "idle"
+            # _garmin_upload_and_report sends a new delivery keyboard when ZIP is
+            # available, so just keep the status consistent.
+            state.status = "awaiting_delivery_choice" if (state.pending_zip_path and state.pending_zip_path.exists()) else "idle"
         else:
             state.status = "awaiting_delivery_choice"
 
