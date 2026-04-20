@@ -535,11 +535,23 @@ def workflow_garmin_calendar(
         from .garmin_auth_manager import GarminAuthManager
 
         print("Authenticating with Garmin Connect...")
+        # Derive a per-email token directory so different accounts don't
+        # overwrite each other's cached tokens.
+        if token_dir:
+            resolved_token_dir: Path | None = Path(token_dir)
+        elif email:
+            import hashlib
+            email_slug = hashlib.md5(email.lower().encode()).hexdigest()[:8]
+            resolved_token_dir = Path.home() / ".garminconnect" / f"cli_{email_slug}"
+            resolved_token_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            resolved_token_dir = None
+
         try:
             manager = GarminAuthManager(
                 email=email,
                 password=password,
-                token_dir=Path(token_dir) if token_dir else None,
+                token_dir=resolved_token_dir,
                 prompt_mfa=lambda: input("Garmin MFA code: "),
             )
             client = manager.connect()
