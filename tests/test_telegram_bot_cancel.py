@@ -503,7 +503,8 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state.status, "awaiting_clarification")
         self.assertIn("pace is ambiguous", state.pending_clarification)
-        self.assertIn("Ambiguities found:", replies[-1])
+        # replies: [header_with_ambiguities, yaml_text] — check header, not last
+        self.assertTrue(any("Ambiguities found:" in r for r in replies))
 
     async def test_custom_sbu_flows_to_clarification_when_ambiguities_exist(self):
         user_id = 5005
@@ -530,7 +531,8 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.status, "awaiting_clarification")
         self.assertEqual(state.pending_ambiguities, ["unclear recovery pace"])
         self.assertIn("unclear recovery pace", state.pending_clarification)
-        self.assertIn("Ambiguities found:", replies[-1])
+        # replies: [header_with_ambiguities, yaml_text] — check header, not last
+        self.assertTrue(any("Ambiguities found:" in r for r in replies))
 
 
 if __name__ == "__main__":

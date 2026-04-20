@@ -37,7 +37,6 @@ from .plan_service import (
     apply_custom_sbu_choice,
     build_plan_draft,
     count_workouts,
-    format_plan_preview,
     has_default_sbu_block,
 )
 from .plan_validator import validate_plan_data_detailed
@@ -225,9 +224,10 @@ MSG: dict[str, dict[str, str]] = {
         "llm_no_connect": "Не удаётся подключиться к LLM серверу.",
         "llm_timeout": "Генерация LLM прервана по таймауту ({timeout} сек). Попробуйте более короткий план или проверьте LLM сервер.",
         "yaml_failed": "Не удалось сгенерировать корректный YAML.\n{details}",
-        "yaml_ready_sbu": "YAML готов. Тренировок: {count}.\n\n{preview}\n\nНайден блок СБУ. Ответьте:\n• «стандарт» — оставить упражнения по умолчанию\n• текст с упражнениями — сгенерировать свои",
-        "yaml_ready_ambig": "YAML готов. Тренировок: {count}.\n\n{preview}\n\nНайдены неоднозначности:\n{ambig}\n\nОтветьте уточнением и я перегенерирую, или /build чтобы продолжить как есть.",
-        "yaml_ready": "YAML готов. Тренировок: {count}.\n\n{preview}\n\nЕсли всё верно — отправьте /build",
+        "yaml_ready_sbu": "YAML готов. Тренировок: {count}.\n\nНайден блок СБУ. Ответьте:\n• «стандарт» — оставить упражнения по умолчанию\n• текст с упражнениями — сгенерировать свои",
+        "yaml_ready_ambig": "YAML готов. Тренировок: {count}.\n\nНайдены неоднозначности:\n{ambig}\n\nОтветьте уточнением и я перегенерирую, или /build чтобы продолжить как есть.",
+        "yaml_ready": "YAML готов. Тренировок: {count}.",
+        "yaml_ready_footer": "Если всё верно — отправьте /build",
         "build_queued": "Задача поставлена в очередь. Позиция: {pos}",
         "build_running": "Запускаю: YAML → прямая сборка FIT → валидация",
         "build_done": "✅ Сборка завершена!\nFIT-файлов: {count}  (корректных {valid}/{total})",
@@ -279,9 +279,9 @@ MSG: dict[str, dict[str, str]] = {
         "no_yaml": "Нет подтверждённого YAML-плана. Сначала отправьте план.",
         "already_queued": "Задача уже в очереди.",
         "sbu_expired": "Состояние СБУ истекло. Отправьте план заново.",
-        "sbu_using_standard": "Используем стандартный СБУ.\n\n{preview}\n\nОтправьте /build",
+        "sbu_using_standard": "Используем стандартный СБУ.",
         "sbu_custom_parsing": "Разбираю пользовательские упражнения...",
-        "sbu_custom_added": "Пользовательские упражнения добавлены.\n\n{preview}\n\nОтправьте /build",
+        "sbu_custom_added": "Пользовательские упражнения добавлены.",
         "sbu_error": "Ошибка обработки СБУ: {err}\nПопробуйте снова или отправьте «стандарт».",
         "clarif_expired": "Контекст истёк. Пожалуйста, отправьте план заново.",
         "garmin_connecting": "Подключаюсь к Garmin Connect...",
@@ -324,7 +324,8 @@ MSG: dict[str, dict[str, str]] = {
         "delete_all_start": "Удаляю {n} тренировок(и) из Garmin Connect...",
         "delete_error": "Ошибка: {err}",
         "yaml_loaded": "YAML-план загружен из {fname}.\n\nОтправьте /build для генерации FIT-файлов.",
-        "yaml_loaded_text": "YAML-план распознан из сообщения.\n\n{preview}\n\nОтправьте /build для генерации FIT-файлов.",
+        "yaml_loaded_text": "YAML-план распознан из сообщения.",
+        "yaml_loaded_text_footer": "Отправьте /build для генерации FIT-файлов.",
         "file_format_error": "Поддерживаемые форматы: .txt, .md (текст плана) или .yaml/.yml (готовый план).",
         "file_read_error": "Ошибка чтения файла: {err}",
         "plan_error": "Ошибка обработки плана: {err}",
@@ -391,9 +392,10 @@ MSG: dict[str, dict[str, str]] = {
         "llm_no_connect": "Cannot connect to LLM server.",
         "llm_timeout": "LLM generation timed out after {timeout} seconds. Try a shorter plan or check LLM server.",
         "yaml_failed": "Failed to generate valid YAML.\n{details}",
-        "yaml_ready_sbu": "YAML ready. Workouts: {count}.\n\n{preview}\n\nSBU block found. Reply with:\n• 'standard' to keep default drills\n• custom drill text to generate your own",
-        "yaml_ready_ambig": "YAML ready. Workouts: {count}.\n\n{preview}\n\nAmbiguities found:\n{ambig}\n\nReply with clarification and I'll regenerate, or /build to proceed as-is.",
-        "yaml_ready": "YAML ready. Workouts: {count}.\n\n{preview}\n\nIf correct, send /build",
+        "yaml_ready_sbu": "YAML ready. Workouts: {count}.\n\nSBU block found. Reply with:\n• 'standard' to keep default drills\n• custom drill text to generate your own",
+        "yaml_ready_ambig": "YAML ready. Workouts: {count}.\n\nAmbiguities found:\n{ambig}\n\nReply with clarification and I'll regenerate, or /build to proceed as-is.",
+        "yaml_ready": "YAML ready. Workouts: {count}.",
+        "yaml_ready_footer": "If correct, send /build",
         "build_queued": "Build queued. Position: {pos}",
         "build_running": "Running: YAML → direct FIT build → validate",
         "build_done": "✅ Build done!\nFIT files: {count}  (valid {valid}/{total})",
@@ -445,9 +447,9 @@ MSG: dict[str, dict[str, str]] = {
         "no_yaml": "No confirmed YAML plan. Send plan text first.",
         "already_queued": "Build job is already queued.",
         "sbu_expired": "SBU state expired. Send plan again.",
-        "sbu_using_standard": "Using standard SBU.\n\n{preview}\n\nSend /build",
+        "sbu_using_standard": "Using standard SBU.",
         "sbu_custom_parsing": "Parsing custom drills...",
-        "sbu_custom_added": "Custom drills added.\n\n{preview}\n\nSend /build",
+        "sbu_custom_added": "Custom drills added.",
         "sbu_error": "SBU processing error: {err}\nTry again or send 'standard' for default drills.",
         "clarif_expired": "Context expired. Please send the plan again.",
         "garmin_connecting": "Connecting to Garmin Connect...",
@@ -490,7 +492,8 @@ MSG: dict[str, dict[str, str]] = {
         "delete_all_start": "Deleting {n} workout(s) from Garmin Connect...",
         "delete_error": "Error: {err}",
         "yaml_loaded": "YAML plan loaded from {fname}.\n\nSend /build to generate FIT files.",
-        "yaml_loaded_text": "YAML plan detected in your message.\n\n{preview}\n\nSend /build to generate FIT files.",
+        "yaml_loaded_text": "YAML plan detected in your message.",
+        "yaml_loaded_text_footer": "Send /build to generate FIT files.",
         "file_format_error": "Supported formats: .txt, .md (plan text) or .yaml/.yml (ready plan).",
         "file_read_error": "File read error: {err}",
         "plan_error": "Plan processing error: {err}",
@@ -589,8 +592,13 @@ async def _load_ready_yaml_from_text(
         await update.message.reply_text(_m(user_id, "yaml_loaded", fname=source_name))
         return
 
-    preview = format_plan_preview(draft)
-    await update.message.reply_text(_m(user_id, "yaml_loaded_text", preview=preview))
+    await _send_yaml_preview(
+        update.message.reply_text,
+        user_id,
+        yaml_text=draft.yaml_text,
+        header=_m(user_id, "yaml_loaded_text"),
+        footer=_m(user_id, "yaml_loaded_text_footer"),
+    )
 
 
 def _examples(user_id: int) -> list[str]:
@@ -779,6 +787,21 @@ def _create_plan_zip(
             archive.writestr(f"{folder}/input_plan.txt", plan_text)
         for fit_file in fit_files:
             archive.write(fit_file, arcname=f"{folder}/{fit_file.name}")
+
+
+async def _send_yaml_preview(
+    reply_fn,
+    user_id: int,
+    yaml_text: str,
+    header: str,
+    footer: str | None = None,
+) -> None:
+    """Send YAML preview as 3 separate messages: header, raw YAML, optional footer.
+    The YAML is a standalone message so the user can easily copy it."""
+    await reply_fn(header)
+    await reply_fn(yaml_text)
+    if footer:
+        await reply_fn(footer)
 
 
 def _delivery_keyboard(user_id: int) -> InlineKeyboardMarkup:
@@ -1394,7 +1417,6 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
 
         yaml_data = draft.data
         workout_count = count_workouts(yaml_data)
-        preview = format_plan_preview(draft)
 
         state.yaml_text = draft.yaml_text
         state.generated_at = datetime.now()
@@ -1404,23 +1426,33 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
         if has_default_sbu_block(yaml_data):
             state.pending_sbu_yaml_data = yaml_data
             state.status = "awaiting_sbu_choice"
-            await update.message.reply_text(
-                _m(user_id, "yaml_ready_sbu", count=workout_count, preview=preview)
+            await _send_yaml_preview(
+                update.message.reply_text,
+                user_id,
+                yaml_text=state.yaml_text,
+                header=_m(user_id, "yaml_ready_sbu", count=workout_count),
             )
             return
 
         if draft.ambiguities and not state.clarification_attempted:
             state.pending_clarification = "\n".join(f"• {a}" for a in draft.ambiguities[:5])
             state.status = "awaiting_clarification"
-            await update.message.reply_text(
-                _m(user_id, "yaml_ready_ambig",
-                   count=workout_count, preview=preview, ambig=state.pending_clarification)
+            await _send_yaml_preview(
+                update.message.reply_text,
+                user_id,
+                yaml_text=state.yaml_text,
+                header=_m(user_id, "yaml_ready_ambig",
+                          count=workout_count, ambig=state.pending_clarification),
             )
             return
 
         state.status = "awaiting_confirm"
-        await update.message.reply_text(
-            _m(user_id, "yaml_ready", count=workout_count, preview=preview)
+        await _send_yaml_preview(
+            update.message.reply_text,
+            user_id,
+            yaml_text=state.yaml_text,
+            header=_m(user_id, "yaml_ready", count=workout_count),
+            footer=_m(user_id, "yaml_ready_footer"),
         )
 
     except Exception as e:
@@ -1492,21 +1524,29 @@ async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.message.reply_text(_m(user_id, "sbu_expired"))
             return
 
-        preview = state.yaml_text[:1500] + "..." if state.yaml_text and len(state.yaml_text) > 1500 else state.yaml_text
         ambiguities = state.pending_ambiguities[:5]
         if ambiguities and not state.clarification_attempted:
             state.pending_ambiguities = list(ambiguities)
             state.pending_clarification = "\n".join(f"• {a}" for a in ambiguities)
             state.status = "awaiting_clarification"
-            await update.message.reply_text(
-                _m(user_id, "yaml_ready_ambig",
-                   count="?", preview=preview, ambig=state.pending_clarification)
+            await _send_yaml_preview(
+                update.message.reply_text,
+                user_id,
+                yaml_text=state.yaml_text,
+                header=_m(user_id, "yaml_ready_ambig",
+                          count="?", ambig=state.pending_clarification),
             )
             return
 
         state.pending_clarification = None
         state.status = "awaiting_confirm"
-        await update.message.reply_text(_m(user_id, "sbu_using_standard", preview=preview))
+        await _send_yaml_preview(
+            update.message.reply_text,
+            user_id,
+            yaml_text=state.yaml_text,
+            header=_m(user_id, "sbu_using_standard"),
+            footer=_m(user_id, "yaml_ready_footer"),
+        )
         return
 
     try:
@@ -1519,19 +1559,27 @@ async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE,
         state.pending_sbu_yaml_data = None
         state.pending_ambiguities = list(draft.ambiguities)
 
-        preview = format_plan_preview(draft)
         if draft.ambiguities and not state.clarification_attempted:
             state.pending_clarification = "\n".join(f"• {a}" for a in draft.ambiguities[:5])
             state.status = "awaiting_clarification"
-            await update.message.reply_text(
-                _m(user_id, "yaml_ready_ambig",
-                   count="?", preview=preview, ambig=state.pending_clarification)
+            await _send_yaml_preview(
+                update.message.reply_text,
+                user_id,
+                yaml_text=state.yaml_text,
+                header=_m(user_id, "yaml_ready_ambig",
+                          count="?", ambig=state.pending_clarification),
             )
             return
 
         state.pending_clarification = None
         state.status = "awaiting_confirm"
-        await update.message.reply_text(_m(user_id, "sbu_custom_added", preview=preview))
+        await _send_yaml_preview(
+            update.message.reply_text,
+            user_id,
+            yaml_text=state.yaml_text,
+            header=_m(user_id, "sbu_custom_added"),
+            footer=_m(user_id, "yaml_ready_footer"),
+        )
 
     except Exception as e:
         await update.message.reply_text(_m(user_id, "sbu_error", err=e))
