@@ -1,5 +1,38 @@
 ﻿# Changelog
 
+## 2026-04-20 — v10.2 (Telegram Bot UX Overhaul)
+
+### Added
+- **Bilingual UI (RU / EN):** `/start` now shows a language selector inline keyboard.
+  Language is stored in `UserState.language`, preserved across `/cancel` resets.
+  All 77 user-visible strings live in `MSG["ru"]` / `MSG["en"]`; accessed via `_m(user_id, key)`.
+- **Delivery choice buttons:** after `/build` the bot shows an inline keyboard
+  `[📁 Send FIT files (ZIP)] [📅 Upload to Garmin Calendar]` instead of
+  auto-sending the ZIP. New state `awaiting_delivery_choice` blocks new plans
+  until the user picks or `/cancel`s.
+- **`/howto` command:** bilingual inline loading guide (USB, Garmin Express, Garmin Calendar).
+- **`docs/HOW_TO_LOAD.md`:** full bilingual step-by-step loading instructions (RU + EN).
+- **`/delete_workout` command:** delete last uploaded batch, list all, or delete all.
+- **YAML file upload:** send `.yaml` / `.yml` directly to skip LLM generation.
+- **`python -m garmin_fit.bot`:** fixed missing `if __name__ == "__main__"` guard.
+
+### Fixed
+- **LM Studio "Empty response from LLM":** `UnifiedLLMClient` now auto-appends `/v1`
+  to `base_url` when `api_type="openai"` and the URL doesn't already end with `/v1`.
+  Both `http://127.0.0.1:1234` and `http://127.0.0.1:1234/v1` now work correctly.
+- **Per-user Garmin token isolation:** CLI and bot each use a per-email / per-user-id
+  token directory, preventing cross-account contamination in multi-user setups.
+
+### Changed
+- Welcome messages (RU + EN): clearer YAML reuse tip, explicit bpm advice,
+  Garmin account + privacy notice, reference to `/howto`.
+- Example workouts: zone notation replaced with explicit HR bpm ranges;
+  SBU example uses `drill / rest / reps` format; removed LLM-confusing phrases.
+- `docs/TELEGRAM_SETUP.md` fully rewritten: new flow diagram, state table,
+  LM Studio `/v1` troubleshooting, loading section.
+
+---
+
 ## 2026-04-16 - v10.1 (Garmin Calendar SBU Notes)
 
 ### Changed
