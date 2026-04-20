@@ -77,6 +77,7 @@ python -m garmin_fit.bot
 |---------|----------|
 | `/start` | Выбор языка (🇷🇺 / 🇬🇧) + приветствие с примерами тренировок |
 | `/help` | Список команд |
+| `/howto` | Инструкция по загрузке тренировок на часы |
 | `/status` | Текущее состояние (status, yaml_ready, fit_files, queue) |
 | `/cancel` | Отмена текущей операции / сброс состояния |
 | `/build` | Запуск сборки FIT после подтверждения YAML |
@@ -170,6 +171,15 @@ python -m garmin_fit.bot
 
 ---
 
+## Загрузка тренировок на часы
+
+Подробная инструкция: см. [`docs/HOW_TO_LOAD.md`](HOW_TO_LOAD.md)
+
+Краткий список вариантов:
+- **USB** — скопируйте `.fit` файлы в папку `Garmin/NewFiles/` на часах
+- **Garmin Express** — официальное приложение garmin.com/express
+- **Garmin Calendar** — `/connect_garmin` → `/build` → выбрать 📅 → синхронизировать телефон
+
 ## Структура ZIP-архива
 
 ```
@@ -229,11 +239,21 @@ telegram_bot.py
 
 ## Troubleshooting
 
-### `Cannot connect to LLM server`
+### `Empty response from LLM` / `Cannot connect to LLM server`
 
-**LM Studio:**
-- Local Server запущен и модель загружена?
+**LM Studio — частая причина:** неверный URL в `bot_config.yaml`.
+
+LM Studio обслуживает API по пути `/v1/`. Бот автоматически добавляет `/v1` если его нет, поэтому оба варианта корректны:
+
+```yaml
+llm_url: "http://127.0.0.1:1234"       # /v1 будет добавлен автоматически
+llm_url: "http://127.0.0.1:1234/v1"    # явно — тоже верно
+```
+
+Также проверьте:
+- Local Server запущен и модель загружена в LM Studio?
 - Порт 1234 (по умолчанию)?
+- В логах LM Studio должно быть `POST /v1/chat/completions`, а не `POST /chat/completions`
 
 **Ollama:**
 ```powershell

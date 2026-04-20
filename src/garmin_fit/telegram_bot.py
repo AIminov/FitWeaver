@@ -57,45 +57,47 @@ _EXAMPLE_WORKOUTS_RU = [
     """\
 📋 Пример 2 — Темповый бег
 
-2026-05-06 (Ср) — Темп
-Разминка: 2 км лёгкий бег
-Основная часть: 6 км при пульсе 160–170 уд/мин
-Заминка: 2 км лёгкий бег
+2026-05-06 (Ср) — Темповый бег
+Разминка: 2 км, пульс до 140 уд/мин
+Основная часть: 6 км, пульс 160–170 уд/мин
+Заминка: 2 км, пульс до 140 уд/мин
 """,
     """\
 📋 Пример 3 — Интервалы
 
 2026-05-07 (Чт) — Интервальная тренировка
-Разминка: 2 км лёгкий бег
-Интервалы: 6 × 800 м при пульсе 175–185 уд/мин, отдых 90 сек трусцой
-Заминка: 1.5 км лёгкий бег
+Разминка: 2 км, пульс до 140 уд/мин
+Интервалы: 6 × 800 м, пульс 175–185 уд/мин, отдых 90 сек трусцой
+Заминка: 1.5 км, пульс до 140 уд/мин
 """,
     """\
 📋 Пример 4 — Длинный бег
 
 2026-05-10 (Вс) — Длинный бег
 Дистанция: 22 км, пульс 120–135 уд/мин
-Темп разговорный, ровный
 """,
     """\
-📋 Пример 5 — Неделя с контекстом и СБУ
+📋 Пример 5 — Неделя с пульсовыми зонами и СБУ
 
-Подготовка к полумарафону, 8 недель до старта
-Уровень: средний
 ЧСС макс: 185 уд/мин
-Зоны: Z1 < 130, Z2 130–145, Z3 146–160, Z4 161–175, Z5 > 175
 
 05.05.2026 (Пн) — Лёгкий бег + СБУ
-8 км, Z2; СБУ: высокое бедро, захлёст голени, прыжки на месте, ускорения 4×80 м
+8 км, пульс 130–145 уд/мин
+СБУ-блок: высокое бедро 30 сек / отдых 60 сек / 2 раза,
+           захлёст голени 30 сек / отдых 60 сек / 2 раза,
+           прыжки на месте 30 сек / отдых 60 сек / 2 раза,
+           ускорение 80 м / трусца 80 м / 4 раза
 
 07.05.2026 (Ср) — Темповый бег
-Разминка 2 км (Z1), основная часть 5 км (Z3), заминка 2 км (Z1)
+Разминка: 2 км, пульс до 140 уд/мин
+Основная часть: 5 км, пульс 160–170 уд/мин
+Заминка: 2 км, пульс до 140 уд/мин
 
 09.05.2026 (Пт) — Восстановление
-6 км, Z1, очень лёгкий темп
+6 км, пульс до 130 уд/мин
 
 11.05.2026 (Вс) — Длинный бег
-20 км, Z2, ровный темп, гель на 10-м км
+20 км, пульс 130–145 уд/мин
 """,
 ]
 
@@ -109,45 +111,47 @@ Distance: 10 km, HR 125–140 bpm
     """\
 📋 Example 2 — Tempo Run
 
-2026-05-06 (Wed) — Tempo
-Warm-up: 2 km easy
-Main: 6 km at HR 160–170 bpm
-Cool-down: 2 km easy
+2026-05-06 (Wed) — Tempo run
+Warm-up: 2 km, HR up to 140 bpm
+Main: 6 km, HR 160–170 bpm
+Cool-down: 2 km, HR up to 140 bpm
 """,
     """\
 📋 Example 3 — Intervals
 
 2026-05-07 (Thu) — Interval workout
-Warm-up: 2 km easy
-Intervals: 6 × 800 m at HR 175–185 bpm, 90 sec jog recovery
-Cool-down: 1.5 km easy
+Warm-up: 2 km, HR up to 140 bpm
+Intervals: 6 × 800 m, HR 175–185 bpm, 90 sec jog recovery
+Cool-down: 1.5 km, HR up to 140 bpm
 """,
     """\
 📋 Example 4 — Long Run
 
 2026-05-10 (Sun) — Long run
 Distance: 22 km, HR 120–135 bpm
-Conversational pace, steady effort
 """,
     """\
-📋 Example 5 — Full week with context & drills
+📋 Example 5 — Full week with HR zones and drills
 
-Half-marathon prep, 8 weeks to race
-Level: intermediate
 Max HR: 185 bpm
-Zones: Z1 < 130, Z2 130–145, Z3 146–160, Z4 161–175, Z5 > 175
 
 2026-05-05 (Mon) — Easy run + drills (SBU)
-8 km, Z2; drills: high knees, butt kicks, jumps, 4 × 80 m strides
+8 km, HR 130–145 bpm
+Drill block: high knees 30 sec / rest 60 sec / 2 reps,
+             butt kicks 30 sec / rest 60 sec / 2 reps,
+             jumps 30 sec / rest 60 sec / 2 reps,
+             stride 80 m / jog 80 m / 4 reps
 
 2026-05-07 (Wed) — Tempo run
-Warm-up 2 km (Z1), main 5 km (Z3), cool-down 2 km (Z1)
+Warm-up: 2 km, HR up to 140 bpm
+Main: 5 km, HR 160–170 bpm
+Cool-down: 2 km, HR up to 140 bpm
 
 2026-05-09 (Fri) — Recovery
-6 km, Z1, very easy
+6 km, HR up to 130 bpm
 
 2026-05-11 (Sun) — Long run
-20 km, Z2, steady, gel at km 10
+20 km, HR 130–145 bpm
 """,
 ]
 
@@ -159,35 +163,48 @@ MSG: dict[str, dict[str, str]] = {
             "🏃 FitWeaver — генератор тренировок для Garmin\n\n"
             "Отправьте план тренировок текстом или файлом .txt / .md и я:\n"
             "1. Разберу план через LLM → создам структурированный YAML\n"
+            "   ↳ YAML можно редактировать вручную и отправить обратно — "
+            "идеально если план меняется незначительно (обновить дистанции, пульс) "
+            "и не хочется тратить время на LLM\n"
             "2. Покажу превью для подтверждения\n"
             "3. Соберу FIT-файлы, готовые для Garmin\n\n"
             "💡 Советы:\n"
             "• Указывайте даты (не «Понедельник») — тренировки привяжутся к конкретным дням\n"
-            "• Контекст помогает: ваши пульсовые зоны, уровень, целевой старт — но всё необязательно\n"
-            "• Готовый YAML? Отправьте .yaml файл — пропустим LLM-генерацию\n\n"
+            "• Пульс прямо в тексте — укажите диапазон уд/мин для каждого отрезка, "
+            "и бот точно настроит цели на часах\n"
+            "• Есть готовый YAML? Отправьте .yaml файл — LLM пропускается, "
+            "сборка занимает секунды\n\n"
             "📦 Варианты доставки (после сборки):\n"
-            "• 📁 FIT-файлы в ZIP — загрузите через Garmin Express или USB\n"
-            "• 📅 Garmin Calendar — тренировки прямо в приложение, синхронизируются на часы без USB\n\n"
+            "• 📁 FIT-файлы в ZIP — скопируйте файлы на часы через USB "
+            "(инструкция: /howto)\n"
+            "• 📅 Garmin Calendar — нужен аккаунт Garmin Connect; тренировки "
+            "загружаются напрямую и синхронизируются на часы без USB. "
+            "Пароль используется только библиотекой-загрузчиком и не сохраняется "
+            "после сессии\n\n"
             "Ниже — примеры тренировок, которые можно скопировать и отправить 👇"
         ),
         "examples_intro": "📌 Примеры тренировок — скопируйте любой и отправьте боту:",
         # /help
         "help": (
             "Команды:\n"
-            "/start  /help  /status  /cancel\n"
-            "/build — собрать FIT-файлы из подтверждённого YAML\n"
+            "/start   — выбор языка + приветствие с примерами\n"
+            "/help    — этот список\n"
+            "/status  — текущее состояние бота\n"
+            "/cancel  — отмена / сброс состояния\n"
+            "/build   — собрать FIT-файлы из подтверждённого YAML\n"
+            "/howto   — как загрузить тренировки на часы\n"
             "\n"
             "Принимаемые файлы:\n"
-            "  .txt / .md  — текст плана тренировок (LLM генерирует YAML)\n"
-            "  .yaml / .yml — готовый YAML-план (LLM пропускается, сразу /build)\n"
+            "  .txt / .md   — текст плана (LLM → YAML)\n"
+            "  .yaml / .yml — готовый YAML (LLM пропускается, сразу /build)\n"
             "\n"
             "Garmin Calendar (без USB):\n"
-            "/connect_garmin [email password] — войти в Garmin Connect\n"
-            "/send_to_garmin [год]            — загрузить последний план в календарь\n"
-            "/delete_workout                  — удалить последнюю загруженную группу\n"
-            "/delete_workout list             — список всех тренировок в Garmin Connect\n"
-            "/delete_workout all              — удалить ВСЕ тренировки из аккаунта\n"
-            "/disconnect_garmin               — выйти из Garmin Connect\n"
+            "/connect_garmin [email пароль] — войти в Garmin Connect\n"
+            "/send_to_garmin [год]          — загрузить последний план в календарь\n"
+            "/delete_workout                — удалить последнюю загруженную группу\n"
+            "/delete_workout list           — список всех тренировок\n"
+            "/delete_workout all            — удалить ВСЕ тренировки из аккаунта\n"
+            "/disconnect_garmin             — выйти из Garmin Connect\n"
             "\n"
             "Сменить язык: /start"
         ),
@@ -209,7 +226,7 @@ MSG: dict[str, dict[str, str]] = {
         "delivery_fit_btn": "📁 Отправить FIT-файлы (ZIP)",
         "delivery_garmin_btn": "📅 Загрузить в Garmin Calendar",
         "delivery_sending": "📁 Отправляю FIT-файлы...",
-        "delivery_sent_hint": "Готово! Загрузите ZIP через Garmin Express или скопируйте .fit файлы на часы.",
+        "delivery_sent_hint": "Готово! Как скопировать файлы на часы — /howto",
         "delivery_garmin_uploading": "📅 Загружаю в Garmin Connect Calendar...",
         "delivery_garmin_not_connected": (
             "Вы не подключены к Garmin Connect.\n\n"
@@ -221,6 +238,23 @@ MSG: dict[str, dict[str, str]] = {
             "Интеграция с Garmin не установлена.\n"
             "Запустите: pip install garminconnect garmin-auth\n\n"
             "Используйте /build и выберите «Отправить FIT-файлы»."
+        ),
+        "howto": (
+            "📂 Как загрузить тренировки на часы\n\n"
+            "━━━━ Вариант А: через USB ━━━━\n"
+            "1. Подключите часы Garmin к компьютеру кабелем USB\n"
+            "2. Часы появятся как USB-накопитель (или через Garmin Express)\n"
+            "3. Откройте ZIP-архив из бота\n"
+            "4. Скопируйте .fit файлы в папку на часах:\n"
+            "   Garmin / NewFiles /\n"
+            "5. Отключите часы — тренировки появятся в разделе «Тренировки»\n\n"
+            "━━━━ Вариант Б: Garmin Calendar (без USB) ━━━━\n"
+            "1. /connect_garmin — войдите в Garmin Connect\n"
+            "2. После /build выберите 📅 Загрузить в Garmin Calendar\n"
+            "3. Откройте приложение Garmin Connect на телефоне и нажмите «Синхронизировать»\n"
+            "4. Тренировки появятся на часах\n\n"
+            "💡 Garmin Express можно скачать на garmin.com/express — "
+            "он поможет автоматически синхронизировать часы с компьютером."
         ),
         "garmin_hint_connect": "\n\nСовет: /connect_garmin → /send_to_garmin — следующий раз загрузит прямо в календарь.",
         "delivery_choice_busy": "Пожалуйста, выберите вариант доставки выше (📁 или 📅),\nили /cancel чтобы отменить и начать заново.",
@@ -282,33 +316,46 @@ MSG: dict[str, dict[str, str]] = {
             "🏃 FitWeaver — Garmin Workout Generator\n\n"
             "Send your training plan as text or a .txt / .md file and I will:\n"
             "1. Parse it via LLM → generate structured YAML\n"
+            "   ↳ You can edit the YAML and send it back — great when the plan "
+            "barely changes week to week (just update distances or HR targets) "
+            "and you don't want to re-run the LLM\n"
             "2. Show a preview for confirmation\n"
             "3. Build FIT files ready for Garmin\n\n"
             "💡 Tips:\n"
             "• Use dates (not just 'Monday') — workouts map to exact calendar days\n"
-            "• Context helps: your HR zones, fitness level, goal race — but all optional\n"
-            "• Have a ready YAML? Send a .yaml file to skip LLM generation\n\n"
+            "• Add HR ranges in bpm for each segment — the bot sets exact targets "
+            "on your watch\n"
+            "• Have a ready YAML? Send a .yaml file — LLM is skipped, "
+            "build takes seconds\n\n"
             "📦 Delivery options (after build):\n"
-            "• 📁 FIT files in ZIP — load via Garmin Express or USB\n"
-            "• 📅 Garmin Calendar — upload directly to the app, sync to watch without USB\n\n"
+            "• 📁 FIT files in ZIP — copy to your watch via USB "
+            "(guide: /howto)\n"
+            "• 📅 Garmin Calendar — requires a Garmin Connect account; workouts "
+            "upload directly and sync to watch without USB. "
+            "Your password is only used by the upload library and is never stored "
+            "after the session\n\n"
             "Example workouts to copy & send are below 👇"
         ),
         "examples_intro": "📌 Example workouts — copy any one and send it to the bot:",
         # /help
         "help": (
             "Commands:\n"
-            "/start  /help  /status  /cancel\n"
-            "/build — build FIT files from confirmed YAML\n"
+            "/start   — choose language + welcome with examples\n"
+            "/help    — this list\n"
+            "/status  — current bot state\n"
+            "/cancel  — cancel / reset state\n"
+            "/build   — build FIT files from confirmed YAML\n"
+            "/howto   — how to load workouts onto your watch\n"
             "\n"
             "Files accepted:\n"
-            "  .txt / .md  — training plan text (LLM generates YAML)\n"
-            "  .yaml / .yml — ready-made YAML plan (skip LLM, go straight to /build)\n"
+            "  .txt / .md   — plan text (LLM → YAML)\n"
+            "  .yaml / .yml — ready YAML (skip LLM, straight to /build)\n"
             "\n"
             "Garmin Calendar (no USB):\n"
             "/connect_garmin [email password] — log in to Garmin Connect\n"
-            "/send_to_garmin [year]           — upload last built plan to calendar\n"
+            "/send_to_garmin [year]           — upload last plan to calendar\n"
             "/delete_workout                  — delete last uploaded batch\n"
-            "/delete_workout list             — list all workouts in Garmin Connect\n"
+            "/delete_workout list             — list all workouts\n"
             "/delete_workout all              — delete ALL workouts from account\n"
             "/disconnect_garmin               — clear Garmin session\n"
             "\n"
@@ -331,7 +378,7 @@ MSG: dict[str, dict[str, str]] = {
         "delivery_fit_btn": "📁 Send FIT files (ZIP)",
         "delivery_garmin_btn": "📅 Upload to Garmin Calendar",
         "delivery_sending": "📁 Sending FIT files...",
-        "delivery_sent_hint": "Done! Load the ZIP via Garmin Express or copy .fit files to your watch.",
+        "delivery_sent_hint": "Done! How to copy files to your watch — /howto",
         "delivery_garmin_uploading": "📅 Uploading to Garmin Connect Calendar...",
         "delivery_garmin_not_connected": (
             "You are not connected to Garmin Connect.\n\n"
@@ -343,6 +390,23 @@ MSG: dict[str, dict[str, str]] = {
             "Garmin integration not installed.\n"
             "Run: pip install garminconnect garmin-auth\n\n"
             "Use /build and choose 'Send FIT files' instead."
+        ),
+        "howto": (
+            "📂 How to load workouts onto your watch\n\n"
+            "━━━━ Option A: via USB ━━━━\n"
+            "1. Connect your Garmin watch to your computer with a USB cable\n"
+            "2. The watch appears as a USB drive (or open via Garmin Express)\n"
+            "3. Unzip the archive you received from the bot\n"
+            "4. Copy the .fit files into this folder on the watch:\n"
+            "   Garmin / NewFiles /\n"
+            "5. Safely eject the watch — workouts will appear under 'Training'\n\n"
+            "━━━━ Option B: Garmin Calendar (no USB) ━━━━\n"
+            "1. /connect_garmin — log in to Garmin Connect\n"
+            "2. After /build choose 📅 Upload to Garmin Calendar\n"
+            "3. Open the Garmin Connect app on your phone and tap 'Sync'\n"
+            "4. Workouts will appear on your watch\n\n"
+            "💡 Garmin Express (optional) can be downloaded from garmin.com/express — "
+            "it automatically syncs your watch with your computer."
         ),
         "garmin_hint_connect": "\n\nTip: /connect_garmin → /send_to_garmin uploads directly to calendar next time.",
         "delivery_choice_busy": "Please choose a delivery option above (📁 or 📅),\nor send /cancel to discard and start over.",
@@ -903,6 +967,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not await ensure_user_allowed(update):
         return
     await update.message.reply_text(_m(update.effective_user.id, "help"))
+
+
+async def howto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await ensure_user_allowed(update):
+        return
+    await update.message.reply_text(_m(update.effective_user.id, "howto"))
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1525,6 +1595,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("howto", howto))
     application.add_handler(CommandHandler("cancel", cancel))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("build", build))

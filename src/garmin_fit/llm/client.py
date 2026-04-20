@@ -119,8 +119,13 @@ class UnifiedLLMClient:
         request_timeout_sec: int = 300,
     ):
         self.model = model
-        self.base_url = base_url.rstrip("/")
         self.api_type = api_type
+        _url = base_url.rstrip("/")
+        # OpenAI-compatible servers (LM Studio, vLLM, etc.) serve at /v1.
+        # Auto-append /v1 so users can write "http://127.0.0.1:1234" in config.
+        if api_type == "openai" and not _url.endswith("/v1"):
+            _url = _url + "/v1"
+        self.base_url = _url
         if openai_mode not in {"auto", "chat", "completions"}:
             raise ValueError(
                 f"Unsupported openai_mode={openai_mode!r}. "
