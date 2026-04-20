@@ -82,7 +82,11 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state.status, "idle")
         self.assertFalse(state.cancel_requested)
-        self.assertTrue(any("Build cancelled." in text for _, text in sent_messages))
+        # Message is localised — accept any reset/cancel confirmation text
+        self.assertTrue(any(
+            any(keyword in text for keyword in ("reset", "cancel", "сброс", "отмен"))
+            for _, text in sent_messages
+        ))
 
     async def test_create_plan_zip_contains_only_input_and_fit(self):
         with tempfile.TemporaryDirectory() as tmp:

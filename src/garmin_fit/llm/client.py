@@ -16,8 +16,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 3
-SUSPICIOUS_SEGMENT_RETRIES = 1
+MAX_RETRIES = 1          # single retry is enough; extra retries trigger thinking mode
+SUSPICIOUS_SEGMENT_RETRIES = 0  # skip segment-level retries — they also trigger thinking
 SEGMENT_HEADER_DATE_RE = re.compile(
     r"^\s*(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?(?:\s*\((?P<weekday>[^)]{1,12})\))?\s*$",
     re.IGNORECASE,
@@ -219,6 +219,15 @@ class UnifiedLLMClient:
                 validate_plan_data_detailed=validate_plan_data_detailed,
                 group_issues_by_category=group_issues_by_category,
             )
+            # source_fact_mismatch is a soft check (date/distance heuristic).
+            # Demote it to a warning so it never causes a retry — retries on
+            # thinking-capable models (Gemma-4, Qwen3) cost 3+ minutes each.
+            if "source_fact_mismatch" in prepared.error_categories:
+                msgs = prepared.error_categories.pop("source_fact_mismatch")
+                prepared.warnings.extend(msgs)
+                prepared.validation_errors = [
+                    e for e in prepared.validation_errors if e not in msgs
+                ]
             self._apply_source_fact_consistency_checks(prepared, source_facts)
             prepared.attempts = attempt
 
@@ -357,6 +366,13 @@ class UnifiedLLMClient:
                 model=self.model,
                 temperature=0.0,
                 messages=messages,
+                # Disable reasoning/thinking mode for Gemma-4, Qwen3, and similar
+                # local models that auto-activate "thinking" on complex prompts.
+                # LM Studio passes these through to the underlying llama.cpp server.
+                extra_body={
+                    "chat_template_kwargs": {"enable_thinking": False},
+                    "thinking": {"type": "disabled"},
+                },
             )
             content = response.choices[0].message.content
             return content if content else None
