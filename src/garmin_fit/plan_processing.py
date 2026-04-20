@@ -18,6 +18,7 @@ FILENAME_SAFE_RE = re.compile(r"[^\w.-]+", re.UNICODE)
 # Step types where intensity should always be set but LLM may omit it.
 # Positional heuristic is used: first step → warmup, last non-repeat step → cooldown, else → active.
 _POSITIONAL_INTENSITY_TYPES = frozenset({"dist_hr", "dist_pace", "time_hr", "time_pace"})
+HR_CAP_ONLY_DEFAULT_LOW = 80
 INTERVAL_MULTIPLIER_RE = re.compile(r"(?<=\d)\s*[xX\u0445\u0425\u00D7]\s*(?=\d)")
 MULTISPACE_RE = re.compile(r"[ \t]{2,}")
 TOO_MANY_BLANKS_RE = re.compile(r"\n{3,}")
@@ -556,6 +557,27 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                     step["km"] = coerced_km
                     notes.append(f"{s_prefix}: coerced km to number {coerced_km}")
 
+            step_type = step.get("type")
+            if _is_cooldown_hr_cap_only_step(step):
+                hr_high = step["hr_high"]
+                step["hr_low"] = HR_CAP_ONLY_DEFAULT_LOW
+                notes.append(
+                    f"{s_prefix}: repaired cooldown upper-only HR cap "
+                    f"to {HR_CAP_ONLY_DEFAULT_LOW}-{hr_high}"
+                )
+
+            if (
+                step_type in _POSITIONAL_INTENSITY_TYPES
+                and step.get("intensity") in {"warmup", "cooldown"}
+                and _count_content_steps(steps) == 1
+            ):
+                original_value = step["intensity"]
+                step["intensity"] = "active"
+                notes.append(
+                    f"{s_prefix}: normalized single-step intensity "
+                    f"'{original_value}' -> 'active'"
+                )
+
             if step_type == "sbu_block":
                 drills = step.get("drills")
                 if drills == []:
@@ -588,6 +610,26 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                                 notes.append(f"{d_prefix}: trimmed drill name")
 
     return repaired, _unique(notes)
+
+
+def _is_cooldown_hr_cap_only_step(step: dict[str, Any]) -> bool:
+    step_type = step.get("type")
+    if step_type not in {"dist_hr", "time_hr"}:
+        return False
+    if step.get("intensity") != "cooldown":
+        return False
+
+    hr_low = step.get("hr_low")
+    hr_high = step.get("hr_high")
+    return (
+        isinstance(hr_high, int)
+        and hr_high > HR_CAP_ONLY_DEFAULT_LOW
+        and (hr_low is None or (isinstance(hr_low, int) and hr_low >= hr_high))
+    )
+
+
+def _count_content_steps(steps: list[Any]) -> int:
+    return sum(1 for item in steps if isinstance(item, dict) and item.get("type") != "repeat")
 
 
 def _coerce_int(value: Any) -> Any:

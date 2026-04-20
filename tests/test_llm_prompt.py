@@ -21,6 +21,7 @@ class TestLlmPrompt(unittest.TestCase):
         self.assertIn("workout_keys=filename,name,desc,type_code,distance_km,estimated_duration_min,steps", prompt)
         self.assertIn("forbid_extra_workout_keys=plan,mapped_to,date,notes", prompt)
         self.assertIn("repeat: back_to_offset=0-based index of first repeating step", prompt)
+        self.assertIn('single upper HR cap only (e.g. "до 130", "HR <= 130")->use hr_low=80 and hr_high=cap', prompt)
         self.assertIn("EXAMPLE hills_series", prompt)
         self.assertIn("W09_03-04_Wed_Intervals_Hills_2x5x40m", prompt)
 
@@ -37,4 +38,3 @@ class TestLlmPrompt(unittest.TestCase):
 
         self.assertLess(len(targeted_prompt), len(generic_prompt))
         self.assertLess(len(targeted_prompt), 5600)
-

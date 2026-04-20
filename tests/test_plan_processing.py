@@ -124,6 +124,76 @@ class PlanProcessingTests(unittest.TestCase):
         self.assertEqual(repaired["workouts"][0]["filename"], "N01_Mon_easy_6km")
         self.assertEqual(repaired["workouts"][1]["filename"], "N02_threshold")
 
+    def test_repair_plan_data_converts_cooldown_single_hr_cap_to_hr_range(self):
+        data = {
+            "workouts": [
+                {
+                    "filename": "W10_03-10_Tue_Easy_6km",
+                    "name": "W10_03-10_Tue_Easy_6km",
+                    "steps": [
+                        {"type": "dist_hr", "km": 4, "hr_low": 130, "hr_high": 145},
+                        {"type": "dist_hr", "km": 2, "hr_low": None, "hr_high": 130, "intensity": "cooldown"},
+                    ],
+                }
+            ]
+        }
+
+        repaired, notes = repair_plan_data(data)
+        cooldown = repaired["workouts"][0]["steps"][1]
+
+        self.assertEqual(cooldown["type"], "dist_hr")
+        self.assertEqual(cooldown["km"], 2)
+        self.assertEqual(cooldown["intensity"], "cooldown")
+        self.assertEqual(cooldown["hr_low"], 80)
+        self.assertEqual(cooldown["hr_high"], 130)
+        self.assertTrue(any("repaired cooldown upper-only HR cap" in note for note in notes))
+
+    def test_repair_plan_data_converts_equal_cooldown_hr_range_to_80_based_range(self):
+        data = {
+            "workouts": [
+                {
+                    "filename": "W10_03-10_Tue_Easy_6km",
+                    "name": "W10_03-10_Tue_Easy_6km",
+                    "steps": [
+                        {"type": "time_hr", "seconds": 600, "hr_low": 130, "hr_high": 130, "intensity": "cooldown"},
+                    ],
+                }
+            ]
+        }
+
+        repaired, _notes = repair_plan_data(data)
+        cooldown = repaired["workouts"][0]["steps"][0]
+
+        self.assertEqual(cooldown["type"], "time_hr")
+        self.assertEqual(cooldown["seconds"], 600)
+        self.assertEqual(cooldown["hr_low"], 80)
+        self.assertEqual(cooldown["hr_high"], 130)
+
+    def test_repair_plan_data_normalizes_single_step_warmup_to_active(self):
+        data = {
+            "workouts": [
+                {
+                    "filename": "W18_05-01_Fri_Easy_10km",
+                    "name": "W18_05-01_Fri_Easy_10km",
+                    "steps": [
+                        {
+                            "type": "dist_hr",
+                            "km": 10,
+                            "hr_low": 120,
+                            "hr_high": 140,
+                            "intensity": "warmup",
+                        },
+                    ],
+                }
+            ]
+        }
+
+        repaired, notes = repair_plan_data(data)
+        step = repaired["workouts"][0]["steps"][0]
+
+        self.assertEqual(step["intensity"], "active")
+        self.assertTrue(any("normalized single-step intensity" in note for note in notes))
+
     def test_service_helpers_count_workouts_and_sbu_defaults(self):
         data = {
             "workouts": [

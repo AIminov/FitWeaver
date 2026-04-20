@@ -219,16 +219,8 @@ class UnifiedLLMClient:
                 validate_plan_data_detailed=validate_plan_data_detailed,
                 group_issues_by_category=group_issues_by_category,
             )
-            # source_fact_mismatch is a soft check (date/distance heuristic).
-            # Demote it to a warning so it never causes a retry — retries on
-            # thinking-capable models (Gemma-4, Qwen3) cost 3+ minutes each.
-            if "source_fact_mismatch" in prepared.error_categories:
-                msgs = prepared.error_categories.pop("source_fact_mismatch")
-                prepared.warnings.extend(msgs)
-                prepared.validation_errors = [
-                    e for e in prepared.validation_errors if e not in msgs
-                ]
             self._apply_source_fact_consistency_checks(prepared, source_facts)
+            self._demote_source_fact_mismatch(prepared)
             prepared.attempts = attempt
 
             for warning in prepared.warnings:
@@ -862,6 +854,18 @@ class UnifiedLLMClient:
                 continue
             result.validation_errors.append(message)
             result.error_categories.setdefault("source_fact_mismatch", []).append(message)
+
+    @staticmethod
+    def _demote_source_fact_mismatch(result: GeneratedYamlResult) -> None:
+        """Keep source fact heuristics visible without triggering LLM retries."""
+        msgs = result.error_categories.pop("source_fact_mismatch", [])
+        if not msgs:
+            return
+
+        result.warnings.extend(msgs)
+        result.validation_errors = [
+            error for error in result.validation_errors if error not in msgs
+        ]
 
     def _generate_and_validate_segment_workout(
         self,

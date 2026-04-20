@@ -312,3 +312,28 @@ class TestUnifiedLLMClient(unittest.TestCase):
         UnifiedLLMClient._apply_source_fact_consistency_checks(result, [fact])
         self.assertTrue(any("source facts mismatch" in msg for msg in result.validation_errors))
 
+    def test_source_fact_mismatch_is_demoted_after_consistency_check(self):
+        fact = UnifiedLLMClient._extract_single_workout_fact(
+            "10.03 (Tue)\nЛегкий кросс\n6 км\n"
+        )
+        result = GeneratedYamlResult(
+            data={
+                "workouts": [
+                    {
+                        "filename": "W10_03-10_Tue_Easy_9km",
+                        "name": "W10_03-10_Tue_Easy_9km",
+                        "type_code": "easy",
+                        "distance_km": 9.0,
+                        "steps": [{"type": "dist_open", "km": 9.0}],
+                    }
+                ]
+            }
+        )
+
+        UnifiedLLMClient._apply_source_fact_consistency_checks(result, [fact])
+        UnifiedLLMClient._demote_source_fact_mismatch(result)
+
+        self.assertFalse(result.validation_errors)
+        self.assertNotIn("source_fact_mismatch", result.error_categories)
+        self.assertTrue(any("source facts mismatch" in msg for msg in result.warnings))
+

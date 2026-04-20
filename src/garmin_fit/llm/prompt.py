@@ -341,6 +341,7 @@ def create_system_prompt(
                 "FINAL RULES",
                 "- only listed keys/enums; no invented fields or second documents",
                 "- pace(explicit)->dist_pace/time_pace; HR(explicit)->dist_hr/time_hr",
+                "- single upper HR cap only (e.g. \"до 130\", \"HR <= 130\")->use hr_low=80 and hr_high=cap",
                 "- time intervals->time_hr/time_pace, not dist_*",
                 "- intensity required on dist_hr/dist_pace/time_hr/time_pace; first step=warmup, last=cooldown",
                 "- sbu_block drills: {name,seconds,reps} only — no 'type' key",

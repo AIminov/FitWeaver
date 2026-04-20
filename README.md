@@ -346,7 +346,8 @@ Connection details: [`docs/LLM_CONNECTION_PROFILE.md`](docs/LLM_CONNECTION_PROFI
 
 ## Telegram Bot
 
-The bot accepts plan text, calls the LLM, and returns a ZIP archive with FIT files.
+The bot accepts plan text, calls the LLM, previews YAML, builds FIT files, and lets
+you choose ZIP delivery or direct Garmin Calendar upload.
 
 Setup: [`docs/TELEGRAM_SETUP.md`](docs/TELEGRAM_SETUP.md)
 

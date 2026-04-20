@@ -6,6 +6,7 @@ Accepts plan text -> generates YAML via LLM (LM Studio/Ollama) -> builds FIT fil
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import yaml
 from telegram import Document, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -28,8 +30,9 @@ from telegram.ext import (
 from .archive_manager import archive_current_plan, get_archive_name
 from .config import ARCHIVE_DIR, ARTIFACTS_DIR, BOT_CONFIG_FILE, OUTPUT_DIR, PLAN_DIR
 from .garmin_auth_manager import is_available as _garmin_auth_available
-from .llm.client import UnifiedLLMClient
+from .llm.client import GeneratedYamlResult, UnifiedLLMClient
 from .pipeline_runner import run_pipeline, save_yaml_to_plan_dir
+from .plan_processing import repair_plan_data
 from .plan_service import (
     apply_custom_sbu_choice,
     build_plan_draft,
@@ -37,11 +40,18 @@ from .plan_service import (
     format_plan_preview,
     has_default_sbu_block,
 )
+from .plan_validator import validate_plan_data_detailed
+
+logger = logging.getLogger(__name__)
 
 # Rate limiting constants
 REQUEST_COOLDOWN_SEC = 30
 LLM_TIMEOUT_SEC = 300
 MAX_PLAN_TEXT_LENGTH = 4000
+TELEGRAM_CONNECT_TIMEOUT_SEC = 30
+TELEGRAM_READ_TIMEOUT_SEC = 30
+TELEGRAM_WRITE_TIMEOUT_SEC = 30
+TELEGRAM_POOL_TIMEOUT_SEC = 30
 
 # ---------------------------------------------------------------------------
 # i18n — all user-visible strings in one place
@@ -172,7 +182,7 @@ MSG: dict[str, dict[str, str]] = {
             "• Указывайте даты (не «Понедельник») — тренировки привяжутся к конкретным дням\n"
             "• Пульс прямо в тексте — укажите диапазон уд/мин для каждого отрезка, "
             "и бот точно настроит цели на часах\n"
-            "• Есть готовый YAML? Отправьте .yaml файл — LLM пропускается, "
+            "• Есть готовый YAML? Отправьте .yaml файл или вставьте YAML текстом — LLM пропускается, "
             "сборка занимает секунды\n\n"
             "📦 Варианты доставки (после сборки):\n"
             "• 📁 FIT-файлы в ZIP — скопируйте файлы на часы через USB "
@@ -197,6 +207,7 @@ MSG: dict[str, dict[str, str]] = {
             "Принимаемые файлы:\n"
             "  .txt / .md   — текст плана (LLM → YAML)\n"
             "  .yaml / .yml — готовый YAML (LLM пропускается, сразу /build)\n"
+            "  workouts: ... — готовый YAML текстом в чат (LLM пропускается)\n"
             "\n"
             "Garmin Calendar (без USB):\n"
             "/connect_garmin [email пароль] — войти в Garmin Connect\n"
@@ -264,6 +275,7 @@ MSG: dict[str, dict[str, str]] = {
         "plan_too_short": "Текст плана слишком короткий. Пожалуйста, добавьте больше деталей.",
         "cancelled": "Состояние сброшено.",
         "cancel_building": "Запрос на отмену отправлен. Текущая задача будет остановлена.",
+        "cancel_generating": "Запрос на отмену принят. LLM-запрос уже выполняется, остановлю обработку сразу после ответа.",
         "cancel_garmin": "Вход в Garmin отменён.",
         "no_yaml": "Нет подтверждённого YAML-плана. Сначала отправьте план.",
         "already_queued": "Задача уже в очереди.",
@@ -285,9 +297,21 @@ MSG: dict[str, dict[str, str]] = {
         "garmin_no_files": "Нет FIT-файлов от последней сборки.\nСначала используйте /build.",
         "garmin_no_plan": "Не найден собранный план. Сначала используйте /build.",
         "garmin_upload_start": "Загружаю в Garmin Connect Calendar...",
-        "garmin_upload_done": "Загрузка в Garmin Calendar завершена.\n{summary}{sync_hint}",
+        "garmin_upload_done": "Загрузка в Garmin Calendar завершена.\n{summary}{sync_hint}{next_steps}",
         "garmin_upload_error": "Ошибка загрузки в Garmin Calendar: {err}",
         "garmin_sync_hint": "\n\nСинхронизируйте часы чтобы увидеть тренировки.",
+        "garmin_next_steps_with_zip": (
+            "\n\nДальше:\n"
+            "• Получить ZIP: отправьте /build и выберите «Отправить FIT-файлы (ZIP)».\n"
+            "• Новый план через LLM: отправьте /cancel, затем новый текст плана.\n"
+            "• Завершить Garmin-сессию: /disconnect_garmin."
+        ),
+        "garmin_next_steps_no_zip": (
+            "\n\nДальше:\n"
+            "• Получить ZIP: отправьте /build, чтобы пересобрать FIT-файлы.\n"
+            "• Новый план через LLM: отправьте /cancel, затем новый текст плана.\n"
+            "• Завершить Garmin-сессию: /disconnect_garmin."
+        ),
         "garmin_ask_email": "Войти в Garmin Connect.\nОтправьте email вашего аккаунта Garmin:",
         "garmin_ask_password": "Отправьте пароль аккаунта Garmin:",
         "garmin_bad_email": "Это не похоже на корректный email. Попробуйте ещё раз:",
@@ -301,6 +325,7 @@ MSG: dict[str, dict[str, str]] = {
         "delete_all_start": "Удаляю {n} тренировок(и) из Garmin Connect...",
         "delete_error": "Ошибка: {err}",
         "yaml_loaded": "YAML-план загружен из {fname}.\n\nОтправьте /build для генерации FIT-файлов.",
+        "yaml_loaded_text": "YAML-план распознан из сообщения.\n\n{preview}\n\nОтправьте /build для генерации FIT-файлов.",
         "file_format_error": "Поддерживаемые форматы: .txt, .md (текст плана) или .yaml/.yml (готовый план).",
         "file_read_error": "Ошибка чтения файла: {err}",
         "plan_error": "Ошибка обработки плана: {err}",
@@ -325,7 +350,7 @@ MSG: dict[str, dict[str, str]] = {
             "• Use dates (not just 'Monday') — workouts map to exact calendar days\n"
             "• Add HR ranges in bpm for each segment — the bot sets exact targets "
             "on your watch\n"
-            "• Have a ready YAML? Send a .yaml file — LLM is skipped, "
+            "• Have a ready YAML? Send a .yaml file or paste YAML text — LLM is skipped, "
             "build takes seconds\n\n"
             "📦 Delivery options (after build):\n"
             "• 📁 FIT files in ZIP — copy to your watch via USB "
@@ -350,6 +375,7 @@ MSG: dict[str, dict[str, str]] = {
             "Files accepted:\n"
             "  .txt / .md   — plan text (LLM → YAML)\n"
             "  .yaml / .yml — ready YAML (skip LLM, straight to /build)\n"
+            "  workouts: ... — ready YAML pasted as chat text (skip LLM)\n"
             "\n"
             "Garmin Calendar (no USB):\n"
             "/connect_garmin [email password] — log in to Garmin Connect\n"
@@ -416,6 +442,7 @@ MSG: dict[str, dict[str, str]] = {
         "plan_too_short": "Plan text is too short. Please send more details.",
         "cancelled": "Current plan state reset.",
         "cancel_building": "Cancellation requested. Current build job will be stopped.",
+        "cancel_generating": "Cancellation requested. The LLM request is already running; processing will stop as soon as it returns.",
         "cancel_garmin": "Garmin login cancelled.",
         "no_yaml": "No confirmed YAML plan. Send plan text first.",
         "already_queued": "Build job is already queued.",
@@ -437,9 +464,21 @@ MSG: dict[str, dict[str, str]] = {
         "garmin_no_files": "No FIT files from last build.\nUse /build first.",
         "garmin_no_plan": "No built plan found. Use /build first.",
         "garmin_upload_start": "Uploading to Garmin Connect Calendar...",
-        "garmin_upload_done": "Garmin Calendar upload complete.\n{summary}{sync_hint}",
+        "garmin_upload_done": "Garmin Calendar upload complete.\n{summary}{sync_hint}{next_steps}",
         "garmin_upload_error": "Garmin Calendar upload error: {err}",
         "garmin_sync_hint": "\n\nSync your watch to see the scheduled workouts.",
+        "garmin_next_steps_with_zip": (
+            "\n\nNext steps:\n"
+            "• Get the ZIP: send /build and choose \"Send FIT files (ZIP)\".\n"
+            "• Start a new LLM plan: send /cancel, then send the new plan text.\n"
+            "• End the Garmin session: /disconnect_garmin."
+        ),
+        "garmin_next_steps_no_zip": (
+            "\n\nNext steps:\n"
+            "• Get the ZIP: send /build to rebuild FIT files.\n"
+            "• Start a new LLM plan: send /cancel, then send the new plan text.\n"
+            "• End the Garmin session: /disconnect_garmin."
+        ),
         "garmin_ask_email": "Garmin Connect login.\nReply with your Garmin account email:",
         "garmin_ask_password": "Reply with your Garmin account password:",
         "garmin_bad_email": "That doesn't look like a valid email. Try again:",
@@ -453,6 +492,7 @@ MSG: dict[str, dict[str, str]] = {
         "delete_all_start": "Deleting {n} workout(s) from Garmin Connect...",
         "delete_error": "Error: {err}",
         "yaml_loaded": "YAML plan loaded from {fname}.\n\nSend /build to generate FIT files.",
+        "yaml_loaded_text": "YAML plan detected in your message.\n\n{preview}\n\nSend /build to generate FIT files.",
         "file_format_error": "Supported formats: .txt, .md (plan text) or .yaml/.yml (ready plan).",
         "file_read_error": "File read error: {err}",
         "plan_error": "Plan processing error: {err}",
@@ -475,6 +515,84 @@ def _m(user_id: int, key: str, **kwargs) -> str:
     lang = _lang(user_id)
     template = MSG[lang].get(key) or MSG["en"].get(key, key)
     return template.format(**kwargs) if kwargs else template
+
+
+async def _safe_reply_text(update: Update, text: str) -> bool:
+    """Send a reply without letting transient Telegram network errors abort work."""
+    if update.message is None:
+        return False
+    try:
+        await update.message.reply_text(text)
+        return True
+    except (TimedOut, NetworkError) as exc:
+        logger.warning("Telegram reply failed, continuing: %s", exc)
+        return False
+
+
+def _looks_like_ready_yaml(text: str) -> bool:
+    return text.lstrip().startswith("workouts:")
+
+
+def _prepare_ready_yaml_text(yaml_text: str) -> GeneratedYamlResult:
+    try:
+        data = yaml.safe_load(yaml_text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML: {exc}") from exc
+
+    if not isinstance(data, dict) or not isinstance(data.get("workouts"), list):
+        raise ValueError("YAML must contain a top-level workouts list")
+
+    repaired_data, repairs = repair_plan_data(data)
+    errors, warnings = validate_plan_data_detailed(
+        repaired_data,
+        enforce_filename_name_match=True,
+    )
+    if errors:
+        details = "; ".join(issue.message for issue in errors[:5])
+        raise ValueError(f"YAML validation failed: {details}")
+
+    rendered_yaml = yaml.safe_dump(
+        repaired_data,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+    )
+    return GeneratedYamlResult(
+        yaml_text=rendered_yaml,
+        data=repaired_data,
+        warnings=[issue.message for issue in warnings],
+        repairs=repairs,
+        attempts=0,
+    )
+
+
+async def _load_ready_yaml_from_text(
+    update: Update,
+    user_id: int,
+    state: UserState,
+    yaml_text: str,
+    *,
+    source_name: str | None = None,
+) -> None:
+    draft = _prepare_ready_yaml_text(yaml_text)
+    state.yaml_text = draft.yaml_text
+    state.yaml_path = None
+    state.original_plan_text = yaml_text
+    state.active_plan_text = yaml_text
+    state.generated_at = datetime.now()
+    state.pending_ambiguities = []
+    state.pending_clarification = None
+    state.pending_sbu_yaml_data = None
+    state.clarification_attempted = False
+    state.last_request_time = datetime.now()
+    state.status = "awaiting_confirm"
+
+    if source_name:
+        await update.message.reply_text(_m(user_id, "yaml_loaded", fname=source_name))
+        return
+
+    preview = format_plan_preview(draft)
+    await update.message.reply_text(_m(user_id, "yaml_loaded_text", preview=preview))
 
 
 def _examples(user_id: int) -> list[str]:
@@ -501,6 +619,7 @@ class UserState:
     # idle/generating/awaiting_sbu_choice/awaiting_clarification/awaiting_confirm/
     # queued/building/awaiting_garmin_email/awaiting_garmin_password/awaiting_garmin_mfa
     status: str = "idle"
+    return_status_after_garmin_auth: Optional[str] = None
     generated_at: Optional[datetime] = None
     fit_files: List[Path] = field(default_factory=list)
     pending_sbu_yaml_data: Optional[dict] = None
@@ -531,6 +650,22 @@ class BuildJob:
 USER_STATES: Dict[int, UserState] = {}
 BUILD_QUEUE: Optional[asyncio.Queue] = None  # created in on_post_init inside event loop
 BOT_CONFIG: Dict[str, object] = {}
+GARMIN_AUTH_STATUSES = {
+    "awaiting_garmin_email",
+    "awaiting_garmin_password",
+    "awaiting_garmin_mfa",
+}
+
+
+def _begin_garmin_auth(state: UserState) -> None:
+    if state.status not in GARMIN_AUTH_STATUSES:
+        state.return_status_after_garmin_auth = state.status
+
+
+def _restore_status_after_garmin_auth(state: UserState) -> None:
+    status = state.return_status_after_garmin_auth or "idle"
+    state.return_status_after_garmin_auth = None
+    state.status = "idle" if status in GARMIN_AUTH_STATUSES else status
 
 
 def load_bot_config() -> Dict[str, object]:
@@ -648,6 +783,19 @@ def _create_plan_zip(
             archive.write(fit_file, arcname=f"{folder}/{fit_file.name}")
 
 
+def _delivery_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(_m(user_id, "delivery_fit_btn"), callback_data="delivery:fit"),
+        InlineKeyboardButton(_m(user_id, "delivery_garmin_btn"), callback_data="delivery:garmin"),
+    ]])
+
+
+def _garmin_post_upload_next_steps(user_id: int, state: UserState) -> str:
+    has_zip = bool(state.pending_zip_path and state.pending_zip_path.exists())
+    key = "garmin_next_steps_with_zip" if has_zip else "garmin_next_steps_no_zip"
+    return _m(user_id, key)
+
+
 def _garmin_token_dir(user_id: int) -> Path:
     """Per-user token storage directory under ~/.garminconnect/."""
     return Path.home() / ".garminconnect" / f"tg_{user_id}"
@@ -662,7 +810,7 @@ async def _garmin_upload_and_report(
     chat_id: int,
     user_id: int,
     year: int | None = None,
-) -> None:
+) -> bool:
     """Upload the last built plan to Garmin Calendar and send a result message."""
     state = get_state(user_id)
 
@@ -670,22 +818,24 @@ async def _garmin_upload_and_report(
         await application.bot.send_message(
             chat_id=chat_id, text=_m(user_id, "garmin_not_connected")
         )
-        return
+        return False
 
-    if not state.yaml_path or not state.yaml_path.exists():
+    if state.yaml_path and state.yaml_path.exists():
+        plan_data = yaml.safe_load(state.yaml_path.read_text(encoding="utf-8"))
+    elif state.yaml_text:
+        plan_data = yaml.safe_load(state.yaml_text)
+    else:
         await application.bot.send_message(
             chat_id=chat_id, text=_m(user_id, "garmin_no_plan")
         )
-        return
+        return False
 
     await application.bot.send_message(chat_id=chat_id, text=_m(user_id, "garmin_upload_start"))
 
     try:
-        import yaml as _yaml
         from .garmin_calendar_export import GarminCalendarExporter
         from .plan_domain import plan_from_data
 
-        plan_data = _yaml.safe_load(state.yaml_path.read_text(encoding="utf-8"))
         plan = plan_from_data(plan_data)
 
         exporter = GarminCalendarExporter(state.garmin_client)
@@ -700,15 +850,24 @@ async def _garmin_upload_and_report(
         ]
 
         sync_hint = _m(user_id, "garmin_sync_hint") if result.uploaded > 0 else ""
+        next_steps = _garmin_post_upload_next_steps(user_id, state)
         await application.bot.send_message(
             chat_id=chat_id,
-            text=_m(user_id, "garmin_upload_done", summary=result.summary(), sync_hint=sync_hint),
+            text=_m(
+                user_id,
+                "garmin_upload_done",
+                summary=result.summary(),
+                sync_hint=sync_hint,
+                next_steps=next_steps,
+            ),
         )
+        return True
     except Exception as exc:
         await application.bot.send_message(
             chat_id=chat_id,
             text=_m(user_id, "garmin_upload_error", err=exc),
         )
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -737,10 +896,12 @@ async def connect_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if context.args and len(context.args) >= 2:
         email = context.args[0].strip()
         password = context.args[1].strip()
+        _begin_garmin_auth(state)
         await _do_garmin_connect(update, context, user_id, state, email, password)
         return
 
     # Two-step interactive flow
+    _begin_garmin_auth(state)
     state.status = "awaiting_garmin_email"
     state.garmin_pending_email = None
     await update.message.reply_text(_m(update.effective_user.id, "garmin_ask_email"))
@@ -795,9 +956,11 @@ async def send_to_garmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(_m(user_id, "garmin_no_files"))
         return
 
-    await _garmin_upload_and_report(
+    uploaded = await _garmin_upload_and_report(
         context.application, update.effective_chat.id, user_id, year=year
     )
+    if uploaded:
+        state.status = "awaiting_delivery_choice" if state.pending_zip_path else "idle"
 
 
 async def delete_workout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -886,8 +1049,7 @@ async def _do_garmin_connect(
 ) -> None:
     from .garmin_auth_manager import GarminAuthManager
 
-    state.status = "idle"
-    await update.message.reply_text(_m(user_id, "garmin_connecting"))
+    await _safe_reply_text(update, _m(user_id, "garmin_connecting"))
 
     token_dir = _garmin_token_dir(user_id)
     token_dir.mkdir(parents=True, exist_ok=True)
@@ -905,17 +1067,18 @@ async def _do_garmin_connect(
             state.garmin_manager = manager
             state.garmin_email = email
             state.status = "awaiting_garmin_mfa"
-            await update.message.reply_text(_m(user_id, "garmin_mfa_required"))
+            await _safe_reply_text(update, _m(user_id, "garmin_mfa_required"))
             return
 
         state.garmin_client = result
         state.garmin_manager = manager
         state.garmin_email = email
-        await update.message.reply_text(_m(user_id, "garmin_connected"))
+        _restore_status_after_garmin_auth(state)
+        await _safe_reply_text(update, _m(user_id, "garmin_connected"))
 
     except Exception as exc:
-        state.status = "idle"
-        await update.message.reply_text(_m(user_id, "garmin_auth_failed", err=exc))
+        _restore_status_after_garmin_auth(state)
+        await _safe_reply_text(update, _m(user_id, "garmin_auth_failed", err=exc))
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -985,15 +1148,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(_m(user_id, "cancel_building"))
         return
 
+    if state.status == "generating":
+        state.cancel_requested = True
+        await update.message.reply_text(_m(user_id, "cancel_generating"))
+        return
+
     if state.status in {"awaiting_garmin_email", "awaiting_garmin_password", "awaiting_garmin_mfa"}:
-        garmin_client = state.garmin_client
-        garmin_manager = state.garmin_manager
-        garmin_email = state.garmin_email
-        reset_state(user_id)
-        new_state = get_state(user_id)
-        new_state.garmin_client = garmin_client
-        new_state.garmin_manager = garmin_manager
-        new_state.garmin_email = garmin_email
+        state.garmin_pending_email = None
+        state.garmin_manager = None
+        _restore_status_after_garmin_auth(state)
         await update.message.reply_text(_m(user_id, "cancel_garmin"))
         return
 
@@ -1054,7 +1217,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if state.status == "awaiting_delivery_choice":
-        await update.message.reply_text(_m(user_id, "delivery_choice_busy"))
+        if state.pending_zip_path and state.pending_zip_path.exists():
+            await update.message.reply_text(
+                _m(user_id, "delivery_ask"),
+                reply_markup=_delivery_keyboard(user_id),
+            )
+        else:
+            state.pending_zip_path = None
+            state.status = "awaiting_confirm" if state.yaml_text else "idle"
+            await update.message.reply_text(_m(user_id, "zip_not_found"))
         return
 
     # Rate limiting: cooldown between requests
@@ -1074,6 +1245,13 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if len(text.strip()) < 20:
         await update.message.reply_text(_m(user_id, "plan_too_short"))
+        return
+
+    if _looks_like_ready_yaml(text):
+        try:
+            await _load_ready_yaml_from_text(update, user_id, state, text)
+        except ValueError as exc:
+            await update.message.reply_text(str(exc))
         return
 
     state.clarification_attempted = False
@@ -1101,7 +1279,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if state.status == "awaiting_delivery_choice":
-        await update.message.reply_text(_m(user_id, "delivery_choice_busy"))
+        if state.pending_zip_path and state.pending_zip_path.exists():
+            await update.message.reply_text(
+                _m(user_id, "delivery_ask"),
+                reply_markup=_delivery_keyboard(user_id),
+            )
+        else:
+            state.pending_zip_path = None
+            state.status = "awaiting_confirm" if state.yaml_text else "idle"
+            await update.message.reply_text(_m(user_id, "zip_not_found"))
         return
 
     document: Document = update.message.document
@@ -1140,23 +1326,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if is_yaml:
             # YAML plan — skip LLM, go straight to build
-            import yaml as _yaml
             try:
-                _yaml.safe_load(plan_text)  # validate it parses
-            except Exception as ye:
-                await update.message.reply_text(f"Invalid YAML: {ye}")
+                await _load_ready_yaml_from_text(update, user_id, state, plan_text, source_name=fname)
+            except ValueError as exc:
+                await update.message.reply_text(str(exc))
                 return
-            state.yaml_text = plan_text
-            state.yaml_path = None
-            state.original_plan_text = plan_text
-            state.active_plan_text = plan_text
-            state.generated_at = datetime.now()
-            state.pending_ambiguities = []
-            state.pending_clarification = None
-            state.pending_sbu_yaml_data = None
-            state.last_request_time = datetime.now()
-            state.status = "awaiting_confirm"
-            await update.message.reply_text(_m(user_id, "yaml_loaded", fname=fname))
             return
 
         state.clarification_attempted = False
@@ -1200,6 +1374,12 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
         except asyncio.TimeoutError:
             await update.message.reply_text(_m(user_id, "llm_timeout", timeout=LLM_TIMEOUT_SEC))
             state.status = "idle"
+            return
+
+        if state.cancel_requested:
+            state.status = "idle"
+            state.cancel_requested = False
+            await update.message.reply_text(_m(user_id, "cancelled"))
             return
 
         if not draft.yaml_text or not isinstance(draft.data, dict):
@@ -1282,7 +1462,7 @@ async def _handle_garmin_mfa(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         client = await asyncio.to_thread(manager.resume, mfa_code)
         state.garmin_client = client
-        state.status = "idle"
+        _restore_status_after_garmin_auth(state)
         await update.message.reply_text(_m(user_id, "garmin_connected"))
     except Exception as exc:
         state.status = "idle"
@@ -1376,6 +1556,18 @@ async def build(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if state.status == "awaiting_clarification":
         state.status = "awaiting_confirm"
+
+    if state.status == "awaiting_delivery_choice":
+        if state.pending_zip_path and state.pending_zip_path.exists():
+            await update.message.reply_text(
+                _m(user_id, "delivery_ask"),
+                reply_markup=_delivery_keyboard(user_id),
+            )
+        else:
+            state.pending_zip_path = None
+            state.status = "awaiting_confirm" if state.yaml_text else "idle"
+            await update.message.reply_text(_m(user_id, "zip_not_found"))
+        return
 
     if state.status not in {"awaiting_confirm", "queued"}:
         await update.message.reply_text(_m(user_id, "no_yaml"))
@@ -1474,15 +1666,11 @@ async def _execute_build_job(application: Application, job: BuildJob) -> None:
         )
 
         # Ask user how to deliver the workouts
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(_m(uid, "delivery_fit_btn"), callback_data="delivery:fit"),
-            InlineKeyboardButton(_m(uid, "delivery_garmin_btn"), callback_data="delivery:garmin"),
-        ]])
         state.status = "awaiting_delivery_choice"
         await application.bot.send_message(
             chat_id=job.chat_id,
             text=_m(uid, "delivery_ask"),
-            reply_markup=keyboard,
+            reply_markup=_delivery_keyboard(uid),
         )
 
     except Exception as e:
@@ -1516,15 +1704,17 @@ async def handle_delivery_choice(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     choice = data.split(":", 1)[1]
+    zip_path = state.pending_zip_path
 
-    if choice == "fit":
-        zip_path = state.pending_zip_path
+    if not zip_path or not zip_path.exists():
         state.pending_zip_path = None
         state.status = "idle"
+        await query.edit_message_text(_m(user_id, "zip_not_found"))
+        return
 
-        if not zip_path or not zip_path.exists():
-            await query.edit_message_text(_m(user_id, "zip_not_found"))
-            return
+    if choice == "fit":
+        state.pending_zip_path = None
+        state.status = "idle"
 
         await query.edit_message_text(_m(user_id, "delivery_sending"))
         try:
@@ -1545,12 +1735,8 @@ async def handle_delivery_choice(update: Update, context: ContextTypes.DEFAULT_T
         )
 
     elif choice == "garmin":
-        if state.pending_zip_path:
-            state.pending_zip_path.unlink(missing_ok=True)
-            state.pending_zip_path = None
-
         if not state.garmin_client:
-            state.status = "idle"
+            state.status = "awaiting_delivery_choice"
             if not _garmin_auth_available():
                 await query.edit_message_text(_m(user_id, "delivery_garmin_not_installed"))
             else:
@@ -1558,12 +1744,15 @@ async def handle_delivery_choice(update: Update, context: ContextTypes.DEFAULT_T
             return
 
         await query.edit_message_text(_m(user_id, "delivery_garmin_uploading"))
-        state.status = "idle"
-        await _garmin_upload_and_report(
+        uploaded = await _garmin_upload_and_report(
             context.application,
             query.message.chat_id,
             user_id,
         )
+        if uploaded:
+            state.status = "awaiting_delivery_choice" if state.pending_zip_path else "idle"
+        else:
+            state.status = "awaiting_delivery_choice"
 
 
 async def build_worker(application: Application) -> None:
@@ -1589,6 +1778,10 @@ def main() -> None:
     application = (
         Application.builder()
         .token(str(BOT_CONFIG["telegram_bot_token"]))
+        .connect_timeout(TELEGRAM_CONNECT_TIMEOUT_SEC)
+        .read_timeout(TELEGRAM_READ_TIMEOUT_SEC)
+        .write_timeout(TELEGRAM_WRITE_TIMEOUT_SEC)
+        .pool_timeout(TELEGRAM_POOL_TIMEOUT_SEC)
         .post_init(on_post_init)
         .build()
     )

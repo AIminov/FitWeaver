@@ -9,11 +9,50 @@
 - **`source_fact_mismatch` triggering retries:** demoted from validation error to warning.
   This soft date/distance heuristic check was the trigger for retries; a retry with
   feedback is what activated thinking mode on the second call.
+- **`source_fact_mismatch` demotion order:** source fact checks now run before
+  demotion, so the heuristic cannot be re-added as a blocking error after it was
+  converted to a warning.
+- **Single upper HR cap in cooldowns:** `до 130` / `HR <= 130` is documented in
+  the prompt as `hr_low: 80`, `hr_high: <cap>`, and the YAML repair layer
+  applies the same fallback to cooldown `hr_low: null` or `hr_low >= hr_high`.
 - **Excessive retries:** `MAX_RETRIES` reduced 3→1; `SUSPICIOUS_SEGMENT_RETRIES` 1→0.
+- **Telegram delivery buttons after restart:** stale inline delivery callbacks now
+  check that the temporary ZIP still exists and ask the user to rebuild with
+  `/build` instead of trying to upload missing artifacts.
+- **`/cancel` during LLM generation:** cancellation is acknowledged while the LLM
+  request is running, then processing stops immediately after the model returns.
+- **Telegram network timeout during Garmin login:** transient `TimedOut` /
+  `NetworkError` from status replies no longer aborts Garmin authentication.
+- **Garmin login after build:** `/connect_garmin` now restores the previous bot
+  state after authentication, so a built plan in `awaiting_delivery_choice` is
+  not forgotten.
+- **Garmin delivery fallback:** choosing Garmin before connecting no longer
+  deletes the pending ZIP or clears delivery state.
+- **Garmin upload after archive:** `/send_to_garmin` now falls back to in-memory
+  `yaml_text` when the build YAML file has already been moved to `Plan/plan_done/`.
+- **ZIP availability after Garmin upload:** successful Garmin upload no longer
+  deletes the pending ZIP; `/build` can re-send delivery buttons so the user can
+  still download the same FIT bundle.
 
 ### Changed
 - System prompt compressed: VALIDATION CHECKLIST 16 lines → 5 lines.
   Token count ~1419 → ~1141 (~275 tokens saved, ~20% faster prompt processing).
+- Telegram text messages that start with `workouts:` are treated as ready YAML,
+  validated/repaired, and loaded without an LLM call.
+- `/build` while delivery buttons are pending now asks the user to choose a
+  delivery option instead of incorrectly saying there is no confirmed YAML; if
+  the original inline keyboard was replaced by a Garmin warning, `/build`
+  re-sends the delivery buttons.
+- Garmin upload success messages now include the next steps: how to get the ZIP,
+  how to start a new LLM plan, and how to clear the Garmin session.
+- `docs/TELEGRAM_SETUP.md` troubleshooting now reflects the remaining causes of
+  long LLM generation after the retry fixes.
+- `docs/YAML_GUIDE.md` documents valid HR ranges and the recommended handling for
+  single upper HR caps.
+
+### Verified
+- Unit suite: `python -m unittest discover -q` - 192 tests passing.
+- Ruff on changed Python files: `python -m ruff check ...` - passing.
 
 ### Expected timings after fix
 | Plan size | Before | After |
