@@ -1,5 +1,24 @@
 ﻿# Changelog
 
+## 2026-04-20 — v10.3 (LLM Speed Fix + UX Polish)
+
+### Added (UX)
+- **3-message YAML preview:** YAML is now sent as a separate standalone message
+  after the status line, making it trivial to copy in Telegram without selecting
+  around surrounding text. Footer ("send /build") is a third message.
+- **Delivery keyboard after Garmin upload:** when a ZIP is still available after
+  uploading to Garmin Calendar, the bot immediately re-sends the delivery keyboard
+  so the user can also download the ZIP without typing `/build`.
+
+### Fixed (UX)
+- **`/send_to_garmin` status:** after a successful upload the bot now correctly
+  sets status to `awaiting_delivery_choice` only when the ZIP file actually exists
+  on disk; otherwise resets to `idle`.
+- **Dead i18n key removed:** `delivery_choice_busy` was defined but never sent —
+  removed from both RU and EN message dictionaries.
+
+---
+
 ## 2026-04-20 — v10.3 (LLM Speed Fix)
 
 ### Fixed
