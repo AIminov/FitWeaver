@@ -159,9 +159,10 @@ class GarminCalendarExporter:
         Seconds to sleep between uploads. Default 1.2 s (rate-limit safe).
     """
 
-    def __init__(self, client: Any, upload_delay: float = _UPLOAD_DELAY_SECS) -> None:
+    def __init__(self, client: Any, upload_delay: float = _UPLOAD_DELAY_SECS, language: str = "ru") -> None:
         self._client = client
         self._delay = upload_delay
+        self._language = language
 
     # ------------------------------------------------------------------
     # Single workout
@@ -176,7 +177,7 @@ class GarminCalendarExporter:
         str
             The assigned workout_id from Garmin Connect.
         """
-        payload = map_workout(workout)
+        payload = map_workout(workout, self._language)
         logger.debug("Uploading workout %r ...", workout.filename)
         response = self._client.upload_workout(payload)
         workout_id = self._extract_workout_id(response)
@@ -227,7 +228,7 @@ class GarminCalendarExporter:
         )
 
         if dry_run:
-            payload = map_workout(workout)
+            payload = map_workout(workout, self._language)
             step_count = len(
                 payload.get("workoutSegments", [{}])[0].get("workoutSteps", [])
             )

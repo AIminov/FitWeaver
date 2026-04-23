@@ -376,7 +376,7 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
                 return "uploaded 1"
 
         class _Exporter:
-            def __init__(self, client):
+            def __init__(self, client, **kwargs):
                 self.client = client
 
             def upload_plan(self, plan, schedule, dry_run, year):

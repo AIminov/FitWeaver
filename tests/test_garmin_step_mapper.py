@@ -371,9 +371,15 @@ class TestSbuBlock(unittest.TestCase):
 
     def test_drill_description_is_step_note(self):
         drills = [Drill(name="Bounds", seconds=20, reps=2)]
-        result = map_steps([_step(step_type="sbu_block", drills=drills)])
+        result = map_steps([_step(step_type="sbu_block", drills=drills)], language="ru")
         children = result[0]["workoutSteps"]
         self.assertEqual(children[0]["description"], "Bounds")
+        self.assertEqual(children[1]["description"], "Отдых")
+
+    def test_drill_description_english(self):
+        drills = [Drill(name="Bounds", seconds=20, reps=2)]
+        result = map_steps([_step(step_type="sbu_block", drills=drills)], language="en")
+        children = result[0]["workoutSteps"]
         self.assertEqual(children[1]["description"], "Recovery")
 
     def test_end_condition_iterations(self):

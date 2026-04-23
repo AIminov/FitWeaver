@@ -249,7 +249,11 @@ def _map_open_step(_step: WorkoutStep, order: int) -> dict[str, Any]:
     )
 
 
-def _map_sbu_block(step: WorkoutStep, order: int) -> list[dict[str, Any]]:
+_SBU_RECOVERY_LABEL = {"ru": "Отдых", "en": "Recovery"}
+_SBU_DRILL_FALLBACK = {"ru": "Упражнение", "en": "Drill"}
+
+
+def _map_sbu_block(step: WorkoutStep, order: int, language: str = "ru") -> list[dict[str, Any]]:
     """
     SBU block → one RepeatGroupDTO per drill.
 
@@ -259,10 +263,13 @@ def _map_sbu_block(step: WorkoutStep, order: int) -> list[dict[str, Any]]:
     Drill name/seconds/reps come from step.drills; if absent, use the same
     default drill set as the FIT builder.
     """
+    recovery_label = _SBU_RECOVERY_LABEL.get(language, "Recovery")
+    drill_fallback = _SBU_DRILL_FALLBACK.get(language, "Drill")
+
     if step.drills:
         drills = [
             {
-                "name": drill.name or f"Drill {idx}",
+                "name": drill.name or f"{drill_fallback} {idx}",
                 "seconds": drill.seconds or 60,
                 "reps": drill.reps or _SBU_DEFAULT_REPS,
             }
@@ -273,7 +280,7 @@ def _map_sbu_block(step: WorkoutStep, order: int) -> list[dict[str, Any]]:
 
     groups: list[dict[str, Any]] = []
     for offset, drill in enumerate(drills):
-        name = str(drill.get("name") or f"Drill {offset + 1}")
+        name = str(drill.get("name") or f"{drill_fallback} {offset + 1}")
         seconds = float(drill.get("seconds") or 60)
         reps = int(drill.get("reps") or _SBU_DEFAULT_REPS)
 
@@ -292,7 +299,7 @@ def _map_sbu_block(step: WorkoutStep, order: int) -> list[dict[str, Any]]:
                 END_COND_TIME,
                 _SBU_RECOVERY_SECS,
                 TARGET_NO,
-                description="Recovery",
+                description=recovery_label,
             ),
         ]
         groups.append(_repeat_group(order + offset, reps, child_steps))
@@ -364,10 +371,17 @@ def _map_single_step(
     order: int,
     all_steps: list[WorkoutStep],
     current_idx: int,
+    language: str = "ru",
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     stype = step.step_type
     if stype == "repeat":
         return _map_repeat(step, order, all_steps, current_idx)
+    if stype == "sbu_block":
+        try:
+            return _map_sbu_block(step, order, language)
+        except Exception as exc:
+            logger.warning("Failed to map sbu_block (order %d): %s", order, exc)
+            return None
     mapper = _MAPPERS.get(stype or "")
     if mapper is None:
         logger.warning("Unknown step type %r — skipped", stype)
@@ -383,7 +397,7 @@ def _map_single_step(
 # Public API
 # ---------------------------------------------------------------------------
 
-def map_steps(steps: list[WorkoutStep]) -> list[dict[str, Any]]:
+def map_steps(steps: list[WorkoutStep], language: str = "ru") -> list[dict[str, Any]]:
     """
     Convert a list of WorkoutStep domain objects to a flat list of
     Garmin workout-service step dicts.
@@ -409,7 +423,7 @@ def map_steps(steps: list[WorkoutStep]) -> list[dict[str, Any]]:
             mapped = _map_repeat(step, len(result) + 1, steps, idx)
             result.append(mapped)
         else:
-            mapped_s = _map_single_step(step, len(result) + 1, steps, idx)
+            mapped_s = _map_single_step(step, len(result) + 1, steps, idx, language)
             if isinstance(mapped_s, list):
                 result.extend(mapped_s)
             elif mapped_s is not None:
@@ -418,14 +432,14 @@ def map_steps(steps: list[WorkoutStep]) -> list[dict[str, Any]]:
     return result
 
 
-def map_workout(workout: Workout) -> dict[str, Any]:
+def map_workout(workout: Workout, language: str = "ru") -> dict[str, Any]:
     """
     Build a complete Garmin workout-service payload from a Workout domain object.
 
     Returns a dict ready to pass to client.upload_workout() or
     client.upload_running_workout().
     """
-    workout_steps = map_steps(workout.steps)
+    workout_steps = map_steps(workout.steps, language)
 
     estimated_secs: float = 0.0
     if workout.estimated_duration_min:

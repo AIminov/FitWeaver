@@ -850,7 +850,7 @@ async def _garmin_upload_and_report(
 
         plan = plan_from_data(plan_data)
 
-        exporter = GarminCalendarExporter(state.garmin_client)
+        exporter = GarminCalendarExporter(state.garmin_client, language=_lang(user_id))
         result = await asyncio.to_thread(
             exporter.upload_plan, plan, True, False, year
         )
