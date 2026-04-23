@@ -551,6 +551,16 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                     step[field_name] = coerced
                     notes.append(f"{s_prefix}: coerced {field_name} to integer {coerced}")
 
+            if step.get("type") == "repeat" and s_idx > 0:
+                bto = step.get("back_to_offset")
+                if isinstance(bto, int) and bto >= s_idx:
+                    fixed = s_idx - 1
+                    step["back_to_offset"] = fixed
+                    notes.append(
+                        f"{s_prefix}: repaired back_to_offset {bto} >= step index {s_idx}"
+                        f" -> {fixed}"
+                    )
+
             if "km" in step:
                 coerced_km = _coerce_float(step.get("km"))
                 if coerced_km != step.get("km"):

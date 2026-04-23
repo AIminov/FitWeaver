@@ -189,9 +189,30 @@ python -m garmin_fit.cli garmin-calendar --plan Plan/my_plan.yaml --dry-run
 ```bash
 python -m garmin_fit.cli garmin-calendar \
   --plan Plan/my_plan.yaml \
+  --email your@email.com \
+  --password yourpassword \
   --year 2026 \
   --from-date 2026-06-01 \
   --to-date 2026-06-30
+```
+
+**Удалить загруженные тренировки за диапазон дат:**
+```bash
+python -m garmin_fit.cli garmin-calendar-delete \
+  --email your@email.com \
+  --password yourpassword \
+  --year 2026 \
+  --from-date 2026-06-01 \
+  --to-date 2026-06-30 \
+  --dry-run
+
+python -m garmin_fit.cli garmin-calendar-delete \
+  --email your@email.com \
+  --password yourpassword \
+  --year 2026 \
+  --from-date 2026-06-01 \
+  --to-date 2026-06-30 \
+  --confirm
 ```
 
 **Все параметры:**

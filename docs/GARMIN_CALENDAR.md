@@ -126,6 +126,48 @@ python -m garmin_fit.cli garmin-calendar \
   --to-date 2026-05-17
 ```
 
+With explicit credentials:
+
+```bash
+python -m garmin_fit.cli garmin-calendar \
+  --plan Plan/my_plan.yaml \
+  --email your@email.com \
+  --password yourpassword \
+  --year 2026 \
+  --from-date 2026-05-01 \
+  --to-date 2026-05-17
+```
+
+### CLI - delete uploaded workouts
+
+Preview FitWeaver-named workouts that would be deleted:
+
+```bash
+python -m garmin_fit.cli garmin-calendar-delete \
+  --email your@email.com \
+  --password yourpassword \
+  --year 2026 \
+  --from-date 2026-05-01 \
+  --to-date 2026-05-17 \
+  --dry-run
+```
+
+Delete after preview:
+
+```bash
+python -m garmin_fit.cli garmin-calendar-delete \
+  --email your@email.com \
+  --password yourpassword \
+  --year 2026 \
+  --from-date 2026-05-01 \
+  --to-date 2026-05-17 \
+  --confirm
+```
+
+By default, deletion only targets workout names with the FitWeaver date pattern
+`Wxx_MM-DD_...`. Use `--all` only when you intentionally want to include every
+inspected Garmin workout.
+
 Use `--dry-run` with the same filters first to verify which workouts will be
 uploaded.
 

@@ -66,6 +66,27 @@ def build_parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--to-date", metavar="YYYY-MM-DD",
                            help="Only upload workouts on or before this date")
 
+    gcd_parser = subparsers.add_parser(
+        "garmin-calendar-delete",
+        help="Delete uploaded FitWeaver workouts from Garmin Connect",
+    )
+    gcd_parser.add_argument("--email", metavar="EMAIL", help="Garmin account email (or GARMIN_EMAIL env)")
+    gcd_parser.add_argument("--password", metavar="PASSWORD", help="Garmin account password (or GARMIN_PASSWORD env)")
+    gcd_parser.add_argument("--token-dir", metavar="DIR", help="Directory for token storage (default: ~/.garminconnect)")
+    gcd_parser.add_argument("--year", type=int, metavar="YEAR", help="Year used to interpret workout names")
+    gcd_parser.add_argument("--from-date", metavar="YYYY-MM-DD",
+                            help="Only delete workouts on or after this date")
+    gcd_parser.add_argument("--to-date", metavar="YYYY-MM-DD",
+                            help="Only delete workouts on or before this date")
+    gcd_parser.add_argument("--limit", type=int, default=200, metavar="N",
+                            help="Max workouts to inspect from Garmin Connect (default: 200)")
+    gcd_parser.add_argument("--all", action="store_true",
+                            help="Delete all inspected workouts, including non-FitWeaver names")
+    gcd_parser.add_argument("--dry-run", action="store_true",
+                            help="Show matched workouts but do not delete them")
+    gcd_parser.add_argument("--confirm", action="store_true",
+                            help="Required for live deletion")
+
     return parser
 
 
@@ -126,6 +147,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             skip_past=args.skip_past,
             from_date=args.from_date,
             to_date=args.to_date,
+        )
+    if command == "garmin-calendar-delete":
+        return workflow_module.workflow_garmin_calendar_delete(
+            email=args.email,
+            password=args.password,
+            token_dir=args.token_dir,
+            year=args.year,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            limit=args.limit,
+            delete_all=args.all,
+            dry_run=args.dry_run,
+            confirm=args.confirm,
         )
 
     parser.error(f"Unsupported command: {command}")

@@ -19,6 +19,24 @@ class PackageCliTests(unittest.TestCase):
         self.assertEqual(args.command, "doctor")
         self.assertTrue(args.llm)
 
+        args = parser.parse_args(
+            [
+                "garmin-calendar-delete",
+                "--year",
+                "2026",
+                "--from-date",
+                "2026-06-01",
+                "--to-date",
+                "2026-06-30",
+                "--dry-run",
+            ]
+        )
+        self.assertEqual(args.command, "garmin-calendar-delete")
+        self.assertEqual(args.year, 2026)
+        self.assertEqual(args.from_date, "2026-06-01")
+        self.assertEqual(args.to_date, "2026-06-30")
+        self.assertTrue(args.dry_run)
+
     def test_legacy_cli_parser_exposes_legacy_subcommands(self):
         from garmin_fit.legacy_cli import build_parser
 

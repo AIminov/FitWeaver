@@ -8,6 +8,7 @@ import logging
 import subprocess
 import sys
 import tempfile
+import datetime
 from importlib.util import find_spec
 from pathlib import Path
 from time import perf_counter
@@ -31,6 +32,110 @@ def print_header(title):
     print(f"  {title}")
     print("=" * 70)
     print("")
+
+
+def _resolve_garmin_token_dir(email=None, token_dir=None):
+    """Return the token directory used by Garmin CLI commands."""
+    if token_dir:
+        return Path(token_dir)
+    if not email:
+        return None
+
+    import hashlib
+
+    email_slug = hashlib.md5(email.lower().encode()).hexdigest()[:8]
+    resolved = Path.home() / ".garminconnect" / f"cli_{email_slug}"
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
+def _connect_garmin_cli_client(email=None, password=None, token_dir=None):
+    """Authenticate Garmin Connect for CLI workflows."""
+    from .garmin_auth_manager import GarminAuthManager
+
+    manager = GarminAuthManager(
+        email=email,
+        password=password,
+        token_dir=_resolve_garmin_token_dir(email=email, token_dir=token_dir),
+        prompt_mfa=lambda: input("Garmin MFA code: "),
+    )
+    client = manager.connect()
+    if client == "needs_mfa":
+        raise RuntimeError("MFA required but could not be completed interactively.")
+    return client
+
+
+def _parse_cli_date(value):
+    if value is None:
+        return None
+    return datetime.date.fromisoformat(value)
+
+
+def _garmin_workout_name(workout):
+    return str(
+        workout.get("workoutName")
+        or workout.get("name")
+        or workout.get("title")
+        or ""
+    )
+
+
+def _garmin_workout_id(workout):
+    value = workout.get("workoutId") or workout.get("id")
+    return str(value) if value is not None else ""
+
+
+def _select_garmin_workouts_for_delete(
+    workouts,
+    *,
+    year=None,
+    from_date=None,
+    to_date=None,
+    delete_all=False,
+):
+    """Select Garmin workouts for CLI deletion.
+
+    By default only FitWeaver-style names with ``_MM-DD_`` are selected.
+    ``delete_all=True`` includes non-matching workout names, but date filters
+    still require a date that can be parsed from the workout name.
+    """
+    from .garmin_step_mapper import extract_date_from_filename
+
+    from_d = _parse_cli_date(from_date)
+    to_d = _parse_cli_date(to_date)
+    if from_d and to_d and from_d > to_d:
+        raise ValueError("--from-date must be before or equal to --to-date")
+
+    selected = []
+    skipped = []
+    has_date_filter = from_d is not None or to_d is not None
+
+    for workout in workouts:
+        name = _garmin_workout_name(workout)
+        workout_id = _garmin_workout_id(workout)
+        date_text = extract_date_from_filename(name, year=year)
+
+        if not workout_id:
+            skipped.append((workout, "missing workoutId"))
+            continue
+        if date_text is None:
+            if delete_all and not has_date_filter:
+                selected.append((workout, None))
+            else:
+                skipped.append((workout, "no FitWeaver date in name"))
+            continue
+
+        workout_date = _parse_cli_date(date_text)
+        if from_d and workout_date < from_d:
+            skipped.append((workout, f"before --from-date {from_d}"))
+            continue
+        if to_d and workout_date > to_d:
+            skipped.append((workout, f"after --to-date {to_d}"))
+            continue
+
+        selected.append((workout, date_text))
+
+    return selected, skipped
 
 
 def run_step(step_name, script_path=None, args=None, module_name=None, run_id=None):
@@ -532,32 +637,13 @@ def workflow_garmin_calendar(
 
     # ------------------------------------------------------------------ auth
     if not dry_run:
-        from .garmin_auth_manager import GarminAuthManager
-
         print("Authenticating with Garmin Connect...")
-        # Derive a per-email token directory so different accounts don't
-        # overwrite each other's cached tokens.
-        if token_dir:
-            resolved_token_dir: Path | None = Path(token_dir)
-        elif email:
-            import hashlib
-            email_slug = hashlib.md5(email.lower().encode()).hexdigest()[:8]
-            resolved_token_dir = Path.home() / ".garminconnect" / f"cli_{email_slug}"
-            resolved_token_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            resolved_token_dir = None
-
         try:
-            manager = GarminAuthManager(
+            client = _connect_garmin_cli_client(
                 email=email,
                 password=password,
-                token_dir=resolved_token_dir,
-                prompt_mfa=lambda: input("Garmin MFA code: "),
+                token_dir=token_dir,
             )
-            client = manager.connect()
-            if client == "needs_mfa":
-                print("[FAIL] MFA required but could not be completed interactively.")
-                return 1
         except Exception as exc:
             print(f"[FAIL] Authentication failed: {exc}")
             return 1
@@ -594,6 +680,128 @@ def workflow_garmin_calendar(
         print("[OK] All workouts uploaded to Garmin Connect Calendar")
         print("Sync your watch to see the scheduled workouts.")
     return 0
+
+
+def workflow_garmin_calendar_delete(
+    email=None,
+    password=None,
+    token_dir=None,
+    year=None,
+    from_date=None,
+    to_date=None,
+    limit=200,
+    delete_all=False,
+    dry_run=False,
+    confirm=False,
+):
+    """
+    Delete Garmin Connect workouts selected by FitWeaver date-style names.
+
+    Live deletion requires ``confirm=True``. By default non-FitWeaver workout
+    names are ignored so manually created Garmin workouts are not removed by
+    accident. Use ``delete_all=True`` only for a full account cleanup.
+    """
+    print_header("GARMIN CONNECT WORKOUT DELETE")
+
+    from .garmin_auth_manager import is_available as _garmin_auth_available
+
+    if not _garmin_auth_available():
+        print("[FAIL] garmin-auth / garminconnect not installed.")
+        print("  Run:  pip install garminconnect garmin-auth")
+        return 1
+
+    if limit <= 0:
+        print("[FAIL] --limit must be positive")
+        return 1
+
+    try:
+        _parse_cli_date(from_date)
+        _parse_cli_date(to_date)
+        if from_date and to_date and _parse_cli_date(from_date) > _parse_cli_date(to_date):
+            raise ValueError("--from-date must be before or equal to --to-date")
+    except ValueError as exc:
+        print(f"[FAIL] Invalid date filter: {exc}")
+        return 1
+
+    print(f"Scope:        {'all inspected workouts' if delete_all else 'FitWeaver-named workouts'}")
+    print(f"Year:         {year or 'auto'}")
+    print(f"From date:    {from_date or '-'}")
+    print(f"To date:      {to_date or '-'}")
+    print(f"Limit:        {limit}")
+    print(f"Dry run:      {dry_run}")
+    print("")
+
+    print("Authenticating with Garmin Connect...")
+    try:
+        client = _connect_garmin_cli_client(
+            email=email,
+            password=password,
+            token_dir=token_dir,
+        )
+    except Exception as exc:
+        print(f"[FAIL] Authentication failed: {exc}")
+        return 1
+    print("[OK] Authenticated")
+
+    try:
+        workouts = client.get_workouts(0, limit)
+    except Exception as exc:
+        print(f"[FAIL] Failed to list Garmin workouts: {exc}")
+        return 1
+
+    try:
+        selected, skipped = _select_garmin_workouts_for_delete(
+            workouts,
+            year=year,
+            from_date=from_date,
+            to_date=to_date,
+            delete_all=delete_all,
+        )
+    except ValueError as exc:
+        print(f"[FAIL] {exc}")
+        return 1
+
+    print_header("DELETE PREVIEW")
+    print(f"Inspected:    {len(workouts)}")
+    print(f"Matched:      {len(selected)}")
+    print(f"Skipped:      {len(skipped)}")
+    print("")
+
+    if not selected:
+        print("[OK] Nothing to delete")
+        return 0
+
+    for workout, date_text in selected:
+        date_label = date_text or "no-date"
+        print(f"  {_garmin_workout_id(workout)}  {date_label}  {_garmin_workout_name(workout)}")
+
+    if dry_run:
+        print("")
+        print("[DRY RUN] No workouts deleted. Re-run with --confirm to delete.")
+        return 0
+
+    if not confirm:
+        print("")
+        print("[FAIL] Live deletion requires --confirm. Run with --dry-run first to preview.")
+        return 1
+
+    print("")
+    print(f"Deleting {len(selected)} workout(s)...")
+    deleted = 0
+    failed = 0
+    for workout, _date_text in selected:
+        workout_id = _garmin_workout_id(workout)
+        try:
+            client.delete_workout(workout_id)
+            deleted += 1
+        except Exception as exc:
+            failed += 1
+            print(f"  [FAIL] {workout_id}: {exc}")
+
+    print_header("DELETE SUMMARY")
+    print(f"Deleted:      {deleted}")
+    print(f"Failed:       {failed}")
+    return 0 if failed == 0 else 1
 
 
 def workflow_validate_yaml(plan_path=None):
