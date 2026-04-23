@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "garmin-fit-generator"
-version = "10.4.0"
+version = "10.4.1"
 description = "Generate Garmin FIT workout files from training plans."
 readme = "README.md"
 requires-python = ">=3.10"

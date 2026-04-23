@@ -1,5 +1,16 @@
 ﻿# Changelog
 
+## 2026-04-23 — v10.4.1 (SBU Localization)
+
+### Fixed
+- **SBU drill labels in Garmin Calendar** are now shown in the user's chosen language.
+  - Recovery step: `"Отдых"` (ru) / `"Recovery"` (en)
+  - Unnamed drill fallback: `"Упражнение N"` (ru) / `"Drill N"` (en)
+  - `DEFAULT_DRILLS` names (`"Выс.бедро"`, `"Захлест"`, etc.) were already in Russian.
+- `GarminCalendarExporter` accepts `language` parameter; Telegram bot passes `_lang(user_id)` when creating the exporter, so the language follows the user's `/start` choice.
+
+---
+
 ## 2026-04-23 — v10.4 (Code Quality Pass)
 
 ### Added
