@@ -310,6 +310,13 @@ python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --from-date 2026-
 python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --skip-past --year 2026
 ```
 
+### Garmin Calendar Delete
+
+```bash
+python -m garmin_fit.cli garmin-calendar-delete --email you@example.com --password yourpassword --year 2026 --from-date 2026-06-01 --to-date 2026-06-30 --dry-run
+python -m garmin_fit.cli garmin-calendar-delete --email you@example.com --password yourpassword --year 2026 --from-date 2026-06-01 --to-date 2026-06-30 --confirm
+```
+
 ### LLM Generation
 
 ```bash
@@ -329,10 +336,13 @@ python -m garmin_fit.legacy_cli compare --plan Plan/plan.yaml
 ### Other
 
 ```bash
-python -m garmin_fit.runner          # Interactive menu
+python -m garmin_fit.runner          # Interactive menu (recommended for local LLM users)
 python -m garmin_fit.bot             # Telegram bot
 python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml  # Quick validation
 ```
+
+The interactive menu (`garmin_fit.runner`) covers the full local workflow in one place:
+LLM generation → build → validate → Garmin Calendar upload/delete → archive.
 
 ---
 

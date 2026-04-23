@@ -1,5 +1,48 @@
 ﻿# Changelog
 
+## 2026-04-23 — v10.4 (Code Quality Pass)
+
+### Added
+- **Interactive runner** (`python -m garmin_fit.runner`): loop-based menu with 14 options
+  covering all workflows — LLM generation, direct build, Garmin Calendar upload/delete/dry-run,
+  archive management, validation. Reads `GARMIN_EMAIL` / `GARMIN_PASSWORD` from env or prompts.
+- **`workout_utils.build_yaml_to_fit_index()`**: canonical implementation for domain-object step lists,
+  shared by both build paths. Eliminates duplicate logic between `build_from_plan.py` and `generate_from_yaml.py`.
+
+### Fixed
+- **`Scripts/telegram_bot.py` silent exit:** shim replaced `sys.modules["__main__"]` but never
+  called `main()`. Added `if __name__ == "__main__": raise SystemExit(_impl.main())`.
+- **Duplicate log handlers:** `setup_file_logging()` now guards against adding a second
+  `FileHandler` to the root logger when called more than once in the same process.
+- **Silent date parse failure in calendar export:** `_date_in_range()` now logs a warning
+  when a workout filename date is unparseable, instead of silently including it in all ranges.
+- **Silent data loss in domain layer:** `plan_from_data()`, `workout_from_data()`, `step_from_data()`
+  now log a warning with a count when non-Mapping items are filtered from lists.
+- **`pip install` Python version constraint:** `requires-python` changed from `>=3.13` → `>=3.10`.
+
+### Improved
+- **Partial build failure reporting:** `build_all_fits_from_plan` now lists the names of failed
+  workouts in the final summary and warns about partial results left in `Output_fit/`.
+- **`test_config.py` test isolation:** replaced manual `importlib.reload` cleanup with
+  `setUp`/`tearDown` methods; `tearDown` is guaranteed to run even when a test raises.
+- **HR upper bound:** added `le=250` to all HR fields in Pydantic schema — previously `hr_high=500` was accepted.
+- **Pace validation deduplication:** `_validate_pace()` removed from `plan_validator.py`;
+  both modules now use `_is_valid_pace()` from `plan_schema.py`. Same for `_check_pace_ordering()`.
+- **`llm/benchmark.py`:** removed unused `ROOT` intermediate variable; `DEFAULT_SUITE` uses `PROJECT_ROOT` directly.
+- **`check_fit.py`:** hardcoded `1_000_000` byte threshold extracted to named constant `_LARGE_FILE_BYTES`.
+
+### Documentation
+- `README.md` / `README.ru.md`: added Garmin Calendar Delete section, improved runner description.
+- `docs/PROJECT_FLOW.md`: fixed `python -m garmin_fit.check_fit` → `python -m garmin_fit.cli validate-fit`.
+- `docs/LLM_VALIDATION_SYSTEM.md`: removed broken links to removed doc files.
+- `CLAUDE.md`: expanded with module list, `back_to_offset` critical note, pipeline overview.
+
+### Verified
+- Unit suite: `python3 -m pytest tests/ -q` — 196 tests passing.
+- Ruff: `ruff check src/` — clean.
+
+---
+
 ## 2026-04-20 — v10.3 (LLM Speed Fix + UX Polish)
 
 ### Added (UX)

@@ -393,6 +393,34 @@ def repeat_step(idx, back_to, count):
 # FIT File Saving
 # ============================================================================
 
+def build_yaml_to_fit_index(steps) -> dict:
+	"""
+	Build {yaml_step_index: fit_start_index} mapping, accounting for sbu_block expansion.
+
+	sbu_block is the only step type that expands into multiple FIT steps, so YAML
+	and FIT step indices diverge whenever one is present. repeat.back_to_offset must
+	be translated through this mapping before writing to the FIT file.
+
+	This is the canonical implementation for domain-object step lists.
+	generate_from_yaml._build_yaml_to_fit_index is a parallel version that also
+	handles raw dicts (legacy template path) — keep both in sync when adding new
+	expandable step types.
+	"""
+	from .sbu_block import sbu_block as _sbu
+	from .plan_domain import drill_to_data
+
+	mapping: dict[int, int] = {}
+	fit_idx = 0
+	for yaml_idx, step in enumerate(steps):
+		mapping[yaml_idx] = fit_idx
+		if step.step_type == "sbu_block":
+			drills = [drill_to_data(d) for d in step.drills] if step.drills else None
+			_, fit_idx = _sbu(fit_idx, drills=drills)
+		else:
+			fit_idx += 1
+	return mapping
+
+
 def save_workout(filepath, name, steps, serial_number=12345, time_created_ms=None):
     """
     Build and save a FIT workout file.

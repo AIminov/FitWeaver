@@ -1,6 +1,43 @@
-# Garmin FIT Workout Generator — Claude Context
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 See `version.txt` for project version history.
+
+## Development Setup
+
+```bash
+pip install -e ".[dev]"          # editable install with test/lint deps
+pip install -e ".[garmin-calendar]"  # add Garmin Connect upload support
+```
+
+## Common Commands
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run a single test file
+python -m pytest tests/test_build_from_plan.py
+
+# Run a single test by name
+python -m pytest tests/test_plan_validator.py -k test_repeat_back_to_offset
+
+# Lint (tabs are the project style — E501/W19x are intentionally ignored)
+ruff check src/
+
+# Full workflow
+python -m garmin_fit.cli run
+
+# Validate YAML plan
+python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
+
+# LLM generation (LM Studio)
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1
+
+# Interactive menu
+python -m garmin_fit.runner
+```
 
 ## Pipeline
 
@@ -53,19 +90,23 @@ Filename pattern: `W{iso_week}_{MM-DD}_{Day}_{Type}_{Details}`
 ## Architecture (src/garmin_fit is canonical)
 
 ```
-src/garmin_fit/   ← canonical source
-garmin_fit/       ← alias layer (sys.modules redirect or copy-pattern)
-Scripts/          ← compatibility shims (copy-pattern, reload for testability)
+src/garmin_fit/   ← canonical source — ALL edits go here
+garmin_fit/       ← alias layer (sys.modules redirect or copy-pattern) — DO NOT edit directly
+Scripts/          ← compatibility shims (copy-pattern, reload for testability) — DO NOT edit directly
 ```
 
 Key modules:
 - `config.py` — paths; `GARMIN_FIT_RUNTIME_DIR` env var overrides `RUNTIME_ROOT`
-- `cli.py` / `legacy_cli.py` / `validate_cli.py` — CLI entry points
+- `cli.py` / `legacy_cli.py` / `validate_cli.py` / `runtime_cli.py` — CLI entry points
 - `_shared_cli.py` — `configure_logging()`, `generate_run_id()`
 - `plan_service.py` — service layer (LLM draft, SBU custom drills, preview)
 - `pipeline_runner.py` — programmatic wrapper around orchestrator
 - `runtime_layout.py` — init/copy mutable runtime directory structure
+- `garmin_calendar_export.py` — Garmin Connect Calendar upload/delete
+- `garmin_auth_manager.py` — token caching for Garmin Connect auth
+- `garmin_step_mapper.py` — maps YAML step types to Garmin API payloads
 - `llm/request_cli.py` — LLM generation CLI; `--workouts N` overrides expected count
+- `bot.py` / `telegram_bot.py` — Telegram bot entry point and handler logic
 
 ## JSON Schema (Pydantic)
 

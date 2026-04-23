@@ -425,9 +425,7 @@ python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 | `src/garmin_fit/llm/prompt.py` | Renders contract and examples into prompt; includes checklist |
 | `src/garmin_fit/plan_validator.py` | Runtime validation logic (source of truth) |
 | `src/garmin_fit/plan_domain.py` | Constants: STEP_REQUIRED_FIELDS, ALLOWED_INTENSITY, etc. |
-| `docs/LLM_YAML_RULES.md` | Human-readable LLM guide with examples |
-| `docs/YAML_GUIDE.md` | Complete YAML syntax reference |
-| `YAML_VALIDATION.md` | Validation guide for users |
+| `docs/YAML_GUIDE.md` | Complete YAML syntax reference and human-readable LLM guide |
 
 ## Key Takeaways
 

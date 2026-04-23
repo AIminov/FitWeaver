@@ -15,8 +15,7 @@ from ..config import ARTIFACTS_DIR, PROJECT_ROOT
 from ..plan_validator import validate_plan_data_detailed
 from .client import UnifiedLLMClient
 
-ROOT = PROJECT_ROOT
-DEFAULT_SUITE = ROOT / "tests" / "fixtures" / "llm_benchmark" / "plan_week_2026_03_02.yaml"
+DEFAULT_SUITE = PROJECT_ROOT / "tests" / "fixtures" / "llm_benchmark" / "plan_week_2026_03_02.yaml"
 
 
 @dataclass(slots=True)

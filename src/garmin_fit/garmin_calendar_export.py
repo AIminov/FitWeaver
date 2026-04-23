@@ -77,7 +77,12 @@ def _date_in_range(
     d = _parse_date(date_str)
 
     if d is None:
-        # No date extracted — always include (will upload without scheduling)
+        if date_str is not None:
+            # date_str was provided but failed to parse — log so it's not silent
+            logger.warning(
+                "Could not parse date %r — workout included without date filtering", date_str
+            )
+        # No (valid) date: always include, upload without scheduling
         return True, ""
     if skip_past and d < today:
         return False, f"past date {date_str} (before {today})"

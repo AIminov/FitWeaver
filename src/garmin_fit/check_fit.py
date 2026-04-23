@@ -24,6 +24,8 @@ except ImportError:
     from config import OUTPUT_DIR, ROOT
     from state_manager import from_fit_timestamp
 
+_LARGE_FILE_BYTES = 1_000_000  # 1 MB — typical Garmin workout FIT files are <50 KB
+
 try:
     from garmin_fit_sdk import Decoder, Stream
 except ImportError:
@@ -84,7 +86,7 @@ def validate_fit_file(file_path, strict=True):
         results["errors"].append("File is empty")
         results["valid"] = False
         return results
-    elif file_size > 1_000_000:  # 1MB
+    elif file_size > _LARGE_FILE_BYTES:
         results["warnings"].append(f"File is large: {file_size:,} bytes")
 
     # Try to decode

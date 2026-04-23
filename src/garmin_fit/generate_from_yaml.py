@@ -121,16 +121,12 @@ def _workout_value(workout, field, default=None):
 
 def _build_yaml_to_fit_index(steps):
     """
-    Build a mapping from YAML step index to FIT runtime step index.
+    Build {yaml_step_index: fit_start_index} mapping for the legacy template path.
 
-    Needed because sbu_block expands into multiple FIT steps at generation time,
-    so YAML step indices and FIT step indices diverge when sbu_block is present.
-
-    Args:
-        steps: List of YAML step dicts
-
-    Returns:
-        dict: {yaml_step_index: fit_start_index}
+    Accepts both raw dicts (YAML-loaded) and domain objects, because template
+    generation may receive either. For domain-object-only callers the canonical
+    version is workout_utils.build_yaml_to_fit_index — keep both in sync when
+    adding new expandable step types (currently only sbu_block expands).
     """
     from .sbu_block import sbu_block as _sbu_probe
 

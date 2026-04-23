@@ -23,6 +23,7 @@ from .workout_utils import (
     CD,
     REC,
     WU,
+    build_yaml_to_fit_index,
     dist_hr,
     dist_open,
     dist_pace,
@@ -81,25 +82,11 @@ def load_plan_build_input(yaml_path: Path) -> PlanBuildInput:
     return PlanBuildInput(plan=plan, repairs=repairs, warnings=warnings)
 
 
-def _build_yaml_to_fit_index(steps):
-    """Build mapping {yaml_step_index: fit_start_index} accounting for sbu_block expansion."""
-    mapping = {}
-    fit_idx = 0
-    for yaml_idx, step in enumerate(steps):
-        mapping[yaml_idx] = fit_idx
-        if step.step_type == "sbu_block":
-            drills = _drills_to_data(step.drills)
-            _, fit_idx = sbu_block(fit_idx, drills=drills)
-        else:
-            fit_idx += 1
-    return mapping
-
-
 def build_workout_steps(workout: Workout):
     """Build FIT workout steps directly from a workout domain object."""
     steps = []
     idx = 0
-    yaml_to_fit = _build_yaml_to_fit_index(workout.steps)
+    yaml_to_fit = build_yaml_to_fit_index(workout.steps)
 
     for step in workout.steps:
         step_type = step.step_type
@@ -192,22 +179,32 @@ def build_all_fits_from_plan(yaml_path: Path, verify_with_csv: bool = False):
 
     verifier = _load_fit_verifier() if verify_with_csv else None
     success_count = 0
+    failed_names: list[str] = []
 
     for workout, (serial, timestamp) in zip(workouts, serial_timestamp_pairs):
+        name = workout.filename or workout.name or "?"
         try:
             fit_path = build_fit_from_workout(workout, serial, timestamp)
-            logger.info(f"  [OK] Generated: {fit_path.name}")
             if verifier is None or verifier(fit_path):
+                logger.info(f"  [OK] Generated: {fit_path.name}")
                 success_count += 1
             else:
                 logger.warning(f"  [FAIL] CSV verification failed: {fit_path.name}")
+                failed_names.append(name)
         except Exception as exc:
-            name = workout.filename or workout.name or "?"
             logger.error(f"  [FAIL] {name}: {exc}", exc_info=True)
+            failed_names.append(name)
 
     logger.info("")
     logger.info("=" * 70)
     logger.info(f"BUILD COMPLETE: {success_count}/{len(workouts)} successful")
+    if failed_names:
+        logger.warning(f"FAILED ({len(failed_names)}): {', '.join(failed_names)}")
+        if success_count > 0:
+            logger.warning(
+                f"Partial results are in {OUTPUT_DIR} — "
+                "remove or overwrite before retrying to avoid duplicates."
+            )
     logger.info("=" * 70)
 
     if success_count > 0:

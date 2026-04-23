@@ -6,7 +6,7 @@
 2. LLM-пайплайн преобразует текст в YAML и сохраняет его в `Plan/*.yaml`.
 3. Pipeline готовит build artifacts: repaired YAML и machine-readable build report.
 4. Полный workflow `python -m garmin_fit.cli run` строит FIT напрямую из YAML/domain objects.
-5. `python -m garmin_fit.check_fit` валидирует все файлы в `Output_fit/`.
+5. `python -m garmin_fit.cli validate-fit` валидирует все файлы в `Output_fit/`.
 6. При успехе выполняется автоархивация.
 
 ```text

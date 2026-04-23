@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 import yaml
 
 from .plan_domain import ALLOWED_INTENSITY, KNOWN_PACE_CONSTANTS, STEP_REQUIRED_FIELDS
+from .plan_schema import _is_valid_pace, _pace_to_seconds
 
 # ---------------------------------------------------------------------------
 # Pydantic structural validation (optional — gracefully skipped if unavailable)
@@ -98,21 +99,6 @@ class ValidationIssue:
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _validate_pace(value: Any) -> bool:
-    if isinstance(value, str) and value in KNOWN_PACE_CONSTANTS:
-        return True
-    if not isinstance(value, str):
-        return False
-    parts = value.split(":")
-    if len(parts) != 2:
-        return False
-    if not (parts[0].isdigit() and parts[1].isdigit()):
-        return False
-    mm = int(parts[0])
-    ss = int(parts[1])
-    return mm >= 1 and 0 <= ss <= 59
 
 
 def _issue(
@@ -350,8 +336,8 @@ def validate_plan_data_detailed(
                         )
 
             if step_type in {"dist_pace", "time_pace"}:
-                pf_valid = _validate_pace(step.get("pace_fast"))
-                ps_valid = _validate_pace(step.get("pace_slow"))
+                pf_valid = _is_valid_pace(step.get("pace_fast"))
+                ps_valid = _is_valid_pace(step.get("pace_slow"))
                 if not pf_valid:
                     _issue(
                         errors,
@@ -369,11 +355,8 @@ def validate_plan_data_detailed(
                         severity="error",
                     )
                 if pf_valid and ps_valid:
-                    def _pace_seconds(p):
-                        mm, ss = p.split(":")
-                        return int(mm) * 60 + int(ss)
-                    pf_sec = _pace_seconds(step["pace_fast"])
-                    ps_sec = _pace_seconds(step["pace_slow"])
+                    pf_sec = _pace_to_seconds(step["pace_fast"])
+                    ps_sec = _pace_to_seconds(step["pace_slow"])
                     if pf_sec >= ps_sec:
                         _issue(
                             errors,

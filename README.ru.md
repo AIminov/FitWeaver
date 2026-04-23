@@ -57,7 +57,7 @@ Plan/my_plan.md
 Суббота: длинный бег 60 мин, пульс 125–140
 ```
 
-**4.** Запустите LLM-генерацию:
+**3.** Запустите LLM-генерацию:
 
 *LM Studio:*
 ```bash
@@ -94,12 +94,12 @@ How many workouts does the plan contain? (Enter to skip): 30
 python -m garmin_fit.llm.request_cli --plan Plan/my_plan.md --workouts 30 ...
 ```
 
-**5.** Соберите FIT-файлы:
+**4.** Соберите FIT-файлы:
 ```bash
 python -m garmin_fit.cli run
 ```
 
-**6.** Подключите часы к компьютеру и скопируйте файлы из `Output_fit/`:
+**5.** Подключите часы к компьютеру и скопируйте файлы из `Output_fit/`:
 
 - Скопируйте `.fit`-файлы в папку **`/GARMIN/New files`** на часах
 - Часы обработают файлы автоматически — они появятся в **`/GARMIN/Workouts`**
@@ -133,14 +133,14 @@ Plan/my_plan.yaml
 pip install -r requirements.txt
 ```
 
-**4.** Опционально — провалидируйте план перед сборкой:
+**3.** Опционально — провалидируйте план перед сборкой:
 ```bash
 python -m garmin_fit.cli validate-yaml --plan Plan/my_plan.yaml
 ```
 
 Валидатор проверит HR-диапазоны, форматы, уникальность имён и логику повторов.
 
-**5.** Соберите FIT-файлы:
+**4.** Соберите FIT-файлы:
 ```bash
 python -m garmin_fit.cli run
 ```
@@ -150,7 +150,7 @@ python -m garmin_fit.cli run
 python -m garmin_fit.cli run --plan Plan/my_plan.yaml
 ```
 
-**6.** Скопируйте файлы из `Output_fit/` на часы:
+**5.** Скопируйте файлы из `Output_fit/` на часы:
 
 - Скопируйте `.fit`-файлы в папку **`/GARMIN/New files`** на часах
 - Часы обработают файлы автоматически — они появятся в **`/GARMIN/Workouts`**
@@ -249,7 +249,7 @@ pip install -r requirements.txt
 Plan/plan.md   или   Plan/plan.txt
 ```
 
-**4.** Сгенерируйте YAML через LLM (LM Studio):
+**3.** Сгенерируйте YAML через LLM (LM Studio):
 ```bash
 python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode completions
 ```
@@ -261,12 +261,12 @@ python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1
 
 Или можно написать YAML вручную по образцу из `docs/YAML_GUIDE.md`.
 
-**5.** Соберите FIT-файлы:
+**4.** Соберите FIT-файлы:
 ```bash
 python -m garmin_fit.cli run
 ```
 
-**6.** Скопируйте на часы:
+**5.** Скопируйте на часы:
 
 Файлы появятся в `Output_fit/`.
 
@@ -307,6 +307,13 @@ python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --from-date 2026-
 python -m garmin_fit.cli garmin-calendar --plan Plan/plan.yaml --skip-past --year 2026
 ```
 
+### Garmin Calendar Delete
+
+```bash
+python -m garmin_fit.cli garmin-calendar-delete --email you@example.com --password yourpassword --year 2026 --from-date 2026-06-01 --to-date 2026-06-30 --dry-run
+python -m garmin_fit.cli garmin-calendar-delete --email you@example.com --password yourpassword --year 2026 --from-date 2026-06-01 --to-date 2026-06-30 --confirm
+```
+
 ### LLM-генерация
 
 ```bash
@@ -326,10 +333,13 @@ python -m garmin_fit.legacy_cli compare --plan Plan/plan.yaml
 ### Прочее
 
 ```bash
-python -m garmin_fit.runner          # Интерактивное меню
+python -m garmin_fit.runner          # Интерактивное меню (рекомендуется для локальной LLM)
 python -m garmin_fit.bot             # Telegram-бот
 python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml  # Быстрая валидация
 ```
+
+Интерактивное меню (`garmin_fit.runner`) охватывает полный локальный workflow в одном месте:
+LLM-генерация → сборка → валидация → загрузка/удаление в Garmin Calendar → архив.
 
 ---
 

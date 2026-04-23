@@ -4,8 +4,11 @@ Shared plan domain objects and schema constants.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Mapping
+
+logger = logging.getLogger(__name__)
 
 KNOWN_PACE_CONSTANTS = frozenset(
     {
@@ -131,6 +134,9 @@ def step_from_data(data: Mapping[str, Any]) -> WorkoutStep:
     drills_value = data.get("drills")
     drills: list[Drill] | None = None
     if isinstance(drills_value, list):
+        skipped = [item for item in drills_value if not isinstance(item, Mapping)]
+        if skipped:
+            logger.warning("step_from_data: dropped %d non-mapping drill item(s)", len(skipped))
         drills = [drill_from_data(item) for item in drills_value if isinstance(item, Mapping)]
 
     return WorkoutStep(
@@ -168,6 +174,12 @@ def workout_from_data(data: Mapping[str, Any]) -> Workout:
     steps_value = data.get("steps")
     steps: list[WorkoutStep] = []
     if isinstance(steps_value, list):
+        skipped = [item for item in steps_value if not isinstance(item, Mapping)]
+        if skipped:
+            logger.warning(
+                "workout_from_data '%s': dropped %d non-mapping step(s)",
+                data.get("filename", "?"), len(skipped),
+            )
         steps = [step_from_data(item) for item in steps_value if isinstance(item, Mapping)]
 
     return Workout(
@@ -198,6 +210,9 @@ def plan_from_data(data: Mapping[str, Any]) -> WorkoutPlan:
     if not isinstance(workouts_value, list):
         return WorkoutPlan()
 
+    skipped = [item for item in workouts_value if not isinstance(item, Mapping)]
+    if skipped:
+        logger.warning("plan_from_data: dropped %d non-mapping workout(s)", len(skipped))
     workouts = [workout_from_data(item) for item in workouts_value if isinstance(item, Mapping)]
     return WorkoutPlan(workouts=workouts)
 

@@ -45,6 +45,19 @@ def _pace_to_seconds(pace: str) -> int:
     return int(mm) * 60 + int(ss)
 
 
+def _check_pace_ordering(pace_fast: str, pace_slow: str) -> None:
+    """Raise ValueError if pace_fast is not strictly faster than pace_slow."""
+    if (
+        pace_fast not in KNOWN_PACE_CONSTANTS
+        and pace_slow not in KNOWN_PACE_CONSTANTS
+    ):
+        if _pace_to_seconds(pace_fast) >= _pace_to_seconds(pace_slow):
+            raise ValueError(
+                f"pace_fast '{pace_fast}' must be faster (lower) than"
+                f" pace_slow '{pace_slow}'"
+            )
+
+
 # ---------------------------------------------------------------------------
 # Drill schema
 # ---------------------------------------------------------------------------
@@ -73,8 +86,8 @@ class DistHrStep(BaseModel):
 
     type: Literal["dist_hr"]
     km: float = Field(gt=0)
-    hr_low: int = Field(gt=0)
-    hr_high: int = Field(gt=0)
+    hr_low: int = Field(gt=0, le=250)
+    hr_high: int = Field(gt=0, le=250)
     intensity: Optional[str] = None
 
     @model_validator(mode="after")
@@ -91,8 +104,8 @@ class TimeHrStep(BaseModel):
 
     type: Literal["time_hr"]
     seconds: int = Field(gt=0)
-    hr_low: int = Field(gt=0)
-    hr_high: int = Field(gt=0)
+    hr_low: int = Field(gt=0, le=250)
+    hr_high: int = Field(gt=0, le=250)
     intensity: Optional[str] = None
 
     @model_validator(mode="after")
@@ -124,15 +137,7 @@ class DistPaceStep(BaseModel):
 
     @model_validator(mode="after")
     def check_pace_ordering(self) -> DistPaceStep:
-        if (
-            self.pace_fast not in KNOWN_PACE_CONSTANTS
-            and self.pace_slow not in KNOWN_PACE_CONSTANTS
-        ):
-            if _pace_to_seconds(self.pace_fast) >= _pace_to_seconds(self.pace_slow):
-                raise ValueError(
-                    f"pace_fast '{self.pace_fast}' must be faster (lower) than"
-                    f" pace_slow '{self.pace_slow}'"
-                )
+        _check_pace_ordering(self.pace_fast, self.pace_slow)
         return self
 
 
@@ -156,15 +161,7 @@ class TimePaceStep(BaseModel):
 
     @model_validator(mode="after")
     def check_pace_ordering(self) -> TimePaceStep:
-        if (
-            self.pace_fast not in KNOWN_PACE_CONSTANTS
-            and self.pace_slow not in KNOWN_PACE_CONSTANTS
-        ):
-            if _pace_to_seconds(self.pace_fast) >= _pace_to_seconds(self.pace_slow):
-                raise ValueError(
-                    f"pace_fast '{self.pace_fast}' must be faster (lower) than"
-                    f" pace_slow '{self.pace_slow}'"
-                )
+        _check_pace_ordering(self.pace_fast, self.pace_slow)
         return self
 
 
