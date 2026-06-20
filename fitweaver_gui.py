@@ -12,10 +12,13 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
+import json
+
 import yaml
 
 PROJECT_ROOT = Path(__file__).parent
 PYTHON = sys.executable
+SESSION_FILE = PROJECT_ROOT / ".gui_session.json"
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -76,6 +79,44 @@ class App(tk.Tk):
 
         self._setup_style()
         self._build_ui()
+        self._load_session()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ── Session persistence ───────────────────────────────────────────────────
+    def _load_session(self):
+        try:
+            data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+            if data.get("yaml_path") and Path(data["yaml_path"]).exists():
+                self.yaml_path.set(data["yaml_path"])
+                self._reload_yaml()
+            if data.get("email"):
+                self.email_var.set(data["email"])
+            if data.get("year"):
+                self.year_var.set(data["year"])
+            if data.get("llm_url"):
+                self.llm_url.set(data["llm_url"])
+            if data.get("llm_model"):
+                self.llm_model.set(data["llm_model"])
+            if data.get("llm_type"):
+                self.llm_type.set(data["llm_type"])
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+
+    def _save_session(self):
+        data = {
+            "yaml_path": self.yaml_path.get(),
+            "email":     self.email_var.get(),
+            "year":      self.year_var.get(),
+            "llm_url":   self.llm_url.get(),
+            "llm_model": self.llm_model.get(),
+            "llm_type":  self.llm_type.get(),
+        }
+        SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                                encoding="utf-8")
+
+    def _on_close(self):
+        self._save_session()
+        self.destroy()
 
     # ── Style ─────────────────────────────────────────────────────────────────
     def _setup_style(self):

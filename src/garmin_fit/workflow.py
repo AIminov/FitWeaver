@@ -658,6 +658,7 @@ def workflow_garmin_calendar(
     if client is None:
         exporter._client = None
         exporter._delay = 1.2
+        exporter._language = "ru"
 
     result = exporter.upload_plan(
         plan, schedule=schedule, dry_run=dry_run, year=year,

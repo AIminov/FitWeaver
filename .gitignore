@@ -1,3 +1,6 @@
+# GUI session (email, paths — no passwords)
+.gui_session.json
+
 # Python caches
 __pycache__/
 *.py[cod]
