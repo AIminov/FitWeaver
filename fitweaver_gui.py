@@ -184,13 +184,16 @@ class App(tk.Tk):
         self._nb = ttk.Notebook(parent)
         self._nb.pack(fill="both", expand=True)
 
-        cal_tab = ttk.Frame(self._nb, padding=(6, 6))
-        llm_tab = ttk.Frame(self._nb, padding=(6, 6))
-        self._nb.add(cal_tab, text="📅  Календарь")
-        self._nb.add(llm_tab, text="🤖  LLM Генератор")
+        cal_tab    = ttk.Frame(self._nb, padding=(6, 6))
+        llm_tab    = ttk.Frame(self._nb, padding=(6, 6))
+        garmin_tab = ttk.Frame(self._nb, padding=(6, 6))
+        self._nb.add(cal_tab,    text="📅  Календарь")
+        self._nb.add(llm_tab,    text="🤖  LLM Генератор")
+        self._nb.add(garmin_tab, text="🏃  Garmin Connect")
 
         self._build_calendar_tab(cal_tab)
         self._build_llm_tab(llm_tab)
+        self._build_garmin_tab(garmin_tab)
 
     # ── Calendar tab ──────────────────────────────────────────────────────────
     def _build_calendar_tab(self, parent):
@@ -631,6 +634,204 @@ class App(tk.Tk):
         self._nb.select(0)
         self._cmd_build()
 
+    # ── Garmin Connect tab ────────────────────────────────────────────────────
+    def _build_garmin_tab(self, parent):
+        # Top bar
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Button(bar, text="🔄  Загрузить из Garmin",
+                   style="Primary.TButton",
+                   command=self._gc_load).pack(side="left", padx=(0, 8))
+        ttk.Label(bar, text="Лимит:", style="Muted.TLabel").pack(side="left")
+        self._gc_limit = tk.StringVar(value="200")
+        ttk.Entry(bar, textvariable=self._gc_limit, width=6).pack(side="left", padx=(4, 16))
+        self._gc_status = tk.Label(bar, text="Нажмите «Загрузить» для получения данных",
+                                   bg=BG, fg=MUTED, font=("Segoe UI", 9))
+        self._gc_status.pack(side="left")
+
+        ttk.Separator(parent).pack(fill="x", pady=(0, 8))
+
+        # Scrollable list
+        container = ttk.Frame(parent)
+        container.pack(fill="both", expand=True)
+
+        self._gc_canvas = tk.Canvas(container, bg=BG2, highlightthickness=0)
+        vsb = ttk.Scrollbar(container, orient="vertical",
+                            command=self._gc_canvas.yview)
+        self._gc_canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self._gc_canvas.pack(side="left", fill="both", expand=True)
+
+        self._gc_list_frame = tk.Frame(self._gc_canvas, bg=BG2)
+        self._gc_list_win = self._gc_canvas.create_window(
+            (0, 0), window=self._gc_list_frame, anchor="nw")
+        self._gc_list_frame.bind("<Configure>", self._gc_on_frame_resize)
+        self._gc_canvas.bind("<Configure>", self._gc_on_canvas_resize)
+        self._gc_canvas.bind("<MouseWheel>",
+                             lambda e: self._gc_canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+
+        # Bottom: summary bar
+        self._gc_summary = tk.Label(parent, text="", bg=BG3, fg=MUTED,
+                                    font=("Segoe UI", 9), anchor="w", padx=8, pady=3)
+        self._gc_summary.pack(fill="x", side="bottom", pady=(6, 0))
+
+        self._gc_workouts: list[dict] = []
+
+    def _gc_on_frame_resize(self, _e=None):
+        self._gc_canvas.configure(scrollregion=self._gc_canvas.bbox("all"))
+
+    def _gc_on_canvas_resize(self, e):
+        self._gc_canvas.itemconfig(self._gc_list_win, width=e.width)
+
+    def _gc_load(self):
+        if not self.email_var.get():
+            messagebox.showwarning("Нет email", "Введите email в левой панели.")
+            return
+        self._gc_status.config(text="⏳ Подключаюсь к Garmin Connect…", fg=YELLOW)
+        self._gc_clear_list()
+
+        def worker():
+            try:
+                from garmin_fit.workflow import _connect_garmin_cli_client
+                client = _connect_garmin_cli_client(
+                    email=self.email_var.get() or None,
+                    password=self.pass_var.get() or None,
+                )
+                limit = int(self._gc_limit.get() or 200)
+                workouts = client.get_workouts(0, limit)
+                self.after(0, self._gc_render, workouts)
+            except Exception as exc:
+                self.after(0, self._gc_status.config,
+                           {"text": f"❌ {exc}", "fg": RED})
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _gc_clear_list(self):
+        for w in self._gc_list_frame.winfo_children():
+            w.destroy()
+
+    def _gc_render(self, workouts: list[dict]):
+        self._gc_workouts = workouts
+        self._gc_clear_list()
+
+        from garmin_fit.garmin_step_mapper import extract_date_from_filename
+        year_str = self.year_var.get()
+        year = int(year_str) if year_str.isdigit() else None
+
+        # Group by month
+        by_month: dict[str, list[dict]] = {}
+        no_date: list[dict] = []
+        for wo in workouts:
+            name = (wo.get("workoutName") or wo.get("name") or wo.get("title") or "")
+            date_str = extract_date_from_filename(name, year=year)
+            wo["_date"] = date_str
+            wo["_name"] = name
+            if date_str:
+                month_key = date_str[:7]  # "YYYY-MM"
+                by_month.setdefault(month_key, []).append(wo)
+            else:
+                no_date.append(wo)
+
+        # Render sorted months
+        for month_key in sorted(by_month.keys(), reverse=True):
+            self._gc_render_month(month_key, sorted(
+                by_month[month_key], key=lambda w: w["_date"], reverse=True))
+
+        if no_date:
+            self._gc_render_month("Без даты", no_date)
+
+        total = len(workouts)
+        fitweaver = sum(1 for w in workouts if w.get("_date"))
+        self._gc_status.config(
+            text=f"✅ Загружено {total} тренировок ({fitweaver} с датой FitWeaver)",
+            fg=GREEN)
+        self._gc_summary.config(
+            text=f"Всего: {total}  |  FitWeaver: {fitweaver}  |  Без даты: {len(no_date)}")
+
+    def _gc_render_month(self, month_key: str, workouts: list[dict]):
+        # Month header
+        if month_key != "Без даты":
+            try:
+                dt = datetime.date.fromisoformat(month_key + "-01")
+                label = f"{MONTHS_RU[dt.month - 1]} {dt.year}  ({len(workouts)})"
+            except ValueError:
+                label = f"{month_key}  ({len(workouts)})"
+        else:
+            label = f"Без даты  ({len(workouts)})"
+
+        hdr = tk.Frame(self._gc_list_frame, bg=BG3)
+        hdr.pack(fill="x", pady=(10, 2), padx=4)
+        tk.Label(hdr, text=label, bg=BG3, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold"), anchor="w",
+                 padx=8, pady=4).pack(fill="x")
+
+        for wo in workouts:
+            self._gc_render_row(wo)
+
+    def _gc_render_row(self, wo: dict):
+        row = tk.Frame(self._gc_list_frame, bg=BG2, pady=2)
+        row.pack(fill="x", padx=4, pady=1)
+
+        date_str = wo.get("_date") or ""
+        name     = wo.get("_name") or ""
+        wo_id    = str(wo.get("workoutId") or wo.get("id") or "")
+
+        # Date chip
+        date_lbl = date_str[5:] if date_str else "??"  # "MM-DD"
+        tk.Label(row, text=date_lbl, bg=BG3, fg=MUTED,
+                 font=("Consolas", 9), width=6, anchor="center",
+                 padx=4, pady=3).pack(side="left", padx=(4, 6))
+
+        # Type color badge
+        type_code = self._infer_type(name)
+        color = WORKOUT_COLORS.get(type_code, DEFAULT_WO_COLOR)
+        tk.Label(row, text=" ", bg=color, width=2).pack(side="left", padx=(0, 6))
+
+        # Short name
+        short = re.sub(r"^W\d+_\d{2}-\d{2}_\w+_", "", name)
+        tk.Label(row, text=short or name, bg=BG2, fg=FG,
+                 font=("Segoe UI", 9), anchor="w").pack(side="left", fill="x", expand=True)
+
+        # Delete button
+        def _delete(wid=wo_id, wname=name, r=row):
+            if messagebox.askyesno("Удалить тренировку",
+                                   f"Удалить из Garmin Connect?\n\n{wname}",
+                                   icon="warning"):
+                self._gc_delete(wid, r)
+
+        tk.Button(row, text="✕", bg=BG3, fg=RED, font=("Segoe UI", 9),
+                  relief="flat", cursor="hand2", bd=0, padx=6,
+                  command=_delete).pack(side="right", padx=4)
+
+    def _infer_type(self, name: str) -> str:
+        n = name.lower()
+        if "long"      in n or "длинн" in n: return "long"
+        if "interval"  in n or "интерв" in n: return "intervals"
+        if "tempo"     in n or "темп"  in n: return "tempo"
+        if "recovery"  in n or "восст" in n: return "recovery"
+        if "sbu"       in n or "сбу"   in n: return "sbu"
+        if "aerobic"   in n or "аэроб" in n: return "aerobic"
+        return ""
+
+    def _gc_delete(self, workout_id: str, row_widget: tk.Frame):
+        def worker():
+            try:
+                from garmin_fit.workflow import _connect_garmin_cli_client
+                client = _connect_garmin_cli_client(
+                    email=self.email_var.get() or None,
+                    password=self.pass_var.get() or None,
+                )
+                client.delete_workout(workout_id)
+                self.after(0, row_widget.destroy)
+                self.after(0, self._gc_status.config,
+                           {"text": f"✅ Удалено {workout_id}", "fg": GREEN})
+            except Exception as exc:
+                self.after(0, self._gc_status.config,
+                           {"text": f"❌ {exc}", "fg": RED})
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ── LLM example ───────────────────────────────────────────────────────────
     def _insert_example(self):
         example = (
             "01.05.2026 (Чт) — Длинный бег\n"
