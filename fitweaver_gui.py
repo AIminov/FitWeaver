@@ -826,8 +826,17 @@ class App(tk.Tk):
                 self.after(0, self._gc_status.config,
                            {"text": f"✅ Удалено {workout_id}", "fg": GREEN})
             except Exception as exc:
-                self.after(0, self._gc_status.config,
-                           {"text": f"❌ {exc}", "fg": RED})
+                msg = str(exc)
+                if "400" in msg and "ATP" in msg:
+                    friendly = "Эта тренировка привязана к Garmin ATP Plan — удалить через API невозможно. Удалите вручную в приложении Garmin Connect."
+                elif "400" in msg:
+                    friendly = f"Garmin отклонил удаление (400). Возможно, тренировка защищена или уже удалена."
+                elif "401" in msg or "403" in msg:
+                    friendly = "Нет прав на удаление. Проверьте email/пароль."
+                else:
+                    friendly = f"Ошибка: {exc}"
+                self.after(0, messagebox.showerror, "Не удалось удалить", friendly)
+                self.after(0, self._gc_status.config, {"text": "❌ Ошибка удаления", "fg": RED})
 
         threading.Thread(target=worker, daemon=True).start()
 
