@@ -638,18 +638,23 @@ class App(tk.Tk):
     def _build_garmin_tab(self, parent):
         # Top bar
         bar = ttk.Frame(parent)
-        bar.pack(fill="x", pady=(0, 8))
+        bar.pack(fill="x", pady=(0, 6))
         ttk.Button(bar, text="🔄  Загрузить из Garmin",
                    style="Primary.TButton",
                    command=self._gc_load).pack(side="left", padx=(0, 8))
         ttk.Label(bar, text="Лимит:", style="Muted.TLabel").pack(side="left")
         self._gc_limit = tk.StringVar(value="200")
         ttk.Entry(bar, textvariable=self._gc_limit, width=6).pack(side="left", padx=(4, 16))
+        self._gc_del_btn = ttk.Button(bar, text="🗑  Удалить выбранные (0)",
+                                      style="Danger.TButton",
+                                      state="disabled",
+                                      command=self._gc_delete_selected)
+        self._gc_del_btn.pack(side="left", padx=(0, 8))
         self._gc_status = tk.Label(bar, text="Нажмите «Загрузить» для получения данных",
                                    bg=BG, fg=MUTED, font=("Segoe UI", 9))
         self._gc_status.pack(side="left")
 
-        ttk.Separator(parent).pack(fill="x", pady=(0, 8))
+        ttk.Separator(parent).pack(fill="x", pady=(0, 6))
 
         # Scrollable list
         container = ttk.Frame(parent)
@@ -667,15 +672,24 @@ class App(tk.Tk):
             (0, 0), window=self._gc_list_frame, anchor="nw")
         self._gc_list_frame.bind("<Configure>", self._gc_on_frame_resize)
         self._gc_canvas.bind("<Configure>", self._gc_on_canvas_resize)
-        self._gc_canvas.bind("<MouseWheel>",
-                             lambda e: self._gc_canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+        self._gc_canvas.bind("<MouseWheel>", self._gc_scroll)
 
-        # Bottom: summary bar
+        # Bottom summary
         self._gc_summary = tk.Label(parent, text="", bg=BG3, fg=MUTED,
                                     font=("Segoe UI", 9), anchor="w", padx=8, pady=3)
-        self._gc_summary.pack(fill="x", side="bottom", pady=(6, 0))
+        self._gc_summary.pack(fill="x", side="bottom", pady=(4, 0))
 
         self._gc_workouts: list[dict] = []
+        self._gc_checks:   dict[str, tk.BooleanVar] = {}
+        self._gc_month_ids: dict[str, list[str]] = {}
+
+    def _gc_scroll(self, e):
+        self._gc_canvas.yview_scroll(-1 * (e.delta // 120), "units")
+
+    def _gc_bind_wheel(self, widget):
+        widget.bind("<MouseWheel>", self._gc_scroll)
+        for child in widget.winfo_children():
+            self._gc_bind_wheel(child)
 
     def _gc_on_frame_resize(self, _e=None):
         self._gc_canvas.configure(scrollregion=self._gc_canvas.bbox("all"))
@@ -707,8 +721,11 @@ class App(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _gc_clear_list(self):
+        self._gc_checks.clear()
+        self._gc_month_ids.clear()
         for w in self._gc_list_frame.winfo_children():
             w.destroy()
+        self._gc_update_del_btn()
 
     def _gc_render(self, workouts: list[dict]):
         self._gc_workouts = workouts
@@ -718,39 +735,40 @@ class App(tk.Tk):
         year_str = self.year_var.get()
         year = int(year_str) if year_str.isdigit() else None
 
-        # Group by month
         by_month: dict[str, list[dict]] = {}
-        no_date: list[dict] = []
+        no_date:  list[dict] = []
         for wo in workouts:
             name = (wo.get("workoutName") or wo.get("name") or wo.get("title") or "")
             date_str = extract_date_from_filename(name, year=year)
             wo["_date"] = date_str
             wo["_name"] = name
             if date_str:
-                month_key = date_str[:7]  # "YYYY-MM"
-                by_month.setdefault(month_key, []).append(wo)
+                mk = date_str[:7]
+                by_month.setdefault(mk, []).append(wo)
             else:
                 no_date.append(wo)
 
-        # Render sorted months
-        for month_key in sorted(by_month.keys(), reverse=True):
-            self._gc_render_month(month_key, sorted(
-                by_month[month_key], key=lambda w: w["_date"], reverse=True))
-
+        for mk in sorted(by_month.keys(), reverse=True):
+            self._gc_render_month(mk, sorted(by_month[mk],
+                                             key=lambda w: w["_date"], reverse=True))
         if no_date:
-            self._gc_render_month("Без даты", no_date)
+            self._gc_render_month("no_date", no_date)
 
-        total = len(workouts)
+        # Bind wheel to all newly created widgets
+        self._gc_bind_wheel(self._gc_list_frame)
+
+        total     = len(workouts)
         fitweaver = sum(1 for w in workouts if w.get("_date"))
         self._gc_status.config(
-            text=f"✅ Загружено {total} тренировок ({fitweaver} с датой FitWeaver)",
-            fg=GREEN)
+            text=f"✅ {total} тренировок ({fitweaver} с датой FitWeaver)", fg=GREEN)
         self._gc_summary.config(
             text=f"Всего: {total}  |  FitWeaver: {fitweaver}  |  Без даты: {len(no_date)}")
 
     def _gc_render_month(self, month_key: str, workouts: list[dict]):
-        # Month header
-        if month_key != "Без даты":
+        ids = [str(wo.get("workoutId") or wo.get("id") or "") for wo in workouts]
+        self._gc_month_ids[month_key] = ids
+
+        if month_key != "no_date":
             try:
                 dt = datetime.date.fromisoformat(month_key + "-01")
                 label = f"{MONTHS_RU[dt.month - 1]} {dt.year}  ({len(workouts)})"
@@ -763,28 +781,48 @@ class App(tk.Tk):
         hdr.pack(fill="x", pady=(10, 2), padx=4)
         tk.Label(hdr, text=label, bg=BG3, fg=ACCENT,
                  font=("Segoe UI", 10, "bold"), anchor="w",
-                 padx=8, pady=4).pack(fill="x")
+                 padx=8, pady=4).pack(side="left")
+
+        # "Select all" toggle for this section
+        sel_var = tk.BooleanVar(value=False)
+        def toggle_month(v=sel_var, section_ids=ids):
+            state = v.get()
+            for wid in section_ids:
+                if wid in self._gc_checks:
+                    self._gc_checks[wid].set(state)
+            self._gc_update_del_btn()
+
+        tk.Checkbutton(hdr, text="Все", variable=sel_var,
+                       bg=BG3, fg=MUTED, selectcolor=BG3,
+                       activebackground=BG3, font=("Segoe UI", 8),
+                       command=toggle_month).pack(side="right", padx=8)
 
         for wo in workouts:
             self._gc_render_row(wo)
 
     def _gc_render_row(self, wo: dict):
-        row = tk.Frame(self._gc_list_frame, bg=BG2, pady=2)
+        row = tk.Frame(self._gc_list_frame, bg=BG2, pady=1)
         row.pack(fill="x", padx=4, pady=1)
 
         date_str = wo.get("_date") or ""
         name     = wo.get("_name") or ""
         wo_id    = str(wo.get("workoutId") or wo.get("id") or "")
 
+        # Checkbox
+        var = tk.BooleanVar(value=False)
+        self._gc_checks[wo_id] = var
+        tk.Checkbutton(row, variable=var, bg=BG2, selectcolor=BG3,
+                       activebackground=BG2,
+                       command=self._gc_update_del_btn).pack(side="left", padx=(4, 2))
+
         # Date chip
-        date_lbl = date_str[5:] if date_str else "??"  # "MM-DD"
+        date_lbl = date_str[5:] if date_str else "——"
         tk.Label(row, text=date_lbl, bg=BG3, fg=MUTED,
                  font=("Consolas", 9), width=6, anchor="center",
-                 padx=4, pady=3).pack(side="left", padx=(4, 6))
+                 padx=4, pady=3).pack(side="left", padx=(0, 6))
 
-        # Type color badge
-        type_code = self._infer_type(name)
-        color = WORKOUT_COLORS.get(type_code, DEFAULT_WO_COLOR)
+        # Type colour badge
+        color = WORKOUT_COLORS.get(self._infer_type(name), DEFAULT_WO_COLOR)
         tk.Label(row, text=" ", bg=color, width=2).pack(side="left", padx=(0, 6))
 
         # Short name
@@ -792,16 +830,26 @@ class App(tk.Tk):
         tk.Label(row, text=short or name, bg=BG2, fg=FG,
                  font=("Segoe UI", 9), anchor="w").pack(side="left", fill="x", expand=True)
 
-        # Delete button
+        # Delete single
         def _delete(wid=wo_id, wname=name, r=row):
             if messagebox.askyesno("Удалить тренировку",
                                    f"Удалить из Garmin Connect?\n\n{wname}",
                                    icon="warning"):
-                self._gc_delete(wid, r)
+                self._gc_checks.pop(wid, None)
+                self._gc_delete_one(wid, r)
 
-        tk.Button(row, text="✕", bg=BG3, fg=RED, font=("Segoe UI", 9),
+        tk.Button(row, text="✕", bg=BG2, fg=RED, font=("Segoe UI", 9),
                   relief="flat", cursor="hand2", bd=0, padx=6,
                   command=_delete).pack(side="right", padx=4)
+
+    def _gc_update_del_btn(self):
+        n = sum(1 for v in self._gc_checks.values() if v.get())
+        if n:
+            self._gc_del_btn.config(text=f"🗑  Удалить выбранные ({n})",
+                                    state="normal")
+        else:
+            self._gc_del_btn.config(text="🗑  Удалить выбранные (0)",
+                                    state="disabled")
 
     def _infer_type(self, name: str) -> str:
         n = name.lower()
@@ -813,7 +861,17 @@ class App(tk.Tk):
         if "aerobic"   in n or "аэроб" in n: return "aerobic"
         return ""
 
-    def _gc_delete(self, workout_id: str, row_widget: tk.Frame):
+    def _gc_friendly_error(self, exc: Exception) -> str:
+        msg = str(exc)
+        if "400" in msg and "ATP" in msg:
+            return "Тренировка привязана к Garmin ATP Plan — удалить через API невозможно.\nУдалите вручную в приложении Garmin Connect."
+        if "400" in msg:
+            return "Garmin отклонил удаление (400). Возможно, тренировка защищена или уже удалена."
+        if "401" in msg or "403" in msg:
+            return "Нет прав на удаление. Проверьте email/пароль."
+        return f"Ошибка: {exc}"
+
+    def _gc_delete_one(self, workout_id: str, row_widget: tk.Frame):
         def worker():
             try:
                 from garmin_fit.workflow import _connect_garmin_cli_client
@@ -823,20 +881,63 @@ class App(tk.Tk):
                 )
                 client.delete_workout(workout_id)
                 self.after(0, row_widget.destroy)
+                self.after(0, self._gc_update_del_btn)
                 self.after(0, self._gc_status.config,
                            {"text": f"✅ Удалено {workout_id}", "fg": GREEN})
             except Exception as exc:
-                msg = str(exc)
-                if "400" in msg and "ATP" in msg:
-                    friendly = "Эта тренировка привязана к Garmin ATP Plan — удалить через API невозможно. Удалите вручную в приложении Garmin Connect."
-                elif "400" in msg:
-                    friendly = f"Garmin отклонил удаление (400). Возможно, тренировка защищена или уже удалена."
-                elif "401" in msg or "403" in msg:
-                    friendly = "Нет прав на удаление. Проверьте email/пароль."
-                else:
-                    friendly = f"Ошибка: {exc}"
-                self.after(0, messagebox.showerror, "Не удалось удалить", friendly)
-                self.after(0, self._gc_status.config, {"text": "❌ Ошибка удаления", "fg": RED})
+                self.after(0, messagebox.showerror,
+                           "Не удалось удалить", self._gc_friendly_error(exc))
+                self.after(0, self._gc_status.config,
+                           {"text": "❌ Ошибка удаления", "fg": RED})
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _gc_delete_selected(self):
+        to_delete = [(wid, v) for wid, v in self._gc_checks.items() if v.get()]
+        if not to_delete:
+            return
+        if not messagebox.askyesno(
+                "Удалить выбранные",
+                f"Удалить {len(to_delete)} тренировок из Garmin Connect?\n\nЭто необратимо.",
+                icon="warning"):
+            return
+
+        self._gc_del_btn.config(state="disabled")
+        self._gc_status.config(text=f"⏳ Удаляю {len(to_delete)} тренировок…", fg=YELLOW)
+
+        def worker():
+            try:
+                from garmin_fit.workflow import _connect_garmin_cli_client
+                client = _connect_garmin_cli_client(
+                    email=self.email_var.get() or None,
+                    password=self.pass_var.get() or None,
+                )
+            except Exception as exc:
+                self.after(0, self._gc_status.config,
+                           {"text": f"❌ {exc}", "fg": RED})
+                return
+
+            deleted, failed, atp = 0, 0, 0
+            for wid, _var in to_delete:
+                try:
+                    client.delete_workout(wid)
+                    deleted += 1
+                except Exception as exc:
+                    msg = str(exc)
+                    if "ATP" in msg:
+                        atp += 1
+                    else:
+                        failed += 1
+
+            def finish():
+                self._gc_load()   # refresh list
+                parts = [f"✅ Удалено: {deleted}"]
+                if atp:    parts.append(f"ATP (пропущено): {atp}")
+                if failed: parts.append(f"Ошибок: {failed}")
+                self._gc_status.config(text="  |  ".join(parts),
+                                       fg=GREEN if not failed else YELLOW)
+
+            self.after(0, finish)
 
         threading.Thread(target=worker, daemon=True).start()
 
