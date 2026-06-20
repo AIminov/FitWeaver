@@ -1,22 +1,36 @@
 #!/usr/bin/env python3
-"""FitWeaver Desktop GUI — local calendar + CLI wrapper."""
+"""FitWeaver Desktop GUI — local calendar, CLI wrapper and LLM generator."""
 
 import calendar
 import datetime
+import re
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 import yaml
 
 PROJECT_ROOT = Path(__file__).parent
 PYTHON = sys.executable
 
-# Add src/ so we can import garmin_fit directly
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+# ── Colours ──────────────────────────────────────────────────────────────────
+BG     = "#1e1e2e"
+BG2    = "#181825"
+BG3    = "#313244"
+FG     = "#cdd6f4"
+ACCENT = "#89b4fa"
+MUTED  = "#6c7086"
+GREEN  = "#a6e3a1"
+RED    = "#f38ba8"
+PURPLE = "#cba6f7"
+YELLOW = "#f9e2af"
+ORANGE = "#fab387"
 
 WORKOUT_COLORS = {
     "long":      "#89b4fa",
@@ -27,104 +41,93 @@ WORKOUT_COLORS = {
     "sbu":       "#cba6f7",
     "easy":      "#94e2d5",
 }
-DEFAULT_WORKOUT_COLOR = "#89dceb"
+DEFAULT_WO_COLOR = "#89dceb"
 
-MONTHS_RU = [
-    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-]
-DAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-
-BG      = "#1e1e2e"
-BG2     = "#181825"
-BG3     = "#313244"
-FG      = "#cdd6f4"
-ACCENT  = "#89b4fa"
-MUTED   = "#6c7086"
-GREEN   = "#a6e3a1"
-RED     = "#f38ba8"
-PURPLE  = "#cba6f7"
-YELLOW  = "#f9e2af"
+MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь",
+              "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
+DAYS_RU   = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("FitWeaver")
-        self.geometry("1340x860")
-        self.minsize(1000, 640)
+        self.geometry("1380x900")
+        self.minsize(1060, 660)
         self.configure(bg=BG)
 
-        self.yaml_path  = tk.StringVar()
-        self.email_var  = tk.StringVar()
-        self.pass_var   = tk.StringVar()
-        self.from_var   = tk.StringVar()
-        self.to_var     = tk.StringVar()
-        self.year_var   = tk.StringVar(value=str(datetime.date.today().year))
-        self.dry_run    = tk.BooleanVar(value=True)
+        # Shared state
+        self.yaml_path = tk.StringVar()
+        self.email_var = tk.StringVar()
+        self.pass_var  = tk.StringVar()
+        self.from_var  = tk.StringVar()
+        self.to_var    = tk.StringVar()
+        self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
+        self.dry_run   = tk.BooleanVar(value=True)
+
+        # LLM settings
+        self.llm_url   = tk.StringVar(value="http://127.0.0.1:1234")
+        self.llm_model = tk.StringVar(value="qwen/qwen3.5-9b")
+        self.llm_type  = tk.StringVar(value="openai")
 
         self.workouts: list[dict] = []
-        self.cal_month  = datetime.date.today().replace(day=1)
+        self.cal_month = datetime.date.today().replace(day=1)
 
         self._setup_style()
         self._build_ui()
 
-    # ------------------------------------------------------------------ style
-
+    # ── Style ─────────────────────────────────────────────────────────────────
     def _setup_style(self):
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".",               background=BG,  foreground=FG,  font=("Segoe UI", 10))
-        s.configure("TFrame",          background=BG)
-        s.configure("Dark.TFrame",     background=BG2)
-        s.configure("TLabel",          background=BG,  foreground=FG)
-        s.configure("Dark.TLabel",     background=BG2, foreground=FG)
-        s.configure("Muted.TLabel",    background=BG,  foreground=MUTED, font=("Segoe UI", 9))
-        s.configure("TEntry",          fieldbackground=BG3, foreground=FG, insertcolor=FG)
-        s.configure("TCheckbutton",    background=BG,  foreground=FG)
-        s.map("TCheckbutton",          background=[("active", BG)])
-
-        s.configure("Title.TLabel",    background=BG,  foreground=PURPLE,
-                                       font=("Segoe UI", 14, "bold"))
-        s.configure("Section.TLabel",  background=BG,  foreground=ACCENT,
-                                       font=("Segoe UI", 9, "bold"))
-
+        s.configure(".",              background=BG,  foreground=FG, font=("Segoe UI", 10))
+        s.configure("TFrame",         background=BG)
+        s.configure("TLabel",         background=BG,  foreground=FG)
+        s.configure("Muted.TLabel",   background=BG,  foreground=MUTED, font=("Segoe UI", 9))
+        s.configure("TEntry",         fieldbackground=BG3, foreground=FG, insertcolor=FG)
+        s.configure("TCheckbutton",   background=BG,  foreground=FG)
+        s.map("TCheckbutton",         background=[("active", BG)])
+        s.configure("TCombobox",      fieldbackground=BG3, foreground=FG,
+                                      selectbackground=BG3, selectforeground=FG)
+        s.map("TCombobox",            fieldbackground=[("readonly", BG3)])
+        s.configure("TSeparator",     background=BG3)
+        s.configure("Title.TLabel",   background=BG,  foreground=PURPLE,
+                                      font=("Segoe UI", 14, "bold"))
+        s.configure("Section.TLabel", background=BG,  foreground=ACCENT,
+                                      font=("Segoe UI", 9, "bold"))
+        # Notebook
+        s.configure("TNotebook",          background=BG2, borderwidth=0)
+        s.configure("TNotebook.Tab",      background=BG3, foreground=MUTED,
+                                          padding=(14, 6), font=("Segoe UI", 10))
+        s.map("TNotebook.Tab",            background=[("selected", BG)],
+                                          foreground=[("selected", FG)])
         # Buttons
         for name, bg, fg in [
-            ("TButton",       BG3,     FG),
+            ("TButton",        BG3,    FG),
             ("Primary.TButton", ACCENT, BG),
             ("Danger.TButton",  RED,    BG),
-            ("Warn.TButton",    YELLOW, BG),
+            ("Success.TButton", GREEN,  BG),
         ]:
-            s.configure(name, background=bg, foreground=fg, padding=(8, 5), relief="flat",
-                        font=("Segoe UI", 10))
+            s.configure(name, background=bg, foreground=fg,
+                        padding=(8, 5), relief="flat", font=("Segoe UI", 10))
             s.map(name, background=[("active", MUTED)])
 
-        # Separator
-        s.configure("TSeparator", background=BG3)
-
-        # Scrolledtext is a tk widget, styled separately in _build_ui
-
-    # ------------------------------------------------------------------ layout
-
+    # ── Top layout ────────────────────────────────────────────────────────────
     def _build_ui(self):
-        # ── Top bar ──────────────────────────────────────────────────────────
         top = ttk.Frame(self, padding=(10, 8, 10, 6))
         top.pack(fill="x", side="top")
-
         ttk.Label(top, text="FitWeaver", style="Title.TLabel").pack(side="left", padx=(0, 20))
         ttk.Label(top, text="YAML план:", style="Muted.TLabel").pack(side="left")
         ttk.Entry(top, textvariable=self.yaml_path, width=55).pack(side="left", padx=4)
-        ttk.Button(top, text="Обзор…", command=self._browse_yaml).pack(side="left", padx=2)
-        ttk.Button(top, text="↺", command=self._reload_yaml, width=3).pack(side="left", padx=2)
-
+        ttk.Button(top, text="Обзор…",  command=self._browse_yaml).pack(side="left", padx=2)
+        ttk.Button(top, text="↺",       command=self._reload_yaml, width=3).pack(side="left", padx=2)
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
-        # ── Body ──────────────────────────────────────────────────────────────
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True)
 
-        # Left sidebar (fixed width)
+        # Sidebar
         sidebar = ttk.Frame(body, width=240, padding=(10, 10, 8, 8))
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
@@ -132,179 +135,228 @@ class App(tk.Tk):
 
         ttk.Separator(body, orient="vertical").pack(side="left", fill="y")
 
-        # Right: calendar + log
+        # Right: notebook (calendar + LLM)
         right = ttk.Frame(body, padding=(10, 8))
         right.pack(side="left", fill="both", expand=True)
         self._build_right(right)
 
-    # ------------------------------------------------------------------ sidebar
-
-    def _build_sidebar(self, parent):
+    # ── Sidebar ───────────────────────────────────────────────────────────────
+    def _build_sidebar(self, p):
         def section(text):
-            ttk.Label(parent, text=text, style="Section.TLabel").pack(anchor="w", pady=(10, 3))
-
+            ttk.Label(p, text=text, style="Section.TLabel").pack(anchor="w", pady=(10, 3))
         def hline():
-            ttk.Separator(parent).pack(fill="x", pady=6)
+            ttk.Separator(p).pack(fill="x", pady=6)
 
-        # Credentials
         section("GARMIN CONNECT")
-        ttk.Label(parent, text="Email:", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(parent, textvariable=self.email_var).pack(fill="x", pady=(0, 4))
-        ttk.Label(parent, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(parent, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
+        ttk.Label(p, text="Email:",   style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(p, textvariable=self.email_var).pack(fill="x", pady=(0, 4))
+        ttk.Label(p, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
 
-        hline()
-        section("ПЕРИОД")
-        ttk.Label(parent, text="С (YYYY-MM-DD):", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(parent, textvariable=self.from_var).pack(fill="x", pady=(0, 4))
-        ttk.Label(parent, text="По (YYYY-MM-DD):", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(parent, textvariable=self.to_var).pack(fill="x", pady=(0, 4))
-        ttk.Label(parent, text="Год:", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(parent, textvariable=self.year_var, width=10).pack(anchor="w")
-        ttk.Checkbutton(parent, text="Dry-run (без изменений)",
+        hline(); section("ПЕРИОД")
+        ttk.Label(p, text="С (YYYY-MM-DD):", style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(p, textvariable=self.from_var).pack(fill="x", pady=(0, 4))
+        ttk.Label(p, text="По (YYYY-MM-DD):", style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(p, textvariable=self.to_var).pack(fill="x", pady=(0, 4))
+        ttk.Label(p, text="Год:", style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(p, textvariable=self.year_var, width=10).pack(anchor="w")
+        ttk.Checkbutton(p, text="Dry-run (без изменений)",
                         variable=self.dry_run).pack(anchor="w", pady=(6, 0))
 
-        hline()
-        section("ОСНОВНЫЕ ДЕЙСТВИЯ")
-        ttk.Button(parent, text="⚙  Собрать FIT-файлы", style="Primary.TButton",
+        hline(); section("ОСНОВНЫЕ ДЕЙСТВИЯ")
+        ttk.Button(p, text="⚙  Собрать FIT-файлы", style="Primary.TButton",
                    command=self._cmd_build).pack(fill="x", pady=2)
-        ttk.Button(parent, text="↑  Загрузить в Garmin",
+        ttk.Button(p, text="↑  Загрузить в Garmin",
                    command=self._cmd_upload).pack(fill="x", pady=2)
-        ttk.Button(parent, text="✕  Удалить из Garmin", style="Danger.TButton",
+        ttk.Button(p, text="✕  Удалить из Garmin", style="Danger.TButton",
                    command=self._cmd_delete).pack(fill="x", pady=2)
 
-        hline()
-        section("ПРОДВИНУТЫЕ")
-        ttk.Button(parent, text="✓  Валидировать YAML",
-                   command=self._cmd_validate_yaml).pack(fill="x", pady=2)
-        ttk.Button(parent, text="✓  Валидировать FIT",
-                   command=self._cmd_validate_fit).pack(fill="x", pady=2)
-        ttk.Button(parent, text="🔍  Диагностика (doctor)",
-                   command=self._cmd_doctor).pack(fill="x", pady=2)
-        ttk.Button(parent, text="📦  Архивировать",
-                   command=self._cmd_archive).pack(fill="x", pady=2)
-        ttk.Button(parent, text="📋  Список архивов",
-                   command=self._cmd_list_archives).pack(fill="x", pady=2)
-        ttk.Button(parent, text="🔄  Восстановить архив",
-                   command=self._cmd_restore).pack(fill="x", pady=2)
+        hline(); section("ПРОДВИНУТЫЕ")
+        ttk.Button(p, text="✓  Валидировать YAML",   command=self._cmd_validate_yaml).pack(fill="x", pady=2)
+        ttk.Button(p, text="✓  Валидировать FIT",    command=self._cmd_validate_fit).pack(fill="x", pady=2)
+        ttk.Button(p, text="🔍  Диагностика",         command=self._cmd_doctor).pack(fill="x", pady=2)
+        ttk.Button(p, text="📦  Архивировать",        command=self._cmd_archive).pack(fill="x", pady=2)
+        ttk.Button(p, text="📋  Список архивов",      command=self._cmd_list_archives).pack(fill="x", pady=2)
+        ttk.Button(p, text="🔄  Восстановить архив",  command=self._cmd_restore).pack(fill="x", pady=2)
 
-    # ------------------------------------------------------------------ right panel
-
+    # ── Right panel (Notebook) ────────────────────────────────────────────────
     def _build_right(self, parent):
-        # Calendar navigation
+        self._nb = ttk.Notebook(parent)
+        self._nb.pack(fill="both", expand=True)
+
+        cal_tab = ttk.Frame(self._nb, padding=(6, 6))
+        llm_tab = ttk.Frame(self._nb, padding=(6, 6))
+        self._nb.add(cal_tab, text="📅  Календарь")
+        self._nb.add(llm_tab, text="🤖  LLM Генератор")
+
+        self._build_calendar_tab(cal_tab)
+        self._build_llm_tab(llm_tab)
+
+    # ── Calendar tab ──────────────────────────────────────────────────────────
+    def _build_calendar_tab(self, parent):
         nav = ttk.Frame(parent)
         nav.pack(fill="x", pady=(0, 6))
         ttk.Button(nav, text="◀", command=self._prev_month, width=3).pack(side="left")
-        self._month_lbl = ttk.Label(nav, text="", font=("Segoe UI", 12, "bold"),
-                                    foreground=PURPLE, background=BG)
+        self._month_lbl = tk.Label(nav, text="", bg=BG, fg=PURPLE,
+                                   font=("Segoe UI", 12, "bold"))
         self._month_lbl.pack(side="left", padx=10)
         ttk.Button(nav, text="▶", command=self._next_month, width=3).pack(side="left")
-        ttk.Label(nav, text="  Сегодня:", style="Muted.TLabel").pack(side="left", padx=(20, 4))
-        ttk.Label(nav, text=datetime.date.today().strftime("%d.%m.%Y"),
-                  foreground=ACCENT, background=BG).pack(side="left")
+        tk.Label(nav, text=f"  Сегодня: {datetime.date.today().strftime('%d.%m.%Y')}",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=16)
 
-        # Calendar grid
         self._cal_frame = tk.Frame(parent, bg=BG2)
         self._cal_frame.pack(fill="both", expand=True)
 
-        # Workout detail tooltip label
         self._detail_var = tk.StringVar(value="Нажмите на тренировку для подробностей")
-        detail_lbl = tk.Label(parent, textvariable=self._detail_var,
-                               bg=BG3, fg=FG, font=("Segoe UI", 9),
-                               anchor="w", padx=8, pady=4)
-        detail_lbl.pack(fill="x", pady=(4, 0))
+        tk.Label(parent, textvariable=self._detail_var,
+                 bg=BG3, fg=FG, font=("Segoe UI", 9),
+                 anchor="w", padx=8, pady=4).pack(fill="x", pady=(4, 0))
 
-        # Log
         ttk.Separator(parent).pack(fill="x", pady=6)
         log_hdr = ttk.Frame(parent)
         log_hdr.pack(fill="x")
         ttk.Label(log_hdr, text="ВЫВОД КОМАНДЫ", style="Section.TLabel").pack(side="left")
-        ttk.Button(log_hdr, text="Очистить", command=self._clear_log,
-                   width=8).pack(side="right")
-        self._log_widget = scrolledtext.ScrolledText(
-            parent, height=9, bg=BG2, fg=GREEN,
+        ttk.Button(log_hdr, text="Очистить", command=self._clear_log, width=8).pack(side="right")
+        self._log_w = scrolledtext.ScrolledText(
+            parent, height=8, bg=BG2, fg=GREEN,
             font=("Consolas", 9), state="disabled",
-            insertbackground=FG, relief="flat", bd=1,
-        )
-        self._log_widget.pack(fill="x", pady=(4, 0))
+            insertbackground=FG, relief="flat")
+        self._log_w.pack(fill="x", pady=(4, 0))
 
         self._draw_calendar()
 
-    # ------------------------------------------------------------------ calendar
+    # ── LLM tab ───────────────────────────────────────────────────────────────
+    def _build_llm_tab(self, parent):
+        # ── Connection bar ────────────────────────────────────────────────────
+        conn = ttk.Frame(parent)
+        conn.pack(fill="x", pady=(0, 8))
 
+        ttk.Label(conn, text="URL:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(conn, textvariable=self.llm_url, width=30).pack(side="left", padx=(4, 10))
+        ttk.Label(conn, text="Модель:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(conn, textvariable=self.llm_model, width=22).pack(side="left", padx=(4, 10))
+        ttk.Label(conn, text="Тип:", style="Muted.TLabel").pack(side="left")
+        cb = ttk.Combobox(conn, textvariable=self.llm_type, width=8,
+                          values=["openai", "ollama"], state="readonly")
+        cb.pack(side="left", padx=(4, 10))
+        ttk.Button(conn, text="Проверить связь", command=self._llm_check).pack(side="left", padx=4)
+        self._llm_status = tk.Label(conn, text="●", bg=BG, fg=MUTED,
+                                    font=("Segoe UI", 14))
+        self._llm_status.pack(side="left", padx=4)
+
+        ttk.Separator(parent).pack(fill="x", pady=(0, 8))
+
+        # ── Text areas ────────────────────────────────────────────────────────
+        panes = ttk.Frame(parent)
+        panes.pack(fill="both", expand=True)
+        panes.columnconfigure(0, weight=1)
+        panes.columnconfigure(1, weight=1)
+        panes.rowconfigure(1, weight=1)
+
+        # Input
+        tk.Label(panes, text="Текст плана тренировок", bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 9, "bold"), anchor="w").grid(
+            row=0, column=0, sticky="w", pady=(0, 4))
+        self._plan_text = tk.Text(panes, bg=BG3, fg=FG, font=("Segoe UI", 10),
+                                  insertbackground=FG, relief="flat",
+                                  wrap="word", undo=True)
+        self._plan_text.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
+        sb1 = ttk.Scrollbar(panes, command=self._plan_text.yview)
+        sb1.grid(row=1, column=0, sticky="nse")
+        self._plan_text.config(yscrollcommand=sb1.set)
+
+        # Output
+        out_hdr = ttk.Frame(panes)
+        out_hdr.grid(row=0, column=1, sticky="ew", pady=(0, 4))
+        tk.Label(out_hdr, text="Сгенерированный YAML", bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 9, "bold"), anchor="w").pack(side="left")
+        ttk.Button(out_hdr, text="Скопировать", command=self._copy_yaml,
+                   width=12).pack(side="right")
+
+        self._yaml_out = tk.Text(panes, bg=BG2, fg=GREEN, font=("Consolas", 9),
+                                 insertbackground=FG, relief="flat",
+                                 wrap="none", state="disabled")
+        self._yaml_out.grid(row=1, column=1, sticky="nsew")
+        sb2 = ttk.Scrollbar(panes, command=self._yaml_out.yview)
+        sb2.grid(row=1, column=1, sticky="nse")
+        self._yaml_out.config(yscrollcommand=sb2.set)
+
+        # ── Action bar ────────────────────────────────────────────────────────
+        actions = ttk.Frame(parent)
+        actions.pack(fill="x", pady=(8, 0))
+
+        ttk.Button(actions, text="Пример плана", command=self._insert_example).pack(side="left", padx=2)
+        ttk.Button(actions, text="Очистить",     command=self._clear_plan).pack(side="left", padx=2)
+
+        self._gen_btn = ttk.Button(actions, text="🤖  Генерировать YAML",
+                                   style="Primary.TButton", command=self._llm_generate)
+        self._gen_btn.pack(side="left", padx=(16, 2))
+
+        self._llm_progress = tk.Label(actions, text="", bg=BG, fg=YELLOW,
+                                      font=("Segoe UI", 9))
+        self._llm_progress.pack(side="left", padx=8)
+
+        ttk.Button(actions, text="💾  Сохранить YAML",
+                   command=self._save_yaml).pack(side="right", padx=2)
+        ttk.Button(actions, text="📅  В календарь + Собрать", style="Success.TButton",
+                   command=self._yaml_to_calendar).pack(side="right", padx=2)
+
+    # ── Calendar drawing ──────────────────────────────────────────────────────
     def _draw_calendar(self):
         for w in self._cal_frame.winfo_children():
             w.destroy()
-
         self._month_lbl.config(
-            text=f"{MONTHS_RU[self.cal_month.month - 1]}  {self.cal_month.year}"
-        )
+            text=f"{MONTHS_RU[self.cal_month.month - 1]}  {self.cal_month.year}")
         today = datetime.date.today()
 
-        # Index workouts by date
         by_date: dict[str, list[dict]] = {}
         for wo in self.workouts:
             d = wo.get("date")
             if d:
                 by_date.setdefault(d, []).append(wo)
 
-        # Day-of-week headers
         for col, name in enumerate(DAYS_RU):
-            lbl = tk.Label(self._cal_frame, text=name, bg=BG2, fg=ACCENT,
-                           font=("Segoe UI", 9, "bold"), width=18, anchor="center",
-                           pady=4)
-            lbl.grid(row=0, column=col, padx=1, pady=1, sticky="ew")
+            tk.Label(self._cal_frame, text=name, bg=BG2, fg=ACCENT,
+                     font=("Segoe UI", 9, "bold"), width=18,
+                     anchor="center", pady=4).grid(
+                row=0, column=col, padx=1, pady=1, sticky="ew")
             self._cal_frame.columnconfigure(col, weight=1)
 
-        # Weeks
-        weeks = calendar.monthcalendar(self.cal_month.year, self.cal_month.month)
-        for r, week in enumerate(weeks, start=1):
+        for r, week in enumerate(
+                calendar.monthcalendar(self.cal_month.year, self.cal_month.month), start=1):
             self._cal_frame.rowconfigure(r, weight=1)
             for col, day in enumerate(week):
-                cell = tk.Frame(self._cal_frame, bg=BG3 if day else BG2,
-                                bd=1, relief="flat")
+                cell = tk.Frame(self._cal_frame,
+                                bg=BG3 if day else BG2, bd=0)
                 cell.grid(row=r, column=col, padx=1, pady=1, sticky="nsew")
-
-                if day == 0:
+                if not day:
                     continue
-
                 date = datetime.date(self.cal_month.year, self.cal_month.month, day)
                 date_str = date.isoformat()
-
                 day_fg = RED if date == today else (MUTED if col >= 5 else FG)
                 tk.Label(cell, text=str(day), bg=BG3, fg=day_fg,
                          font=("Segoe UI", 8, "bold" if date == today else "normal"),
                          anchor="nw", padx=4, pady=2).pack(fill="x")
-
                 for wo in by_date.get(date_str, []):
-                    self._add_workout_chip(cell, wo)
+                    self._add_chip(cell, wo)
 
-    def _add_workout_chip(self, parent: tk.Frame, wo: dict):
-        type_code = wo.get("type_code", "").lower()
-        color = WORKOUT_COLORS.get(type_code, DEFAULT_WORKOUT_COLOR)
-        name = (wo.get("name") or wo.get("filename") or "")
-        # Shorten name for display: strip prefix Wxx_MM-DD_Day_
-        import re
-        short = re.sub(r"^W\d+_\d{2}-\d{2}_\w+_", "", name)
-        short = short[:22]
-
-        chip = tk.Label(parent, text=short, bg=color, fg="#1e1e2e",
-                        font=("Segoe UI", 7, "bold"),
-                        anchor="w", padx=3, pady=1, wraplength=130)
+    def _add_chip(self, parent, wo):
+        color = WORKOUT_COLORS.get((wo.get("type_code") or "").lower(), DEFAULT_WO_COLOR)
+        name  = wo.get("name") or wo.get("filename") or ""
+        short = re.sub(r"^W\d+_\d{2}-\d{2}_\w+_", "", name)[:22]
+        chip  = tk.Label(parent, text=short, bg=color, fg="#1e1e2e",
+                         font=("Segoe UI", 7, "bold"),
+                         anchor="w", padx=3, pady=1, wraplength=130)
         chip.pack(fill="x", padx=2, pady=1)
         chip.bind("<Button-1>", lambda e, w=wo: self._show_detail(w))
 
-    def _show_detail(self, wo: dict):
-        parts = []
-        if wo.get("date"):
-            parts.append(wo["date"])
-        parts.append(wo.get("name", ""))
-        if wo.get("type_code"):
-            parts.append(f"[{wo['type_code']}]")
-        if wo.get("distance_km"):
-            parts.append(f"{wo['distance_km']} км")
-        if wo.get("estimated_duration_min"):
-            parts.append(f"~{wo['estimated_duration_min']} мин")
+    def _show_detail(self, wo):
+        parts = [p for p in [
+            wo.get("date"), wo.get("name"),
+            f"[{wo['type_code']}]"     if wo.get("type_code")            else None,
+            f"{wo['distance_km']} км"  if wo.get("distance_km")          else None,
+            f"~{wo['estimated_duration_min']} мин" if wo.get("estimated_duration_min") else None,
+        ] if p]
         self._detail_var.set("  " + "   ·   ".join(parts))
 
     def _prev_month(self):
@@ -316,8 +368,7 @@ class App(tk.Tk):
         self.cal_month = datetime.date(y + (m // 12), (m % 12) + 1, 1)
         self._draw_calendar()
 
-    # ------------------------------------------------------------------ YAML
-
+    # ── YAML load / save ──────────────────────────────────────────────────────
     def _browse_yaml(self):
         path = filedialog.askopenfilename(
             title="Выберите YAML план",
@@ -337,73 +388,73 @@ class App(tk.Tk):
                 data = yaml.safe_load(f)
             self.workouts = self._parse_workouts(data)
             if self.workouts:
-                # Navigate to month of first workout with a date
                 dated = [w for w in self.workouts if w.get("date")]
                 if dated:
-                    first_date = datetime.date.fromisoformat(dated[0]["date"])
-                    self.cal_month = first_date.replace(day=1)
+                    self.cal_month = datetime.date.fromisoformat(dated[0]["date"]).replace(day=1)
             self._draw_calendar()
             self._log(f"[OK] Загружено {len(self.workouts)} тренировок из {Path(path).name}")
         except Exception as exc:
-            self._log(f"[ERR] Не удалось загрузить YAML: {exc}")
+            self._log(f"[ERR] {exc}")
 
-    def _parse_workouts(self, data: dict) -> list[dict]:
+    def _parse_workouts(self, data):
         from garmin_fit.garmin_step_mapper import extract_date_from_filename
         year_str = self.year_var.get()
         year = int(year_str) if year_str.isdigit() else None
         result = []
         for wo in (data or {}).get("workouts", []):
             filename = wo.get("filename") or wo.get("name") or ""
-            date_str = extract_date_from_filename(filename, year=year)
             result.append({
-                "name":                 wo.get("name") or filename,
-                "filename":             filename,
-                "date":                 date_str,
-                "type_code":            wo.get("type_code", ""),
-                "distance_km":          wo.get("distance_km"),
+                "name":     wo.get("name") or filename,
+                "filename": filename,
+                "date":     extract_date_from_filename(filename, year=year),
+                "type_code": wo.get("type_code", ""),
+                "distance_km": wo.get("distance_km"),
                 "estimated_duration_min": wo.get("estimated_duration_min"),
             })
         return result
 
-    # ------------------------------------------------------------------ log
-
-    def _log(self, text: str):
-        self._log_widget.config(state="normal")
-        self._log_widget.insert("end", text + "\n")
-        self._log_widget.see("end")
-        self._log_widget.config(state="disabled")
+    # ── Log ───────────────────────────────────────────────────────────────────
+    def _log(self, text):
+        self._log_w.config(state="normal")
+        self._log_w.insert("end", text + "\n")
+        self._log_w.see("end")
+        self._log_w.config(state="disabled")
 
     def _clear_log(self):
-        self._log_widget.config(state="normal")
-        self._log_widget.delete("1.0", "end")
-        self._log_widget.config(state="disabled")
+        self._log_w.config(state="normal")
+        self._log_w.delete("1.0", "end")
+        self._log_w.config(state="disabled")
 
-    # ------------------------------------------------------------------ CLI runner
-
-    def _run(self, args: list[str]):
+    # ── CLI runner ────────────────────────────────────────────────────────────
+    def _run(self, args):
         cmd = [PYTHON, "-m", "garmin_fit.cli"] + args
         self._log(f"\n$ garmin_fit.cli {' '.join(args)}")
 
         def worker():
             try:
                 proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace",
                     cwd=PROJECT_ROOT,
                 )
                 for line in proc.stdout:
                     self.after(0, self._log, line.rstrip())
                 proc.wait()
-                status = "[OK] Готово" if proc.returncode == 0 else f"[FAIL] код возврата {proc.returncode}"
-                self.after(0, self._log, status)
+                msg = "[OK] Готово" if proc.returncode == 0 else f"[FAIL] код {proc.returncode}"
+                self.after(0, self._log, msg)
             except Exception as exc:
                 self.after(0, self._log, f"[ERR] {exc}")
 
         threading.Thread(target=worker, daemon=True).start()
 
-    # ------------------------------------------------------------------ command handlers
+    def _append_garmin_args(self, args):
+        if self.email_var.get(): args += ["--email",     self.email_var.get()]
+        if self.pass_var.get():  args += ["--password",  self.pass_var.get()]
+        if self.year_var.get():  args += ["--year",      self.year_var.get()]
+        if self.from_var.get():  args += ["--from-date", self.from_var.get()]
+        if self.to_var.get():    args += ["--to-date",   self.to_var.get()]
 
+    # ── CLI commands ──────────────────────────────────────────────────────────
     def _cmd_build(self):
         args = ["run"]
         if self.yaml_path.get():
@@ -421,32 +472,13 @@ class App(tk.Tk):
 
     def _cmd_delete(self):
         if not self.dry_run.get():
-            ok = messagebox.askyesno(
-                "Подтверждение удаления",
-                "Удалить тренировки из Garmin Connect?\n\nЭто действие необратимо.",
-                icon="warning",
-            )
-            if not ok:
+            if not messagebox.askyesno("Подтверждение",
+                    "Удалить тренировки из Garmin Connect?\nЭто необратимо.", icon="warning"):
                 return
         args = ["garmin-calendar-delete"]
         self._append_garmin_args(args)
-        if self.dry_run.get():
-            args += ["--dry-run"]
-        else:
-            args += ["--confirm"]
+        args += ["--dry-run"] if self.dry_run.get() else ["--confirm"]
         self._run(args)
-
-    def _append_garmin_args(self, args: list):
-        if self.email_var.get():
-            args += ["--email", self.email_var.get()]
-        if self.pass_var.get():
-            args += ["--password", self.pass_var.get()]
-        if self.year_var.get():
-            args += ["--year", self.year_var.get()]
-        if self.from_var.get():
-            args += ["--from-date", self.from_var.get()]
-        if self.to_var.get():
-            args += ["--to-date", self.to_var.get()]
 
     def _cmd_validate_yaml(self):
         args = ["validate-yaml"]
@@ -454,30 +486,163 @@ class App(tk.Tk):
             args += ["--plan", self.yaml_path.get()]
         self._run(args)
 
-    def _cmd_validate_fit(self):
-        self._run(["validate-fit"])
-
-    def _cmd_doctor(self):
-        self._run(["doctor", "--llm"])
-
-    def _cmd_archive(self):
-        self._run(["archive"])
-
-    def _cmd_list_archives(self):
-        self._run(["list-archives"])
+    def _cmd_validate_fit(self):  self._run(["validate-fit"])
+    def _cmd_doctor(self):        self._run(["doctor", "--llm"])
+    def _cmd_archive(self):       self._run(["archive"])
+    def _cmd_list_archives(self): self._run(["list-archives"])
 
     def _cmd_restore(self):
-        name = tk.simpledialog.askstring(
-            "Восстановить архив",
-            "Введите имя архива (из списка архивов):",
-            parent=self,
-        )
+        name = simpledialog.askstring("Восстановить архив",
+                                      "Введите имя архива:", parent=self)
         if name:
             self._run(["restore", name.strip()])
 
+    # ── LLM tab helpers ───────────────────────────────────────────────────────
+    def _llm_check(self):
+        self._llm_status.config(text="●", fg=YELLOW)
+        self.update_idletasks()
 
-# Need simpledialog for restore
-from tkinter import simpledialog  # noqa: E402
+        def check():
+            try:
+                from garmin_fit.llm.client import UnifiedLLMClient
+                client = UnifiedLLMClient(
+                    model=self.llm_model.get(),
+                    base_url=self.llm_url.get(),
+                    api_type=self.llm_type.get(),
+                )
+                ok = client.check_connection()
+                color = GREEN if ok else RED
+                self.after(0, self._llm_status.config, {"text": "●", "fg": color})
+            except Exception as exc:
+                self.after(0, self._llm_status.config, {"text": "●", "fg": RED})
+                self.after(0, self._set_progress, f"Ошибка: {exc}")
+
+        threading.Thread(target=check, daemon=True).start()
+
+    def _set_progress(self, text, color=YELLOW):
+        self._llm_progress.config(text=text, fg=color)
+
+    def _llm_generate(self):
+        plan_text = self._plan_text.get("1.0", "end").strip()
+        if not plan_text:
+            messagebox.showwarning("Пустой план", "Введите текст плана тренировок.")
+            return
+
+        self._gen_btn.config(state="disabled")
+        self._set_progress("⏳ Генерирую YAML…")
+        self._yaml_out.config(state="normal")
+        self._yaml_out.delete("1.0", "end")
+        self._yaml_out.config(state="disabled")
+
+        def worker():
+            try:
+                from garmin_fit.llm.client import UnifiedLLMClient
+                from garmin_fit.plan_service import build_plan_draft
+
+                client = UnifiedLLMClient(
+                    model=self.llm_model.get(),
+                    base_url=self.llm_url.get(),
+                    api_type=self.llm_type.get(),
+                )
+                result = build_plan_draft(client, plan_text, max_retries=1)
+
+                yaml_text = result.yaml_text or ""
+                warnings  = result.warnings or []
+                repairs   = result.repair_notes or []
+
+                def finish():
+                    self._yaml_out.config(state="normal")
+                    self._yaml_out.delete("1.0", "end")
+                    self._yaml_out.insert("end", yaml_text)
+                    self._yaml_out.config(state="disabled")
+
+                    n = len((result.plan.workouts if result.plan else []))
+                    status = f"✅ Готово — {n} тренировок"
+                    if repairs:
+                        status += f", {len(repairs)} правок"
+                    if warnings:
+                        status += f", {len(warnings)} предупреждений"
+                    self._set_progress(status, GREEN)
+                    self._gen_btn.config(state="normal")
+
+                    # Show repairs/warnings in the log
+                    if repairs:
+                        self._log("\n[Авто-правки]")
+                        for r in repairs:
+                            self._log(f"  {r}")
+                    if warnings:
+                        self._log("\n[Предупреждения]")
+                        for w in warnings:
+                            self._log(f"  {w}")
+
+                self.after(0, finish)
+
+            except Exception as exc:
+                def on_err():
+                    self._set_progress(f"❌ Ошибка: {exc}", RED)
+                    self._gen_btn.config(state="normal")
+                self.after(0, on_err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _copy_yaml(self):
+        text = self._yaml_out.get("1.0", "end").strip()
+        if text:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+
+    def _clear_plan(self):
+        self._plan_text.delete("1.0", "end")
+        self._yaml_out.config(state="normal")
+        self._yaml_out.delete("1.0", "end")
+        self._yaml_out.config(state="disabled")
+        self._set_progress("")
+
+    def _save_yaml(self):
+        text = self._yaml_out.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("Нет YAML", "Сначала сгенерируйте YAML.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Сохранить YAML план",
+            defaultextension=".yaml",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
+            initialdir=PROJECT_ROOT / "Plan",
+        )
+        if path:
+            Path(path).write_text(text, encoding="utf-8")
+            self.yaml_path.set(path)
+            self._reload_yaml()
+            self._set_progress(f"Сохранено: {Path(path).name}", GREEN)
+            self._nb.select(0)
+
+    def _yaml_to_calendar(self):
+        text = self._yaml_out.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("Нет YAML", "Сначала сгенерируйте YAML.")
+            return
+        # Save to temp file in Plan/, then build
+        plan_dir = PROJECT_ROOT / "Plan"
+        plan_dir.mkdir(exist_ok=True)
+        tmp = plan_dir / f"_gui_draft_{datetime.datetime.now().strftime('%H%M%S')}.yaml"
+        tmp.write_text(text, encoding="utf-8")
+        self.yaml_path.set(str(tmp))
+        self._reload_yaml()
+        self._nb.select(0)
+        self._cmd_build()
+
+    def _insert_example(self):
+        example = (
+            "01.05.2026 (Чт) — Длинный бег\n"
+            "20 км, пульс 125–140 уд/мин\n\n"
+            "03.05.2026 (Сб) — Интервалы\n"
+            "Разминка 2 км, 6×800 м пульс 160–170 / 400 м пульс 120–130, заминка 1.5 км\n\n"
+            "05.05.2026 (Пн) — Темповый бег\n"
+            "Разминка 2 км, основная часть 5 км пульс 155–165, заминка 1 км\n"
+        )
+        self._plan_text.delete("1.0", "end")
+        self._plan_text.insert("1.0", example)
+
 
 if __name__ == "__main__":
     app = App()
