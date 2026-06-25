@@ -592,7 +592,13 @@ class App(tk.Tk):
 
                 yaml_text = result.yaml_text or ""
                 warnings  = result.warnings or []
-                repairs   = result.repair_notes or []
+                repairs   = result.repairs or []
+
+                # Count workouts from yaml_text
+                try:
+                    n = len((yaml.safe_load(yaml_text) or {}).get("workouts", []))
+                except Exception:
+                    n = 0
 
                 def finish():
                     self._yaml_out.config(state="normal")
@@ -600,7 +606,6 @@ class App(tk.Tk):
                     self._yaml_out.insert("end", yaml_text)
                     self._yaml_out.config(state="disabled")
 
-                    n = len((result.plan.workouts if result.plan else []))
                     status = f"✅ Готово — {n} тренировок"
                     if repairs:
                         status += f", {len(repairs)} правок"
@@ -609,7 +614,6 @@ class App(tk.Tk):
                     self._set_progress(status, GREEN)
                     self._gen_btn.config(state="normal")
 
-                    # Show repairs/warnings in the log
                     if repairs:
                         self._log("\n[Авто-правки]")
                         for r in repairs:
