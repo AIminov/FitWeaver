@@ -70,9 +70,10 @@ class App(tk.Tk):
         self.dry_run   = tk.BooleanVar(value=True)
 
         # LLM settings
-        self.llm_url   = tk.StringVar(value="http://127.0.0.1:1234")
-        self.llm_model = tk.StringVar(value="qwen/qwen3.5-9b")
-        self.llm_type  = tk.StringVar(value="openai")
+        self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
+        self.llm_model   = tk.StringVar(value="qwen/qwen3.5-9b")
+        self.llm_type    = tk.StringVar(value="openai")
+        self.llm_timeout = tk.IntVar(value=900)
 
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
@@ -100,17 +101,20 @@ class App(tk.Tk):
                 self.llm_model.set(data["llm_model"])
             if data.get("llm_type"):
                 self.llm_type.set(data["llm_type"])
-        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            if data.get("llm_timeout"):
+                self.llm_timeout.set(int(data["llm_timeout"]))
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
             pass
 
     def _save_session(self):
         data = {
-            "yaml_path": self.yaml_path.get(),
-            "email":     self.email_var.get(),
-            "year":      self.year_var.get(),
-            "llm_url":   self.llm_url.get(),
-            "llm_model": self.llm_model.get(),
-            "llm_type":  self.llm_type.get(),
+            "yaml_path":   self.yaml_path.get(),
+            "email":       self.email_var.get(),
+            "year":        self.year_var.get(),
+            "llm_url":     self.llm_url.get(),
+            "llm_model":   self.llm_model.get(),
+            "llm_type":    self.llm_type.get(),
+            "llm_timeout": self.llm_timeout.get(),
         }
         SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                                 encoding="utf-8")
@@ -385,6 +389,8 @@ class App(tk.Tk):
         cb = ttk.Combobox(conn, textvariable=self.llm_type, width=8,
                           values=["openai", "ollama"], state="readonly")
         cb.pack(side="left", padx=(4, 10))
+        ttk.Label(conn, text="Таймаут (с):", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(conn, textvariable=self.llm_timeout, width=6).pack(side="left", padx=(4, 10))
         ttk.Button(conn, text="Проверить связь", command=self._llm_check).pack(side="left", padx=4)
         self._llm_status = tk.Label(conn, text="●", bg=BG, fg=MUTED,
                                     font=("Segoe UI", 14))
@@ -691,6 +697,7 @@ class App(tk.Tk):
                     model=self.llm_model.get(),
                     base_url=self.llm_url.get(),
                     api_type=self.llm_type.get(),
+                    request_timeout_sec=max(60, self.llm_timeout.get()),
                 )
                 result = build_plan_draft(client, plan_text, max_retries=1)
 
