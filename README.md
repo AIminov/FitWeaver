@@ -9,6 +9,27 @@ Deliver them to your watch via USB or directly to **Garmin Connect Calendar** �
 
 ---
 
+## Desktop GUI
+
+`fitweaver_gui.py` — a Tkinter desktop app that wraps the entire pipeline without the command line.
+
+```bash
+python fitweaver_gui.py
+```
+
+**What it includes:**
+
+| Tab | Features |
+|-----|----------|
+| **📅 Calendar** | Monthly view of workouts from your YAML plan; click a workout for details; run any CLI command from the sidebar |
+| **🤖 LLM Generator** | Connect a local LLM (LM Studio / Ollama), paste plan text, generate and preview YAML, then build FIT or upload to Garmin in one click |
+| **🏃 Garmin Connect** | Live workout list from the API; multi-select and bulk delete; mouse-wheel scrolling |
+
+Sidebar holds all settings (credentials, date range, dry-run) and quick-access buttons for every CLI command.
+Session state (email, YAML path, LLM settings) is saved between runs — no need to re-enter each time.
+
+---
+
 ## Pipeline
 
 ```
@@ -333,16 +354,19 @@ python -m garmin_fit.legacy_cli build
 python -m garmin_fit.legacy_cli compare --plan Plan/plan.yaml
 ```
 
+### Desktop GUI
+
+```bash
+python fitweaver_gui.py              # Desktop GUI (recommended for local users)
+```
+
 ### Other
 
 ```bash
-python -m garmin_fit.runner          # Interactive menu (recommended for local LLM users)
+python -m garmin_fit.runner          # Interactive menu (14 options, terminal)
 python -m garmin_fit.bot             # Telegram bot
 python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml  # Quick validation
 ```
-
-The interactive menu (`garmin_fit.runner`) covers the full local workflow in one place:
-LLM generation → build → validate → Garmin Calendar upload/delete → archive.
 
 ---
 
