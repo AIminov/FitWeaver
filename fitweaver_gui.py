@@ -305,6 +305,9 @@ class App(tk.Tk):
                                   insertbackground=FG, relief="flat",
                                   wrap="word", undo=True)
         self._plan_text.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
+        # Explicit Ctrl+V binding (some themes suppress the default)
+        self._plan_text.bind("<Control-v>", self._paste_text)
+        self._plan_text.bind("<Control-V>", self._paste_text)
         sb1 = ttk.Scrollbar(panes, command=self._plan_text.yview)
         sb1.grid(row=1, column=0, sticky="nse")
         self._plan_text.config(yscrollcommand=sb1.set)
@@ -342,8 +345,10 @@ class App(tk.Tk):
 
         ttk.Button(actions, text="💾  Сохранить YAML",
                    command=self._save_yaml).pack(side="right", padx=2)
-        ttk.Button(actions, text="📅  В календарь + Собрать", style="Success.TButton",
-                   command=self._yaml_to_calendar).pack(side="right", padx=2)
+        ttk.Button(actions, text="📅  Загрузить в Garmin",
+                   command=self._yaml_to_garmin).pack(side="right", padx=2)
+        ttk.Button(actions, text="⚙  Собрать FIT", style="Success.TButton",
+                   command=self._yaml_to_build).pack(side="right", padx=2)
 
     # ── Calendar drawing ──────────────────────────────────────────────────────
     def _draw_calendar(self):
@@ -664,20 +669,38 @@ class App(tk.Tk):
             self._set_progress(f"Сохранено: {Path(path).name}", GREEN)
             self._nb.select(0)
 
-    def _yaml_to_calendar(self):
+    def _paste_text(self, event):
+        try:
+            text = self.clipboard_get()
+            self._plan_text.insert(tk.INSERT, text)
+        except tk.TclError:
+            pass
+        return "break"  # prevent default handler from doubling the paste
+
+    def _yaml_save_temp(self) -> str | None:
         text = self._yaml_out.get("1.0", "end").strip()
         if not text:
             messagebox.showwarning("Нет YAML", "Сначала сгенерируйте YAML.")
-            return
-        # Save to temp file in Plan/, then build
+            return None
         plan_dir = PROJECT_ROOT / "Plan"
         plan_dir.mkdir(exist_ok=True)
         tmp = plan_dir / f"_gui_draft_{datetime.datetime.now().strftime('%H%M%S')}.yaml"
         tmp.write_text(text, encoding="utf-8")
         self.yaml_path.set(str(tmp))
         self._reload_yaml()
-        self._nb.select(0)
-        self._cmd_build()
+        return str(tmp)
+
+    def _yaml_to_build(self):
+        path = self._yaml_save_temp()
+        if path:
+            self._nb.select(0)
+            self._cmd_build()
+
+    def _yaml_to_garmin(self):
+        path = self._yaml_save_temp()
+        if path:
+            self._nb.select(0)
+            self._cmd_upload()
 
     # ── Garmin Connect tab ────────────────────────────────────────────────────
     def _build_garmin_tab(self, parent):
