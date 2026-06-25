@@ -168,10 +168,29 @@ class App(tk.Tk):
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True)
 
-        # Sidebar
-        sidebar = ttk.Frame(body, width=240, padding=(10, 10, 8, 8))
-        sidebar.pack(side="left", fill="y")
-        sidebar.pack_propagate(False)
+        # Sidebar — scrollable
+        sidebar_outer = ttk.Frame(body, width=240)
+        sidebar_outer.pack(side="left", fill="y")
+        sidebar_outer.pack_propagate(False)
+
+        self._sb_canvas = tk.Canvas(sidebar_outer, bg=BG, highlightthickness=0)
+        _sb_scroll = ttk.Scrollbar(sidebar_outer, orient="vertical",
+                                   command=self._sb_canvas.yview)
+        self._sb_canvas.configure(yscrollcommand=_sb_scroll.set)
+        _sb_scroll.pack(side="right", fill="y")
+        self._sb_canvas.pack(side="left", fill="both", expand=True)
+
+        sidebar = ttk.Frame(self._sb_canvas, padding=(10, 10, 8, 8))
+        _sb_win = self._sb_canvas.create_window((0, 0), window=sidebar, anchor="nw")
+
+        def _sb_resize(e=None):
+            self._sb_canvas.configure(scrollregion=self._sb_canvas.bbox("all"))
+        def _sb_fit_width(e):
+            self._sb_canvas.itemconfig(_sb_win, width=e.width)
+
+        sidebar.bind("<Configure>", _sb_resize)
+        self._sb_canvas.bind("<Configure>", _sb_fit_width)
+
         self._build_sidebar(sidebar)
 
         ttk.Separator(body, orient="vertical").pack(side="left", fill="y")
@@ -219,6 +238,18 @@ class App(tk.Tk):
         ttk.Button(p, text="📦  Архивировать",        command=self._cmd_archive).pack(fill="x", pady=2)
         ttk.Button(p, text="📋  Список архивов",      command=self._cmd_list_archives).pack(fill="x", pady=2)
         ttk.Button(p, text="🔄  Восстановить архив",  command=self._cmd_restore).pack(fill="x", pady=2)
+
+        # Bind mousewheel on all child widgets so scrolling works anywhere in sidebar
+        def _sb_scroll_wheel(e):
+            self._sb_canvas.yview_scroll(-1 * (e.delta // 120), "units")
+
+        def _bind_sb_wheel(w):
+            w.bind("<MouseWheel>", _sb_scroll_wheel, add="+")
+            for child in w.winfo_children():
+                _bind_sb_wheel(child)
+
+        self._sb_canvas.bind("<MouseWheel>", _sb_scroll_wheel)
+        p.after(100, lambda: _bind_sb_wheel(p))
 
     # ── Right panel (Notebook) ────────────────────────────────────────────────
     def _build_right(self, parent):
