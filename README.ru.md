@@ -387,10 +387,49 @@ examples/            ← Примеры шагов тренировки
 
 ## LLM — поддерживаемые бэкенды
 
-| Бэкенд | Команда |
+Работает любой OpenAI-совместимый сервер. Выставите **Тип = openai** и укажите адрес сервера — `/v1` добавляется автоматически.
+
+| Бэкенд | Как запустить | URL в GUI / CLI |
+|--------|--------------|----------------|
+| **LM Studio** | Загрузить модель → Start server | `http://127.0.0.1:1234` |
+| **llama.cpp** (`llama-server`) | См. ниже | `http://127.0.0.1:8080` |
+| **Ollama** | `ollama serve` | `http://127.0.0.1:11434` (Тип = ollama) |
+| **vLLM / любой OpenAI-compat** | Зависит от утилиты | `http://HOST:PORT` |
+
+### Запуск через llama-server (llama.cpp)
+
+```powershell
+# Скачать и запустить модель напрямую с Hugging Face
+llama-server -hf ggml-org/gemma-4-12B-it-GGUF:Q4_K_M `
+  --host 127.0.0.1 `
+  --port 8080 `
+  -c 32768 `
+  -np 1
+```
+
+Затем в GUI (вкладка **🤖 LLM Генератор**) или CLI:
+
+| Поле | Значение |
+|------|----------|
+| URL | `http://127.0.0.1:8080` |
+| Модель | Запустите `curl http://127.0.0.1:8080/v1/models` чтобы узнать точный ID, или используйте HF-путь |
+| Тип | `openai` |
+
+Эквивалент в CLI:
+```bash
+python -m garmin_fit.llm.request_cli \
+  --api openai \
+  --url http://127.0.0.1:8080 \
+  --plan Plan/my_plan.md
+```
+
+### Рекомендации по моделям
+
+| Модель | Заметки |
 |--------|---------|
-| LM Studio (OpenAI-совместимый) | `--api openai --url http://127.0.0.1:1234/v1` |
-| Ollama | `--api ollama --url http://localhost:11434` |
+| `qwen/qwen3.5-9b` | ✅ Рекомендуется — лучшее качество, нативно поддерживает `enable_thinking: false` |
+| `qwen/qwen3.5-4b` | ✅ Хорошо — быстрее, меньше VRAM |
+| `google/gemma-4-*` | ⚠️ **Избегать** — игнорирует `enable_thinking: false`; при повторной попытке входит в режим размышлений и зависает на 3000+ секунд |
 
 Детали подключения: [`docs/LLM_CONNECTION_PROFILE.md`](docs/LLM_CONNECTION_PROFILE.md)
 
