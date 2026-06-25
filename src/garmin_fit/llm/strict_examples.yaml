@@ -621,6 +621,50 @@ failure_examples:
           count: 5
     fix_rule: "back_to_offset must be < current step index and point to the FIRST step of the repeating section!"
 
+  - id: fail_back_to_offset_with_warmup
+    tags: [failure, repeat, offset, intervals, warmup]
+    error: "back_to_offset points to last step of repeating group instead of first"
+    input: |
+      Интервалы 6x800м с разминкой
+      Разминка 2 км, 6x(800м активно + 400м восстановление), заминка 1 км
+    wrong_output: |
+      steps:
+        - type: dist_open
+          km: 2.0
+          intensity: warmup          # Индекс 0 — не повторяется
+        - type: dist_hr
+          km: 0.8
+          hr_low: 160
+          hr_high: 170
+          intensity: active          # Индекс 1 — ПЕРВЫЙ шаг повтора
+        - type: dist_hr
+          km: 0.4
+          hr_low: 120
+          hr_high: 135
+          intensity: recovery        # Индекс 2 — последний шаг повтора
+        - type: repeat
+          back_to_offset: 2          # ❌ WRONG: повторяет только шаг 2 (recovery)
+          count: 6
+    correct_output: |
+      steps:
+        - type: dist_open
+          km: 2.0
+          intensity: warmup          # Индекс 0 — не повторяется
+        - type: dist_hr
+          km: 0.8
+          hr_low: 160
+          hr_high: 170
+          intensity: active          # Индекс 1 — ПЕРВЫЙ шаг повтора
+        - type: dist_hr
+          km: 0.4
+          hr_low: 120
+          hr_high: 135
+          intensity: recovery        # Индекс 2 — последний шаг повтора
+        - type: repeat
+          back_to_offset: 1          # ✓ повторяет шаги 1+2 (active+recovery)
+          count: 6
+    fix_rule: "back_to_offset = index of FIRST step to repeat, not the last. Warmup is NOT part of the repeat group. Count forward from step 0: if warmup is at index 0 and the first interval step is at index 1, then back_to_offset must be 1."
+
   - id: fail_invalid_intensity
     tags: [failure, intensity, enum]
     error: "intensity must be one of allowed values"
