@@ -79,6 +79,7 @@ class App(tk.Tk):
 
         self._setup_style()
         self._build_ui()
+        self._setup_text_bindings()
         self._load_session()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -251,6 +252,76 @@ class App(tk.Tk):
         self._sb_canvas.bind("<MouseWheel>", _sb_scroll_wheel)
         p.after(100, lambda: _bind_sb_wheel(p))
 
+    # ── Global text-widget bindings (clipboard + scroll) ─────────────────────
+    def _setup_text_bindings(self):
+        """Apply Ctrl+C/V/X/A and mousewheel to every tk.Text area in the app."""
+
+        def _paste(e):
+            w = e.widget
+            if str(w.cget("state")) == "disabled":
+                return "break"
+            try:
+                if w.tag_ranges("sel"):
+                    w.delete("sel.first", "sel.last")
+                w.insert(tk.INSERT, self.clipboard_get())
+            except tk.TclError:
+                pass
+            return "break"
+
+        def _copy(e):
+            w = e.widget
+            try:
+                self.clipboard_clear()
+                self.clipboard_append(w.get("sel.first", "sel.last"))
+            except tk.TclError:
+                pass
+            return "break"
+
+        def _cut(e):
+            w = e.widget
+            if str(w.cget("state")) == "disabled":
+                return "break"
+            try:
+                self.clipboard_clear()
+                self.clipboard_append(w.get("sel.first", "sel.last"))
+                w.delete("sel.first", "sel.last")
+            except tk.TclError:
+                pass
+            return "break"
+
+        def _select_all(e):
+            e.widget.tag_add("sel", "1.0", "end-1c")
+            return "break"
+
+        def _wheel(e):
+            e.widget.yview_scroll(-1 * (e.delta // 120), "units")
+            return "break"
+
+        text_widgets = (self._plan_text, self._yaml_out, self._log_w)
+        for w in text_widgets:
+            for seq in ("<Control-v>", "<Control-V>", "<<Paste>>"):
+                w.bind(seq, _paste)
+            for seq in ("<Control-c>", "<Control-C>", "<<Copy>>"):
+                w.bind(seq, _copy)
+            for seq in ("<Control-x>", "<Control-X>", "<<Cut>>"):
+                w.bind(seq, _cut)
+            for seq in ("<Control-a>", "<Control-A>"):
+                w.bind(seq, _select_all)
+            w.bind("<MouseWheel>", _wheel)
+
+        # Ctrl+A select-all for single-line Entry widgets (not default on Windows)
+        def _entry_select_all(e):
+            w = e.widget
+            try:
+                w.select_range(0, "end")
+                w.icursor("end")
+            except (AttributeError, tk.TclError):
+                pass
+            # don't return "break" — let focus and other events continue
+
+        self.bind_all("<Control-a>", _entry_select_all, add="+")
+        self.bind_all("<Control-A>", _entry_select_all, add="+")
+
     # ── Right panel (Notebook) ────────────────────────────────────────────────
     def _build_right(self, parent):
         self._nb = ttk.Notebook(parent)
@@ -336,9 +407,6 @@ class App(tk.Tk):
                                   insertbackground=FG, relief="flat",
                                   wrap="word", undo=True)
         self._plan_text.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
-        # Explicit Ctrl+V binding (some themes suppress the default)
-        self._plan_text.bind("<Control-v>", self._paste_text)
-        self._plan_text.bind("<Control-V>", self._paste_text)
         sb1 = ttk.Scrollbar(panes, command=self._plan_text.yview)
         sb1.grid(row=1, column=0, sticky="nse")
         self._plan_text.config(yscrollcommand=sb1.set)
@@ -699,14 +767,6 @@ class App(tk.Tk):
             self._reload_yaml()
             self._set_progress(f"Сохранено: {Path(path).name}", GREEN)
             self._nb.select(0)
-
-    def _paste_text(self, event):
-        try:
-            text = self.clipboard_get()
-            self._plan_text.insert(tk.INSERT, text)
-        except tk.TclError:
-            pass
-        return "break"  # prevent default handler from doubling the paste
 
     def _yaml_save_temp(self) -> str | None:
         text = self._yaml_out.get("1.0", "end").strip()
