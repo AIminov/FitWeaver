@@ -16,7 +16,13 @@ not for the installed wheel.
 
 ## Supported Interfaces
 
-Primary interfaces:
+Primary local interface:
+
+```bash
+python fitweaver_gui.py
+```
+
+Supported package CLIs for automation:
 
 ```bash
 python -m garmin_fit.cli run
@@ -28,7 +34,6 @@ python -m garmin_fit.runtime_cli --runtime-root runtime --copy-existing
 Legacy-compatible interfaces kept for transition:
 
 ```bash
-python get_fit.py
 python -m Scripts.telegram_bot
 python -m Scripts.llm.request_cli
 python Scripts/check_fit.py
@@ -36,8 +41,9 @@ python Scripts/check_fit.py
 
 These legacy commands are intended for use from the repository checkout.
 
-`get_fit.py` remains available as a compatibility entry point, but new usage
-should go through `garmin_fit.cli` / `garmin_fit.legacy_cli`.
+The old root launcher scripts (`get_fit.py`, `run.py`, `validate_yaml.py`,
+`run_pipeline.bat`, `run_pipeline.sh`) have been removed. Use the GUI for local
+work and package module commands for automation.
 
 ## Intent
 
@@ -46,7 +52,8 @@ The compatibility layer stays in place to avoid breaking:
 - existing local automation
 - old shell aliases and ad hoc scripts
 
-New code should target `garmin_fit` and `src/garmin_fit`, not `Scripts`.
+New code should target the GUI, `garmin_fit` package commands, and
+`src/garmin_fit`, not `Scripts`.
 
 ## Cleanup Scope Remaining
 
@@ -54,4 +61,3 @@ Remaining work is mostly optional cleanup:
 
 - reduce duplicate wrappers where local root execution is no longer needed
 - migrate any old personal utilities out of `Scripts/`
-- eventually deprecate `get_fit.py` once package CLI adoption is complete

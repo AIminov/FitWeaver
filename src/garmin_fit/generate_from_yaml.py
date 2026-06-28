@@ -525,7 +525,7 @@ if __name__ == "__main__":
     try:
         generated, total = generate_all_templates(yaml_path)
         if total > 0 and generated == total:
-            logger.info("\nNext step: python get_fit.py --build-only")
+            logger.info("\nNext step: python -m garmin_fit.legacy_cli build")
             sys.exit(0)
         else:
             sys.exit(1)

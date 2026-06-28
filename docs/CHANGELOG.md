@@ -1,5 +1,20 @@
 ﻿# Changelog
 
+## 2026-06-28 - GUI-first cleanup
+
+### Removed
+- Obsolete repository-root launcher scripts: `get_fit.py`, `run.py`,
+  `validate_yaml.py`, `run_pipeline.bat`, and `run_pipeline.sh`.
+
+### Changed
+- README quick starts now make `python fitweaver_gui.py` the primary local
+  workflow and keep package CLIs as the automation path.
+- Legacy compatibility docs now point users away from root launchers and toward
+  the GUI / `python -m garmin_fit...` commands.
+- CLI follow-up hints no longer reference removed `get_fit.py` commands.
+
+---
+
 ## 2026-04-23 — v10.4.1 (SBU Localization)
 
 ### Fixed

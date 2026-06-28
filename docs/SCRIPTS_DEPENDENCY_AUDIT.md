@@ -7,13 +7,16 @@ This audit records where `Scripts.*` is still required after the migration to
 
 ## Current Conclusion
 
-`Scripts` no longer ships as part of the installed package.
+`Scripts` no longer ships as part of the installed package, and the repository
+root no longer keeps the old one-file launcher scripts.
 
 Reason:
 
-- compatibility entry points still intentionally expose `Scripts.*`
-- some documentation still references `Scripts.*` as a compatibility path
-- source-checkout compatibility still keeps `Scripts/` in the repository
+- the desktop GUI is the primary local workflow
+- package module commands (`python -m garmin_fit...`) are the supported CLI
+  automation path
+- source-checkout compatibility still keeps `Scripts/` in the repository for
+  old imports and direct shim execution
 
 ## Current Dependency Groups
 
@@ -21,7 +24,6 @@ Reason:
 
 Still intentionally supported:
 
-- `python get_fit.py`
 - `python -m Scripts.telegram_bot`
 - `python -m Scripts.llm.request_cli`
 - `python Scripts/check_fit.py`
@@ -39,6 +41,8 @@ For the current project state:
 
 - keep `Scripts/` as a compatibility layer
 - ship only `src/garmin_fit` in the installed package
+- remove obsolete root launcher scripts instead of maintaining duplicate
+  entry points
 - continue migrating docs/examples away from `Scripts.*`
 
 ## Safe Future Exit Criteria

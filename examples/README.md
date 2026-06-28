@@ -30,13 +30,12 @@ Output_fit/ (FIT files ready for Garmin watch)
 ### 1. Complete Workflow
 
 ```bash
-cd Final/
-python get_fit.py
+python fitweaver_gui.py
 ```
 
-This will:
+Use the GUI to:
 1. Check prerequisites
-2. Look for workout templates
+2. Open or generate a YAML plan
 3. Build FIT files with unique file_id values
 4. Validate generated files
 5. Report results
@@ -44,7 +43,7 @@ This will:
 ### 2. Validation Only
 
 ```bash
-python get_fit.py --validate-only
+python -m garmin_fit.cli validate-fit
 ```
 
 Validates existing FIT files in Output_fit/ without regenerating them.
@@ -52,7 +51,7 @@ Validates existing FIT files in Output_fit/ without regenerating them.
 ### 3. Build Only
 
 ```bash
-python get_fit.py --build-only
+python -m garmin_fit.legacy_cli build
 ```
 
 Builds FIT files from existing templates (skips template generation).
@@ -373,7 +372,7 @@ Final/Instructions/"
 
 For issues or questions:
 1. Check logs in `Logs/` directory
-2. Run validation: `python get_fit.py --validate-only`
+2. Run validation: `python -m garmin_fit.cli validate-fit`
 3. Review CLAUDE.md in parent directory
 4. Check example templates in this directory
 

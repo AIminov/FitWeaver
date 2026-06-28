@@ -171,7 +171,7 @@ def main():
     output_path.write_text(yaml_output, encoding="utf-8")
 
     logger.info(f"\nSaved: {output_path}")
-    logger.info(f"Next step: python get_fit.py --plan {output_path}")
+    logger.info(f"Next step: python -m garmin_fit.cli run --plan {output_path}")
     return True
 
 

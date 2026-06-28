@@ -268,7 +268,19 @@ Tokens are cached after first login — subsequent runs skip authentication.
 pip install -r requirements.txt
 ```
 
-**2.** Place your plan in:
+**2.** Start the desktop GUI:
+```bash
+python fitweaver_gui.py
+```
+
+**3.** Use the GUI as the primary workflow:
+- paste or open your plan in the **LLM Generator** tab
+- generate and preview YAML
+- build FIT files or upload the plan to Garmin Connect from the GUI
+
+For CLI-only automation, use the packaged module commands shown below.
+
+**CLI input location:** if you are not using the GUI, place your plan in:
 ```
 Plan/plan.md   or   Plan/plan.txt
 ```
@@ -297,15 +309,15 @@ Files will appear in `Output_fit/`.
 - Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
 - The watch will process them automatically — workouts will appear in **`/GARMIN/Workouts`**
 
-A wrapper script is also available:
-```bash
-run_pipeline.bat   # Windows
-./run_pipeline.sh  # Linux / macOS
-```
-
 ---
 
 ## Commands
+
+### Desktop GUI
+
+```bash
+python fitweaver_gui.py              # Primary local workflow
+```
 
 ### Primary CLI
 
@@ -354,12 +366,6 @@ python -m garmin_fit.legacy_cli build
 python -m garmin_fit.legacy_cli compare --plan Plan/plan.yaml
 ```
 
-### Desktop GUI
-
-```bash
-python fitweaver_gui.py              # Desktop GUI (recommended for local users)
-```
-
 ### Other
 
 ```bash
@@ -373,9 +379,9 @@ python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml  # Quick validation
 ## Project Structure
 
 ```
-src/garmin_fit/      ← Canonical source
-garmin_fit/          ← Alias layer
-Scripts/             ← Compatibility shims
+src/garmin_fit/      ← Canonical source used by GUI and package CLIs
+garmin_fit/          ← Local source-checkout bridge
+Scripts/             ← Legacy compatibility shims, not the normal entry point
 Plan/                ← Place your plan here
 Output_fit/          ← Generated FIT files
 Build_artifacts/     ← Repaired YAML + reports

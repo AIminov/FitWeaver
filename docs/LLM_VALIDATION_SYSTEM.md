@@ -346,7 +346,7 @@ This checklist helps LLM self-validate before returning YAML.
 
 ## Integration with Full Pipeline
 
-When user runs `python run.py` → option 1 (Full workflow):
+When the user runs the GUI build action or `python -m garmin_fit.cli run`:
 
 ```
 Pipeline steps:
@@ -412,7 +412,6 @@ print(load_strict_examples())
 ### Validate Generated YAML:
 
 ```bash
-python validate_yaml.py
 python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 ```
 
