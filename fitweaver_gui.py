@@ -137,7 +137,12 @@ class App(tk.Tk):
         so a pre-existing single-user setup migrates smoothly into its
         first named profile instead of being wiped.
         """
-        from garmin_fit.profile_store import activate_user_profile, load_session
+        from garmin_fit.profile_store import (
+            activate_user_profile,
+            has_user_profile,
+            load_session,
+            migrate_legacy_user_profile,
+        )
 
         self._active_profile_email = email
         profile_data = load_session(email)
@@ -149,10 +154,86 @@ class App(tk.Tk):
             self.year_var.set(profile_data["year"])
         elif reset_if_missing:
             self.year_var.set(str(datetime.date.today().year))
+
+        if not has_user_profile(email):
+            if migrate_legacy_user_profile(email):
+                self._log(f"[OK] Найден существующий user_profile.yaml — перенесён в профиль {email}")
+            else:
+                self._prompt_hr_profile(email)
+
         try:
             activate_user_profile(email)
         except OSError as exc:
             self._log(f"[ERR] Не удалось применить профиль {email}: {exc}")
+
+    def _prompt_hr_profile(self, email: str) -> None:
+        """First-run onboarding: ask for max/resting HR so the LLM prompt can
+        use personal zones. Not required — has a Skip button — since this
+        data is low-stakes and can be hand-edited in the profile's
+        user_profile.yaml at any time."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Новый профиль")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        dialog.resizable(False, False)
+
+        tk.Label(dialog, text=f"Профиль {email} создан впервые",
+                 bg=BG, fg=ACCENT, font=("Segoe UI", 10, "bold"),
+                 padx=16, pady=(16, 4), anchor="w").pack(fill="x")
+        tk.Label(dialog,
+                 text="Пульсовые данные помогают LLM точнее строить тренировки.\n"
+                      "Зоны рассчитаются автоматически из максимального пульса.\n"
+                      "Не обязательно — можно пропустить и настроить позже вручную\n"
+                      "в profiles/.../user_profile.yaml.",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 9), justify="left",
+                 padx=16, anchor="w").pack(fill="x", pady=(0, 8))
+
+        form = ttk.Frame(dialog, padding=(16, 0))
+        form.pack(fill="x")
+        max_hr_var = tk.StringVar()
+        resting_hr_var = tk.StringVar()
+        ttk.Label(form, text="Максимальный пульс (уд/мин):", style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(form, textvariable=max_hr_var, width=10).grid(row=0, column=1, padx=(8, 0))
+        ttk.Label(form, text="Пульс покоя (уд/мин):", style="Muted.TLabel").grid(
+            row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(form, textvariable=resting_hr_var, width=10).grid(row=1, column=1, padx=(8, 0))
+
+        def _save():
+            from garmin_fit.profile_store import activate_user_profile, write_user_profile
+            try:
+                max_hr = int(max_hr_var.get())
+                resting_hr = int(resting_hr_var.get())
+            except ValueError:
+                messagebox.showwarning(
+                    "Некорректные данные",
+                    "Введите пульс числом, либо нажмите «Пропустить».", parent=dialog)
+                return
+            if not (100 <= max_hr <= 240) or not (30 <= resting_hr <= 150):
+                messagebox.showwarning(
+                    "Некорректные данные",
+                    "Проверьте диапазоны: макс. пульс 100–240, пульс покоя 30–150.",
+                    parent=dialog)
+                return
+            write_user_profile(email, max_hr=max_hr, resting_hr=resting_hr)
+            activate_user_profile(email)
+            self._log(f"[OK] Пульсовой профиль сохранён для {email}")
+            dialog.destroy()
+
+        def _skip():
+            from garmin_fit.profile_store import mark_user_profile_skipped
+            mark_user_profile_skipped(email)
+            dialog.destroy()
+
+        actions = ttk.Frame(dialog, padding=16)
+        actions.pack(fill="x")
+        ttk.Button(actions, text="Пропустить", command=_skip).pack(side="left")
+        ttk.Button(actions, text="Сохранить", style="Primary.TButton",
+                   command=_save).pack(side="right")
+
+        dialog.protocol("WM_DELETE_WINDOW", _skip)
+        dialog.grab_set()
+        dialog.wait_window()
 
     def _refresh_profile_list(self) -> None:
         from garmin_fit.profile_store import list_profiles

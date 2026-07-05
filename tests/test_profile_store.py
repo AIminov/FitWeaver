@@ -85,6 +85,85 @@ class ProfileStoreTests(unittest.TestCase):
         profile_store.activate_user_profile("amir@example.com")
         self.assertFalse(self.user_profile_path.exists())
 
+    def test_has_user_profile_false_until_written(self):
+        email = "amir@example.com"
+        self.assertFalse(profile_store.has_user_profile(email))
+        profile_store.write_user_profile(email, max_hr=190, resting_hr=48)
+        self.assertTrue(profile_store.has_user_profile(email))
+
+    def test_compute_hr_zones_covers_full_range_without_gaps(self):
+        zones = profile_store.compute_hr_zones(200)
+        self.assertEqual(zones["zone1"]["low"], 100)
+        self.assertEqual(zones["zone5"]["high"], 200)
+        # each zone's high should match the next zone's low (no gaps/overlaps)
+        names = ["zone1", "zone2", "zone3", "zone4", "zone5"]
+        for a, b in zip(names, names[1:]):
+            self.assertEqual(zones[a]["high"], zones[b]["low"])
+
+    def test_write_user_profile_produces_loadable_yaml(self):
+        import yaml
+        email = "amir@example.com"
+        profile_store.write_user_profile(email, max_hr=190, resting_hr=48)
+        data = yaml.safe_load(profile_store.user_profile_yaml_path(email).read_text(encoding="utf-8"))
+        self.assertEqual(data["max_hr"], 190)
+        self.assertEqual(data["resting_hr"], 48)
+        self.assertIn("zone1", data["hr_zones"])
+        self.assertIn("zone5", data["hr_zones"])
+
+    def test_mark_user_profile_skipped_counts_as_present_but_has_no_zones(self):
+        import yaml
+        email = "amir@example.com"
+        profile_store.mark_user_profile_skipped(email)
+        self.assertTrue(profile_store.has_user_profile(email))
+        data = yaml.safe_load(profile_store.user_profile_yaml_path(email).read_text(encoding="utf-8"))
+        self.assertIsNone(data)  # comment-only file -> None, treated as "no personal zones"
+
+    def test_migrate_legacy_user_profile_copies_existing_global_file(self):
+        email = "amir@example.com"
+        self.user_profile_path.write_text("max_hr: 190\nresting_hr: 48\n", encoding="utf-8")
+
+        migrated = profile_store.migrate_legacy_user_profile(email)
+
+        self.assertTrue(migrated)
+        self.assertEqual(
+            profile_store.user_profile_yaml_path(email).read_text(encoding="utf-8"),
+            "max_hr: 190\nresting_hr: 48\n",
+        )
+
+    def test_migrate_legacy_user_profile_consumes_the_legacy_file(self):
+        # Regression: activate_user_profile() rewrites the global slot with
+        # whichever profile is active, so a second brand-new profile must
+        # NOT see the first profile's synced-back data as "legacy" to steal.
+        email_a = "amir@example.com"
+        email_b = "friend@example.com"
+        self.user_profile_path.write_text("max_hr: 190\nresting_hr: 48\n", encoding="utf-8")
+
+        self.assertTrue(profile_store.migrate_legacy_user_profile(email_a))
+        self.assertFalse(self.user_profile_path.exists())  # legacy file consumed
+
+        profile_store.activate_user_profile(email_a)  # re-populates the global slot
+        self.assertTrue(self.user_profile_path.exists())
+
+        migrated_b = profile_store.migrate_legacy_user_profile(email_b)
+        self.assertFalse(migrated_b, "friend must not inherit amir's re-synced global file")
+        self.assertFalse(profile_store.has_user_profile(email_b))
+
+    def test_migrate_legacy_user_profile_noop_when_no_legacy_file(self):
+        self.assertFalse(profile_store.migrate_legacy_user_profile("amir@example.com"))
+        self.assertFalse(profile_store.has_user_profile("amir@example.com"))
+
+    def test_migrate_legacy_user_profile_does_not_overwrite_existing_profile_data(self):
+        email = "amir@example.com"
+        profile_store.write_user_profile(email, max_hr=175, resting_hr=55)
+        self.user_profile_path.write_text("max_hr: 190\nresting_hr: 48\n", encoding="utf-8")
+
+        migrated = profile_store.migrate_legacy_user_profile(email)
+
+        self.assertFalse(migrated)
+        import yaml
+        data = yaml.safe_load(profile_store.user_profile_yaml_path(email).read_text(encoding="utf-8"))
+        self.assertEqual(data["max_hr"], 175)  # the profile's own data, not the legacy file
+
 
 if __name__ == "__main__":
     unittest.main()

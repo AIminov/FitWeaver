@@ -22,9 +22,22 @@ import json
 import shutil
 from pathlib import Path
 
+import yaml
+
 from .config import PROJECT_ROOT, USER_PROFILE
 
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
+
+# Simple % of max-HR split (Z1 recovery .. Z5 anaerobic). Not physiologically
+# authoritative — just a reasonable, well-known default a user can hand-edit
+# in their profile's user_profile.yaml afterwards.
+_ZONE_PERCENTS = [
+    ("zone1", 0.50, 0.60),
+    ("zone2", 0.60, 0.70),
+    ("zone3", 0.70, 0.80),
+    ("zone4", 0.80, 0.90),
+    ("zone5", 0.90, 1.00),
+]
 
 
 def email_slug(email: str) -> str:
@@ -100,3 +113,75 @@ def activate_user_profile(email: str) -> None:
     if src.exists():
         USER_PROFILE.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, USER_PROFILE)
+
+
+def has_user_profile(email: str) -> bool:
+    return user_profile_yaml_path(email).exists()
+
+
+def compute_hr_zones(max_hr: int) -> dict:
+    return {
+        name: {"low": round(max_hr * lo), "high": round(max_hr * hi)}
+        for name, lo, hi in _ZONE_PERCENTS
+    }
+
+
+def write_user_profile(email: str, max_hr: int, resting_hr: int) -> None:
+    """Write this profile's personal HR data, deriving zone ranges from max_hr.
+
+    Format matches user_profile.yaml.example so a user can still hand-edit
+    the result (e.g. to plug in lab-measured zones instead of the % split)."""
+    data = {
+        "max_hr": max_hr,
+        "resting_hr": resting_hr,
+        "hr_zones": compute_hr_zones(max_hr),
+    }
+    user_profile_yaml_path(email).write_text(
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+
+def mark_user_profile_skipped(email: str) -> None:
+    """Record that onboarding was explicitly skipped, so the GUI doesn't
+    prompt again on every activation. An empty/comment-only file parses to
+    None via yaml.safe_load, which load_user_profile()'s callers already
+    treat the same as "no personal HR zones configured"."""
+    user_profile_yaml_path(email).write_text(
+        "# no personal HR profile -- skipped during onboarding\n", encoding="utf-8"
+    )
+
+
+def _legacy_migration_marker() -> Path:
+    return PROFILES_ROOT / ".legacy_migrated"
+
+
+def migrate_legacy_user_profile(email: str) -> bool:
+    """One-time convenience: if this profile has no personal HR file yet but
+    a legacy global user_profile.yaml already exists (from before multi-profile
+    support existed), copy it into the profile instead of prompting the user
+    to re-enter data they already have on disk. Returns True if it migrated
+    something.
+
+    activate_user_profile() overwrites the global slot with whichever profile
+    is currently active, so after the first real activation that file no
+    longer represents "unclaimed legacy data" -- it just reflects the last
+    active profile, and would otherwise look like fresh "legacy data" to
+    steal for every subsequent new profile. A marker file makes the claim
+    permanent and global (not per-profile), so this can only ever fire once
+    across all profiles; the original file is also removed so it doesn't
+    linger looking like unclaimed data (activate_user_profile() recreates it
+    immediately afterward from the now-migrated profile, so nothing is lost).
+    """
+    dest = user_profile_yaml_path(email)
+    if dest.exists():
+        return False
+    marker = _legacy_migration_marker()
+    if marker.exists():
+        return False
+    if not USER_PROFILE.exists():
+        return False
+    shutil.copyfile(USER_PROFILE, dest)
+    USER_PROFILE.unlink()
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(email, encoding="utf-8")
+    return True
