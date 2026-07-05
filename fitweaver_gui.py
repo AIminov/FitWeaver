@@ -77,6 +77,8 @@ class App(tk.Tk):
 
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
+        self._store = None  # PlanStore | None — internal staging layer, YAML stays canonical
+        self._active_profile_email: str | None = None
 
         self._setup_style()
         self._build_ui()
@@ -85,42 +87,118 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ── Session persistence ───────────────────────────────────────────────────
+    # LLM connection settings (url/model/type/timeout) describe the local LLM
+    # server on this machine, not the person using it — they stay in the one
+    # global SESSION_FILE, shared across every profile. yaml_path/year are
+    # remembered per-profile (see profile_store.py) so several people can
+    # share one PC; the copies in SESSION_FILE are only a legacy fallback for
+    # when no profile/email has been set yet.
     def _load_session(self):
         try:
             data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
-            if data.get("yaml_path") and Path(data["yaml_path"]).exists():
-                self.yaml_path.set(data["yaml_path"])
-                self._reload_yaml()
-            if data.get("email"):
-                self.email_var.set(data["email"])
-            if data.get("year"):
-                self.year_var.set(data["year"])
-            if data.get("llm_url"):
-                self.llm_url.set(data["llm_url"])
-            if data.get("llm_model"):
-                self.llm_model.set(data["llm_model"])
-            if data.get("llm_type"):
-                self.llm_type.set(data["llm_type"])
-            if data.get("llm_timeout"):
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {}
+
+        if data.get("llm_url"):
+            self.llm_url.set(data["llm_url"])
+        if data.get("llm_model"):
+            self.llm_model.set(data["llm_model"])
+        if data.get("llm_type"):
+            self.llm_type.set(data["llm_type"])
+        if data.get("llm_timeout"):
+            try:
                 self.llm_timeout.set(int(data["llm_timeout"]))
-        except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
-            pass
+            except (TypeError, ValueError):
+                pass
+
+        if data.get("yaml_path"):
+            self.yaml_path.set(data["yaml_path"])
+        if data.get("year"):
+            self.year_var.set(data["year"])
+
+        self._refresh_profile_list()
+
+        email = data.get("last_active_email") or data.get("email") or ""
+        if email:
+            self.email_var.set(email)
+            self._activate_profile(email)
+
+        if self.yaml_path.get() and Path(self.yaml_path.get()).exists():
+            self._reload_yaml()
+
+    def _activate_profile(self, email: str, *, reset_if_missing: bool = False) -> None:
+        """Switch GUI-local state (plan path, year, HR zones) to this profile.
+
+        reset_if_missing=True clears yaml_path/year when the target profile
+        has no saved session of its own — used on a live runtime switch, so
+        a second person never inherits the previous person's in-memory plan
+        path. On initial startup (reset_if_missing=False) whatever the
+        legacy global session fallback already populated is left in place,
+        so a pre-existing single-user setup migrates smoothly into its
+        first named profile instead of being wiped.
+        """
+        from garmin_fit.profile_store import activate_user_profile, load_session
+
+        self._active_profile_email = email
+        profile_data = load_session(email)
+        if profile_data.get("yaml_path"):
+            self.yaml_path.set(profile_data["yaml_path"])
+        elif reset_if_missing:
+            self.yaml_path.set("")
+        if profile_data.get("year"):
+            self.year_var.set(profile_data["year"])
+        elif reset_if_missing:
+            self.year_var.set(str(datetime.date.today().year))
+        try:
+            activate_user_profile(email)
+        except OSError as exc:
+            self._log(f"[ERR] Не удалось применить профиль {email}: {exc}")
+
+    def _refresh_profile_list(self) -> None:
+        from garmin_fit.profile_store import list_profiles
+        self._profile_combo["values"] = list_profiles()
+
+    def _save_current_profile_session(self) -> None:
+        if not self._active_profile_email:
+            return
+        from garmin_fit.profile_store import save_session
+        save_session(self._active_profile_email, {
+            "yaml_path": self.yaml_path.get(),
+            "year":      self.year_var.get(),
+        })
+
+    def _on_email_change(self, event=None):
+        new_email = self.email_var.get().strip()
+        if not new_email or new_email == self._active_profile_email:
+            return
+        self._save_current_profile_session()
+        self._activate_profile(new_email, reset_if_missing=True)
+        self._refresh_profile_list()
+        if self.yaml_path.get() and Path(self.yaml_path.get()).exists():
+            self._reload_yaml()
+        else:
+            self.workouts = []
+            self._draw_calendar()
+        self._log(f"[OK] Профиль переключён: {new_email}")
 
     def _save_session(self):
+        self._save_current_profile_session()
         data = {
-            "yaml_path":   self.yaml_path.get(),
-            "email":       self.email_var.get(),
-            "year":        self.year_var.get(),
-            "llm_url":     self.llm_url.get(),
-            "llm_model":   self.llm_model.get(),
-            "llm_type":    self.llm_type.get(),
-            "llm_timeout": self.llm_timeout.get(),
+            "yaml_path":         self.yaml_path.get(),
+            "last_active_email": self.email_var.get(),
+            "year":              self.year_var.get(),
+            "llm_url":           self.llm_url.get(),
+            "llm_model":         self.llm_model.get(),
+            "llm_type":          self.llm_type.get(),
+            "llm_timeout":       self.llm_timeout.get(),
         }
         SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                                 encoding="utf-8")
 
     def _on_close(self):
         self._save_session()
+        if self._store is not None:
+            self._store.close()
         self.destroy()
 
     # ── Style ─────────────────────────────────────────────────────────────────
@@ -213,8 +291,12 @@ class App(tk.Tk):
             ttk.Separator(p).pack(fill="x", pady=6)
 
         section("GARMIN CONNECT")
-        ttk.Label(p, text="Email:",   style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(p, textvariable=self.email_var).pack(fill="x", pady=(0, 4))
+        ttk.Label(p, text="Email (профиль):", style="Muted.TLabel").pack(anchor="w")
+        self._profile_combo = ttk.Combobox(p, textvariable=self.email_var)
+        self._profile_combo.pack(fill="x", pady=(0, 4))
+        self._profile_combo.bind("<<ComboboxSelected>>", self._on_email_change)
+        self._profile_combo.bind("<FocusOut>", self._on_email_change)
+        self._profile_combo.bind("<Return>", self._on_email_change)
         ttk.Label(p, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
 
@@ -538,8 +620,17 @@ class App(tk.Tk):
         if not path or not Path(path).exists():
             return
         try:
-            with open(path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+            from garmin_fit.plan_domain import plan_to_data
+            from garmin_fit.plan_store import PlanStore
+
+            if self._store is not None:
+                self._store.close()
+
+            workdb_path = Path(str(path) + ".workdb")
+            self._store = PlanStore.open(workdb_path)
+            repairs = self._store.load_from_yaml(Path(path))
+
+            data = plan_to_data(self._store.get_plan())
             self.workouts = self._parse_workouts(data)
             if self.workouts:
                 dated = [w for w in self.workouts if w.get("date")]
@@ -547,6 +638,10 @@ class App(tk.Tk):
                     self.cal_month = datetime.date.fromisoformat(dated[0]["date"]).replace(day=1)
             self._draw_calendar()
             self._log(f"[OK] Загружено {len(self.workouts)} тренировок из {Path(path).name}")
+            if repairs:
+                self._log("[Авто-правки]")
+                for r in repairs:
+                    self._log(f"  {r}")
         except Exception as exc:
             self._log(f"[ERR] {exc}")
 

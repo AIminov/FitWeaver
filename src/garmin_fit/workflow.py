@@ -41,10 +41,9 @@ def _resolve_garmin_token_dir(email=None, token_dir=None):
     if not email:
         return None
 
-    import hashlib
+    from .profile_store import email_slug
 
-    email_slug = hashlib.md5(email.lower().encode()).hexdigest()[:8]
-    resolved = Path.home() / ".garminconnect" / f"cli_{email_slug}"
+    resolved = Path.home() / ".garminconnect" / f"cli_{email_slug(email)}"
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
 

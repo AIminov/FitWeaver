@@ -1,6 +1,12 @@
 # GUI session (email, paths — no passwords)
 .gui_session.json
 
+# GUI SQLite working-copy sidecar (internal staging layer; YAML stays canonical)
+*.workdb
+
+# Per-user profiles (email-keyed local state, HR zones, session — personal data)
+profiles/
+
 # Python caches
 __pycache__/
 *.py[cod]
