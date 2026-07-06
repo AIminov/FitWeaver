@@ -164,6 +164,50 @@ class ProfileStoreTests(unittest.TestCase):
         data = yaml.safe_load(profile_store.user_profile_yaml_path(email).read_text(encoding="utf-8"))
         self.assertEqual(data["max_hr"], 175)  # the profile's own data, not the legacy file
 
+    # ── Personal workout-builder templates ──────────────────────────────────
+    def test_list_user_templates_empty_when_none_saved(self):
+        self.assertEqual(profile_store.list_user_templates("amir@example.com"), {})
+
+    def test_save_and_list_user_template_round_trip(self):
+        email = "amir@example.com"
+        steps = [{"type": "dist_open", "km": 5.0, "intensity": "active"}]
+
+        profile_store.save_user_template(email, "Мой лёгкий бег", steps)
+
+        templates = profile_store.list_user_templates(email)
+        self.assertEqual(templates["Мой лёгкий бег"], steps)
+
+    def test_save_user_template_overwrites_same_name(self):
+        email = "amir@example.com"
+        profile_store.save_user_template(email, "T1", [{"type": "dist_open", "km": 1.0}])
+        profile_store.save_user_template(email, "T1", [{"type": "dist_open", "km": 2.0}])
+
+        templates = profile_store.list_user_templates(email)
+        self.assertEqual(len(templates), 1)
+        self.assertEqual(templates["T1"][0]["km"], 2.0)
+
+    def test_delete_user_template(self):
+        email = "amir@example.com"
+        profile_store.save_user_template(email, "T1", [{"type": "dist_open", "km": 1.0}])
+        profile_store.save_user_template(email, "T2", [{"type": "dist_open", "km": 2.0}])
+
+        profile_store.delete_user_template(email, "T1")
+
+        templates = profile_store.list_user_templates(email)
+        self.assertEqual(list(templates.keys()), ["T2"])
+
+    def test_delete_user_template_missing_name_is_a_noop(self):
+        email = "amir@example.com"
+        profile_store.save_user_template(email, "T1", [{"type": "dist_open", "km": 1.0}])
+
+        profile_store.delete_user_template(email, "does_not_exist")
+
+        self.assertEqual(list(profile_store.list_user_templates(email).keys()), ["T1"])
+
+    def test_templates_are_isolated_per_profile(self):
+        profile_store.save_user_template("amir@example.com", "T1", [{"type": "dist_open", "km": 1.0}])
+        self.assertEqual(profile_store.list_user_templates("friend@example.com"), {})
+
 
 if __name__ == "__main__":
     unittest.main()

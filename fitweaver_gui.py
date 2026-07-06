@@ -216,6 +216,8 @@ class App(tk.Tk):
         except OSError as exc:
             self._log(f"[ERR] Не удалось применить профиль {email}: {exc}")
 
+        self._builder_refresh_my_templates()
+
     def _prompt_hr_profile(self, email: str) -> None:
         """First-run onboarding: ask for max/resting HR so the LLM prompt can
         use personal zones. Not required — has a Skip button — since this
@@ -229,7 +231,7 @@ class App(tk.Tk):
 
         tk.Label(dialog, text=f"Профиль {email} создан впервые",
                  bg=BG, fg=ACCENT, font=("Segoe UI", 10, "bold"),
-                 padx=16, pady=(16, 4), anchor="w").pack(fill="x")
+                 padx=16, anchor="w").pack(fill="x", pady=(16, 4))
         tk.Label(dialog,
                  text="Пульсовые данные помогают LLM точнее строить тренировки.\n"
                       "Зоны рассчитаются автоматически из максимального пульса.\n"
@@ -1253,6 +1255,15 @@ class App(tk.Tk):
                               "иначе тренировка не появится в календаре по дате",
                  bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w").pack(fill="x", pady=(0, 6))
 
+        # Personal template library (per-profile)
+        my_templates_bar = ttk.Frame(parent)
+        my_templates_bar.pack(fill="x", pady=(0, 6))
+        ttk.Label(my_templates_bar, text="Мои шаблоны:", style="Muted.TLabel").pack(side="left")
+        self._builder_my_templates_frame = ttk.Frame(my_templates_bar)
+        self._builder_my_templates_frame.pack(side="left", padx=(6, 12))
+        ttk.Button(my_templates_bar, text="💾  Сохранить как шаблон",
+                   command=self._builder_save_as_template).pack(side="left")
+
         ttk.Separator(parent).pack(fill="x", pady=(0, 6))
 
         body = ttk.Frame(parent)
@@ -1320,6 +1331,7 @@ class App(tk.Tk):
 
         self._builder_render_list()
         self._builder_render_editor()
+        self._builder_refresh_my_templates()
 
     def _builder_scroll(self, e):
         self._builder_canvas.yview_scroll(-1 * (e.delta // 120), "units")
@@ -1362,6 +1374,64 @@ class App(tk.Tk):
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
+
+    # ── Personal template library (per-profile, separate from the 3
+    #    built-in TEMPLATES) ──────────────────────────────────────────────
+    def _builder_refresh_my_templates(self):
+        for w in self._builder_my_templates_frame.winfo_children():
+            w.destroy()
+        if not self._active_profile_email:
+            return
+        from garmin_fit.profile_store import list_user_templates
+        templates = list_user_templates(self._active_profile_email)
+        for name in templates:
+            row = ttk.Frame(self._builder_my_templates_frame)
+            row.pack(side="left", padx=2)
+            ttk.Button(row, text=name,
+                       command=lambda n=name: self._builder_apply_my_template(n)).pack(side="left")
+            tk.Button(row, text="✕", command=lambda n=name: self._builder_delete_my_template(n),
+                      bg=BG, fg=RED, relief="flat", bd=0, font=("Segoe UI", 8),
+                      cursor="hand2").pack(side="left")
+
+    def _builder_save_as_template(self):
+        if not self._active_profile_email:
+            messagebox.showwarning(
+                "Нет профиля", "Выберите или создайте профиль (email в сайдбаре), "
+                "чтобы сохранять личные шаблоны.")
+            return
+        if not self._builder_steps:
+            messagebox.showwarning("Пустой черновик", "Добавьте хотя бы один блок перед сохранением.")
+            return
+        name = simpledialog.askstring("Сохранить как шаблон", "Название шаблона:", parent=self)
+        if not name:
+            return
+        from garmin_fit.plan_domain import step_to_data
+        from garmin_fit.profile_store import save_user_template
+        steps_data = [step_to_data(s) for s in self._builder_steps]
+        save_user_template(self._active_profile_email, name.strip(), steps_data)
+        self._log(f"[OK] Шаблон «{name}» сохранён")
+        self._builder_refresh_my_templates()
+
+    def _builder_apply_my_template(self, name: str):
+        if self._builder_steps and not messagebox.askyesno(
+                "Заменить черновик?",
+                "Текущий черновик будет заменён шаблоном. Продолжить?"):
+            return
+        from garmin_fit.plan_domain import step_from_data
+        from garmin_fit.profile_store import list_user_templates
+        steps_data = list_user_templates(self._active_profile_email).get(name, [])
+        self._builder_steps = [step_from_data(s) for s in steps_data]
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_delete_my_template(self, name: str):
+        if not messagebox.askyesno("Удалить шаблон", f"Удалить шаблон «{name}»?"):
+            return
+        from garmin_fit.profile_store import delete_user_template
+        delete_user_template(self._active_profile_email, name)
+        self._log(f"[OK] Шаблон «{name}» удалён")
+        self._builder_refresh_my_templates()
 
     def _builder_select(self, idx: int):
         self._builder_range_start = idx

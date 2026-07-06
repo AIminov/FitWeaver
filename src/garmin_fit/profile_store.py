@@ -92,6 +92,39 @@ def save_session(email: str, data: dict) -> None:
     )
 
 
+def user_templates_path(email: str) -> Path:
+    return profile_dir(email) / "templates.json"
+
+
+def list_user_templates(email: str) -> dict[str, list[dict]]:
+    """Personal workout-builder templates for this profile: name -> list of
+    step dicts (plan_domain.step_to_data() shape, JSON-serializable)."""
+    path = user_templates_path(email)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_user_template(email: str, name: str, steps_data: list[dict]) -> None:
+    templates = list_user_templates(email)
+    templates[name] = steps_data
+    user_templates_path(email).write_text(
+        json.dumps(templates, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def delete_user_template(email: str, name: str) -> None:
+    templates = list_user_templates(email)
+    templates.pop(name, None)
+    user_templates_path(email).write_text(
+        json.dumps(templates, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
 def user_profile_yaml_path(email: str) -> Path:
     return profile_dir(email) / "user_profile.yaml"
 
