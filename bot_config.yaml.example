@@ -17,19 +17,17 @@ allowed_user_ids: []
 #   - 987654321
 
 # -----------------------------------------------------------------------
-# LLM settings
+# Plan generation service (Plan API)
 # -----------------------------------------------------------------------
+# The bot no longer talks to an LLM directly -- it calls a running instance
+# of the FitWeaver Plan API (src/garmin_fit/api/, started with
+# `garmin-fit-api` after `pip install -e ".[api]"`), which is the same
+# service the GUI's "LLM автора" mode uses. This can be the same machine
+# (http://127.0.0.1:8008 if you followed api_config.yaml.example's default
+# port) or a remote host running the API.
 
-# API type: "openai" for LM Studio / OpenAI-compatible, "ollama" for Ollama
-llm_api_type: "openai"
-
-# LM Studio default endpoint:
-llm_url: "http://127.0.0.1:1234/v1"
-# Ollama default endpoint:
-# llm_url: "http://localhost:11434"
-
-# Model name as shown in LM Studio / Ollama
-llm_model: "local-model"
+plan_api_url: "http://127.0.0.1:8008"
+plan_api_token: "MUST_MATCH_api_config.yaml's_api_token"
 
 # -----------------------------------------------------------------------
 # Session

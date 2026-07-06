@@ -32,6 +32,7 @@ runtime/
 # Local state and machine-specific files
 state.json
 bot_config.yaml
+api_config.yaml
 user_profile.yaml
 
 # Plan directory — keep folder structure, ignore personal plan files

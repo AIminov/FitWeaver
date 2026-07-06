@@ -52,7 +52,39 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 6 новых тестов на эту фазу, итого 286 проходят.
 
-**Следующие задачи:** единый API над `plan_service.py` + бот как тонкий клиент (Фаза C); редактирование уже закоммиченных тренировок в Конструкторе; простой/экспертный режим интерфейса.
+**Продолжение той же сессии — Фаза C: единый Plan API, всё закрыто:**
+- Новый `src/garmin_fit/api/` (FastAPI) — тонкая HTTP-обёртка над `plan_service.py`:
+  `/v1/generate-draft`, `/v1/apply-sbu-choice`, `/v1/health`. Никакой логики генерации не
+  задублировано — маршруты только строят `UnifiedLLMClient` и вызывают уже существующие
+  функции `plan_service.py`. Auth — заголовок `X-Api-Token` (`api_config.yaml` +
+  `FITWEAVER_API_TOKEN` env override), rate limit — token bucket per-токен на `app.state`
+  (изолирован между тестами). Новый extra `pip install -e ".[api]"`, entry point
+  `garmin-fit-api`.
+- `src/garmin_fit/api_client.py` (`PlanApiClient`/`PlanApiError`) — общий HTTP-клиент для
+  бота и GUI.
+- **`telegram_bot.py` — бот стал тонким клиентом API**, а не строит `UnifiedLLMClient`
+  напрямую. Конечный автомат (`idle → generating → ...`), ZIP-доставка, все i18n-сообщения —
+  не тронуты; изменились только два вызова (`_process_plan`/`_handle_sbu_choice`) и
+  `_build_llm_client()`. Новые ключи `bot_config.yaml`: `plan_api_url`/`plan_api_token`,
+  старые `llm_model`/`llm_url`/`llm_api_type` убраны из required_keys (бот их больше не
+  использует). Новое i18n-сообщение `api_unreachable` для сбоя связи с API (отдельно от
+  `llm_no_connect`, который проверяет LLM за API).
+- **GUI: новый режим "LLM автора"** в LLM-вкладке — переключатель "Своя LLM"/"LLM автора",
+  второй режим подключается к чужому хостед-инстансу Plan API вместо локальной LLM.
+  Настройки (`api_url`/`api_token`/`llm_conn_mode`) в общем `SESSION_FILE`, как и остальные
+  LLM-настройки — это описание сервера/сервиса, не профиля пользователя.
+- Бот+API всегда общаются по HTTP, даже на одной машине — без флага для in-process
+  обхода (обоснование: сетевой оверхед на loopback ничтожен по сравнению с временем
+  инференса LLM; флаг потребовал бы дублировать оба пути вызова).
+- Ручной smoke-тест: реальный `garmin-fit-api` через `python -m garmin_fit.api_cli`,
+  проверено curl'ом — без токена 401, с неверным токеном 401, с верным `{"llm_connected":false}`
+  (реальной LLM не было, это ожидаемо).
+
+20 новых тестов (`test_plan_api.py`, `test_api_client.py`), итого 307 проходят.
+
+**Следующие задачи:** редактирование уже закоммиченных тренировок в Конструкторе; drag&drop
+между днями через реальный remote-хостинг API (сейчас только localhost проверен); простой/
+экспертный режим интерфейса.
 
 ---
 
@@ -109,6 +141,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 ```bash
 pip install -e ".[dev]"          # editable install with test/lint deps
 pip install -e ".[garmin-calendar]"  # add Garmin Connect upload support
+pip install -e ".[api]"          # add the Plan API (FastAPI+uvicorn) -- needed to run garmin-fit-api
 ```
 
 ## Common Commands
@@ -218,13 +251,37 @@ Each drill expands to `reps × 2` FIT steps (active + open recovery).
 
 **State machine:** idle → generating → awaiting_sbu_choice → awaiting_clarification → awaiting_confirm → building → idle
 
-**Known issues to fix (see TODO #6, #7):**
-- New users / second phone can skip `/start` and send plan text directly — bot accepts it because `state.status == "idle"` with no `onboarded` check.
-- YAML preview footer only says "press /build if correct" — no instruction for what to do if wrong.
+**Session timeout:** `UserState.last_active`/`onboarded` fields; `_enforce_session()` resets via `reset_state()` and re-prompts `/start` if the user skipped onboarding or has been idle past `session_timeout_sec` (`bot_config.yaml`, default 1200s). Wired into `handle_text_message`; `handle_lang_choice` (the real `/start` flow) marks `onboarded=True`.
+
+**Plan generation is now via the Plan API, not a direct LLM connection.** `_build_llm_client()` returns a `PlanApiClient` (`src/garmin_fit/api_client.py`) pointed at `bot_config.yaml`'s `plan_api_url`/`plan_api_token` — a running `garmin-fit-api` instance (see "Plan API" section below). The bot calls `llm.build_plan_draft(plan_text)` / `llm.apply_custom_sbu_choice(yaml_data, user_text)` directly on that client (not the module-level `plan_service` functions) so `plan_service.py`'s repair/validation logic runs exactly once, inside the API process — never duplicated in the bot. `PlanApiError` subclasses `RuntimeError`, so the bot's existing broad `except Exception` clauses catch it with no changes; a dedicated `api_unreachable` message covers the new "API process down/unreachable" failure mode distinct from `llm_no_connect` (which checks the LLM behind the API, not the API itself).
 
 **Language:** stored in `UserState.language` ("ru" / "en"). Set via `/start` → inline keyboard. `_lang(user_id)` returns it. `_m(user_id, key)` looks up `MSG[lang][key]`.
 
-**Running the bot:** `python -m garmin_fit.bot` from project root. The `Scripts/telegram_bot.py` shim also works (fixed — now calls `main()`).
+**Running the bot:** `python -m garmin_fit.bot` from project root (needs a running `garmin-fit-api` instance — see below). The `Scripts/telegram_bot.py` shim also works (fixed — now calls `main()`).
+
+---
+
+## Plan API (`src/garmin_fit/api/`)
+
+Thin FastAPI+uvicorn facade over `plan_service.py` — the one place `build_plan_draft`/
+`apply_custom_sbu_choice` actually run. Both the Telegram bot and the GUI's "LLM автора" mode
+are HTTP clients of this (`src/garmin_fit/api_client.py`'s `PlanApiClient`); the GUI's "Своя
+LLM" mode still talks to `UnifiedLLMClient` directly and does not need this running.
+
+**Setup:** `pip install -e ".[api]"`, `cp api_config.yaml.example api_config.yaml`, fill in
+`api_token` (or set `FITWEAVER_API_TOKEN` env var instead) and `llm_url`/`llm_model`/
+`llm_api_type`. Run with `garmin-fit-api` (or `python -m garmin_fit.api_cli` if the entry
+point isn't on `PATH`).
+
+**Endpoints:** `POST /v1/generate-draft`, `POST /v1/apply-sbu-choice`, `GET /v1/health` — all
+require an `X-Api-Token` header matching `api_config.yaml`'s `api_token`. Rate-limited via an
+in-memory token bucket (`rate_limit_per_minute`/`rate_limit_burst` in `api_config.yaml`),
+keyed per token, state on `app.state` (not a module global — each `create_app()` call gets
+isolated bucket state, this matters for tests).
+
+**Security note:** never expose the raw LLM server (`llm_url`) directly to the internet —
+always go through this API, which is what the auth token and rate limiter protect. This is
+mandatory, not optional, if the API's port is ever reachable from outside localhost.
 
 ---
 
@@ -275,6 +332,8 @@ Key modules:
 - `plan_store.py` — SQLite staging layer for the desktop GUI only; YAML stays canonical everywhere else. `PlanStore` writes back to the loaded YAML file after every mutation
 - `profile_store.py` — per-user (email-keyed) GUI state: plan session, personal HR profile, onboarding/legacy-migration; reuses the same email slug as `workflow._resolve_garmin_token_dir`
 - `workout_builder.py` — pure-Python support for the GUI's visual workout builder (no Tkinter/SQLite): `BLOCK_DEFS`, `TEMPLATES`, `compute_repeat_step()`, `validate_draft()`
+- `api/` — FastAPI facade over `plan_service.py` (`app.py`/`auth.py`/`rate_limit.py`/`schemas.py`/`config.py`); `api_cli.py` is the `garmin-fit-api` entry point
+- `api_client.py` — `PlanApiClient`/`PlanApiError`, the shared HTTP client the bot and the GUI's "LLM автора" mode both use to reach `api/`
 
 ---
 

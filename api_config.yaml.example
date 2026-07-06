@@ -1,0 +1,40 @@
+# FitWeaver Plan API configuration
+# Copy this file to api_config.yaml and fill in your values.
+#
+# This runs the same YAML-generation logic used by the GUI's "Своя LLM" mode
+# and the CLI, exposed over HTTP so other machines (e.g. the Telegram bot,
+# or someone else's GUI in "LLM автора" mode) can reach it without each
+# needing their own local LLM.
+#
+# Start with: garmin-fit-api  (after `pip install -e ".[api]"`)
+
+# -----------------------------------------------------------------------
+# Auth — REQUIRED. Generate a long random string, e.g.:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Callers must send it as the X-Api-Token header.
+# Can also be set via the FITWEAVER_API_TOKEN environment variable instead
+# of keeping it in this file (the env var takes precedence if both are set).
+# -----------------------------------------------------------------------
+api_token: "REPLACE_WITH_A_LONG_RANDOM_SECRET"
+
+# -----------------------------------------------------------------------
+# Server bind address
+# -----------------------------------------------------------------------
+host: "0.0.0.0"
+port: 8008
+
+# -----------------------------------------------------------------------
+# The LLM this API proxies to (same shape as bot_config.yaml's llm_* keys)
+# -----------------------------------------------------------------------
+llm_url: "http://127.0.0.1:1234/v1"
+llm_model: "qwen/qwen3.5-9b"
+llm_api_type: "openai"
+llm_timeout_sec: 900
+
+# -----------------------------------------------------------------------
+# Rate limiting — token bucket per API token. Defaults are generous for one
+# interactive person (a generation call already takes minutes) but block
+# scripted abuse if this port is ever reachable from the open internet.
+# -----------------------------------------------------------------------
+rate_limit_per_minute: 6
+rate_limit_burst: 2

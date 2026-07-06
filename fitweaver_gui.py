@@ -104,11 +104,17 @@ class App(tk.Tk):
         self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
         self.dry_run   = tk.BooleanVar(value=True)
 
-        # LLM settings
+        # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
         self.llm_model   = tk.StringVar(value="qwen/qwen3.5-9b")
         self.llm_type    = tk.StringVar(value="openai")
         self.llm_timeout = tk.IntVar(value=900)
+
+        # Plan API settings ("api" mode — hosted FitWeaver Plan API, e.g. someone
+        # else's LLM, no local LLM setup required)
+        self.llm_conn_mode = tk.StringVar(value="own")   # "own" | "api"
+        self.api_url        = tk.StringVar(value="http://127.0.0.1:8008")
+        self.api_token       = tk.StringVar(value="")
 
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
@@ -160,6 +166,12 @@ class App(tk.Tk):
                 self.llm_timeout.set(int(data["llm_timeout"]))
             except (TypeError, ValueError):
                 pass
+        if data.get("llm_conn_mode") in ("own", "api"):
+            self.llm_conn_mode.set(data["llm_conn_mode"])
+        if data.get("api_url"):
+            self.api_url.set(data["api_url"])
+        if data.get("api_token"):
+            self.api_token.set(data["api_token"])
 
         if data.get("yaml_path"):
             self.yaml_path.set(data["yaml_path"])
@@ -324,6 +336,11 @@ class App(tk.Tk):
             "llm_model":         self.llm_model.get(),
             "llm_type":          self.llm_type.get(),
             "llm_timeout":       self.llm_timeout.get(),
+            "llm_conn_mode":     self.llm_conn_mode.get(),
+            "api_url":           self.api_url.get(),
+            # Plaintext, same as bot_config.yaml/api_config.yaml -- acceptable
+            # for a single-user local desktop app, not a new risk class.
+            "api_token":         self.api_token.get(),
         }
         SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                                 encoding="utf-8")
@@ -601,23 +618,46 @@ class App(tk.Tk):
 
     # ── LLM tab ───────────────────────────────────────────────────────────────
     def _build_llm_tab(self, parent):
-        # ── Connection bar ────────────────────────────────────────────────────
-        conn = ttk.Frame(parent)
-        conn.pack(fill="x", pady=(0, 8))
+        # ── Mode toggle ───────────────────────────────────────────────────────
+        mode_bar = ttk.Frame(parent)
+        mode_bar.pack(fill="x", pady=(0, 4))
+        ttk.Radiobutton(mode_bar, text="Своя LLM", variable=self.llm_conn_mode,
+                       value="own", command=self._on_llm_mode_change).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(mode_bar, text="LLM автора", variable=self.llm_conn_mode,
+                       value="api", command=self._on_llm_mode_change).pack(side="left")
 
-        ttk.Label(conn, text="URL:", style="Muted.TLabel").pack(side="left")
-        ttk.Entry(conn, textvariable=self.llm_url, width=30).pack(side="left", padx=(4, 10))
-        ttk.Label(conn, text="Модель:", style="Muted.TLabel").pack(side="left")
-        ttk.Entry(conn, textvariable=self.llm_model, width=22).pack(side="left", padx=(4, 10))
-        ttk.Label(conn, text="Тип:", style="Muted.TLabel").pack(side="left")
-        cb = ttk.Combobox(conn, textvariable=self.llm_type, width=8,
+        # ── "Своя LLM" connection bar ─────────────────────────────────────────
+        self._conn_own = ttk.Frame(parent)
+
+        ttk.Label(self._conn_own, text="URL:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(self._conn_own, textvariable=self.llm_url, width=30).pack(side="left", padx=(4, 10))
+        ttk.Label(self._conn_own, text="Модель:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(self._conn_own, textvariable=self.llm_model, width=22).pack(side="left", padx=(4, 10))
+        ttk.Label(self._conn_own, text="Тип:", style="Muted.TLabel").pack(side="left")
+        cb = ttk.Combobox(self._conn_own, textvariable=self.llm_type, width=8,
                           values=["openai", "ollama"], state="readonly")
         cb.pack(side="left", padx=(4, 10))
-        ttk.Label(conn, text="Таймаут (с):", style="Muted.TLabel").pack(side="left")
-        ttk.Entry(conn, textvariable=self.llm_timeout, width=6).pack(side="left", padx=(4, 10))
-        ttk.Button(conn, text="Проверить связь", command=self._llm_check).pack(side="left", padx=4)
-        self._llm_status = tk.Label(conn, text="●", bg=BG, fg=MUTED,
-                                    font=("Segoe UI", 14))
+        ttk.Label(self._conn_own, text="Таймаут (с):", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(self._conn_own, textvariable=self.llm_timeout, width=6).pack(side="left", padx=(4, 10))
+
+        # ── "LLM автора" connection bar ───────────────────────────────────────
+        self._conn_api = ttk.Frame(parent)
+
+        ttk.Label(self._conn_api, text="API URL:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(self._conn_api, textvariable=self.api_url, width=30).pack(side="left", padx=(4, 10))
+        ttk.Label(self._conn_api, text="Токен:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(self._conn_api, textvariable=self.api_token, width=22, show="*").pack(
+            side="left", padx=(4, 10))
+
+        self._on_llm_mode_change()  # pack whichever connection sub-frame is active
+
+        # ── Shared "check connection" row (packed after, so it sits below
+        #    whichever connection bar _on_llm_mode_change just packed) ───────
+        check_row = ttk.Frame(parent)
+        check_row.pack(fill="x", pady=(0, 8))
+        self._conn_check_btn = ttk.Button(check_row, text="Проверить связь", command=self._llm_check)
+        self._conn_check_btn.pack(side="left", padx=4)
+        self._llm_status = tk.Label(check_row, text="●", bg=BG, fg=MUTED, font=("Segoe UI", 14))
         self._llm_status.pack(side="left", padx=4)
 
         ttk.Separator(parent).pack(fill="x", pady=(0, 8))
@@ -678,6 +718,16 @@ class App(tk.Tk):
                    command=self._yaml_to_garmin).pack(side="right", padx=2)
         ttk.Button(actions, text="⚙  Собрать FIT", style="Success.TButton",
                    command=self._yaml_to_build).pack(side="right", padx=2)
+
+    def _on_llm_mode_change(self):
+        self._conn_own.pack_forget()
+        self._conn_api.pack_forget()
+        if self.llm_conn_mode.get() == "api":
+            self._conn_api.pack(fill="x", pady=(0, 4))
+        else:
+            self._conn_own.pack(fill="x", pady=(0, 4))
+        if hasattr(self, "_llm_status"):
+            self._llm_status.config(text="●", fg=MUTED)
 
     # ── Calendar drawing ──────────────────────────────────────────────────────
     def _draw_calendar(self):
@@ -1088,18 +1138,28 @@ class App(tk.Tk):
             self._run(["restore", name.strip()])
 
     # ── LLM tab helpers ───────────────────────────────────────────────────────
+    def _make_llm_client(self, *, for_generation: bool = False):
+        """Return either a direct UnifiedLLMClient ("own" mode) or a
+        PlanApiClient talking to a hosted FitWeaver Plan API ("api" mode)."""
+        if self.llm_conn_mode.get() == "api":
+            from garmin_fit.api_client import PlanApiClient
+            timeout = max(60, self.llm_timeout.get()) if for_generation else 300
+            return PlanApiClient(self.api_url.get(), self.api_token.get(), timeout_sec=timeout)
+
+        from garmin_fit.llm.client import UnifiedLLMClient
+        kwargs = {"model": self.llm_model.get(), "base_url": self.llm_url.get(),
+                  "api_type": self.llm_type.get()}
+        if for_generation:
+            kwargs["request_timeout_sec"] = max(60, self.llm_timeout.get())
+        return UnifiedLLMClient(**kwargs)
+
     def _llm_check(self):
         self._llm_status.config(text="●", fg=YELLOW)
         self.update_idletasks()
 
         def check():
             try:
-                from garmin_fit.llm.client import UnifiedLLMClient
-                client = UnifiedLLMClient(
-                    model=self.llm_model.get(),
-                    base_url=self.llm_url.get(),
-                    api_type=self.llm_type.get(),
-                )
+                client = self._make_llm_client()
                 ok = client.check_connection()
                 color = GREEN if ok else RED
                 self.after(0, self._llm_status.config, {"text": "●", "fg": color})
@@ -1125,17 +1185,14 @@ class App(tk.Tk):
         self._yaml_out.config(state="disabled")
 
         def worker():
+            from garmin_fit.api_client import PlanApiError
             try:
-                from garmin_fit.llm.client import UnifiedLLMClient
-                from garmin_fit.plan_service import build_plan_draft
-
-                client = UnifiedLLMClient(
-                    model=self.llm_model.get(),
-                    base_url=self.llm_url.get(),
-                    api_type=self.llm_type.get(),
-                    request_timeout_sec=max(60, self.llm_timeout.get()),
-                )
-                result = build_plan_draft(client, plan_text, max_retries=1)
+                client = self._make_llm_client(for_generation=True)
+                if self.llm_conn_mode.get() == "api":
+                    result = client.build_plan_draft(plan_text, max_retries=1)
+                else:
+                    from garmin_fit.plan_service import build_plan_draft
+                    result = build_plan_draft(client, plan_text, max_retries=1)
 
                 yaml_text = result.yaml_text or ""
                 warnings  = result.warnings or []
@@ -1171,6 +1228,18 @@ class App(tk.Tk):
                             self._log(f"  {w}")
 
                 self.after(0, finish)
+
+            except PlanApiError as exc:
+                messages = {
+                    401: "Неверный токен доступа к API",
+                    429: "Превышен лимит запросов, попробуйте позже",
+                }
+                msg = messages.get(exc.status_code, f"Ошибка API: {exc}")
+
+                def on_api_err():
+                    self._set_progress(f"❌ {msg}", RED)
+                    self._gen_btn.config(state="normal")
+                self.after(0, on_api_err)
 
             except Exception as exc:
                 def on_err():

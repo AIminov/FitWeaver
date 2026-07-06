@@ -27,18 +27,14 @@ from telegram.ext import (
     filters,
 )
 
+from .api_client import PlanApiClient, PlanApiError
 from .archive_manager import archive_current_plan, get_archive_name
 from .config import ARCHIVE_DIR, ARTIFACTS_DIR, BOT_CONFIG_FILE, OUTPUT_DIR, PLAN_DIR
 from .garmin_auth_manager import is_available as _garmin_auth_available
-from .llm.client import GeneratedYamlResult, UnifiedLLMClient
+from .llm.client import GeneratedYamlResult
 from .pipeline_runner import run_pipeline, save_yaml_to_plan_dir
 from .plan_processing import repair_plan_data
-from .plan_service import (
-    apply_custom_sbu_choice,
-    build_plan_draft,
-    count_workouts,
-    has_default_sbu_block,
-)
+from .plan_service import count_workouts, has_default_sbu_block
 from .plan_validator import validate_plan_data_detailed
 
 logger = logging.getLogger(__name__)
@@ -223,6 +219,7 @@ MSG: dict[str, dict[str, str]] = {
         "generating": "Генерирую YAML (таймаут: {timeout}s)...",
         "checking_llm": "Проверяю подключение к LLM...",
         "llm_no_connect": "Не удаётся подключиться к LLM серверу.",
+        "api_unreachable": "Не удаётся подключиться к сервису генерации планов (Plan API): {err}",
         "llm_timeout": "Генерация LLM прервана по таймауту ({timeout} сек). Попробуйте более короткий план или проверьте LLM сервер.",
         "yaml_failed": "Не удалось сгенерировать корректный YAML.\n{details}",
         "yaml_ready_sbu": "YAML готов. Тренировок: {count}.\n\nНайден блок СБУ. Ответьте:\n• «стандарт» — оставить упражнения по умолчанию\n• текст с упражнениями — сгенерировать свои",
@@ -399,6 +396,7 @@ MSG: dict[str, dict[str, str]] = {
         "generating": "Generating YAML (timeout: {timeout}s)...",
         "checking_llm": "Checking LLM connection...",
         "llm_no_connect": "Cannot connect to LLM server.",
+        "api_unreachable": "Cannot connect to the plan-generation service (Plan API): {err}",
         "llm_timeout": "LLM generation timed out after {timeout} seconds. Try a shorter plan or check LLM server.",
         "yaml_failed": "Failed to generate valid YAML.\n{details}",
         "yaml_ready_sbu": "YAML ready. Workouts: {count}.\n\nSBU block found. Reply with:\n• 'standard' to keep default drills\n• custom drill text to generate your own",
@@ -708,15 +706,7 @@ def load_bot_config() -> Dict[str, object]:
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
-    # Backward compatibility: map old keys to new keys
-    if "ollama_model" in config and "llm_model" not in config:
-        config["llm_model"] = config["ollama_model"]
-    if "ollama_url" in config and "llm_url" not in config:
-        config["llm_url"] = config["ollama_url"]
-    if "llm_api_type" not in config:
-        config["llm_api_type"] = "ollama"  # default for backward compatibility
-
-    required_keys = ["telegram_bot_token", "llm_model", "llm_url"]
+    required_keys = ["telegram_bot_token", "plan_api_url", "plan_api_token"]
     for key in required_keys:
         if not config.get(key):
             raise ValueError(f"Missing required config key: {key}")
@@ -803,11 +793,11 @@ async def ensure_user_allowed(update: Update) -> bool:
     return False
 
 
-def _build_llm_client() -> UnifiedLLMClient:
-    return UnifiedLLMClient(
-        model=str(BOT_CONFIG["llm_model"]),
-        base_url=str(BOT_CONFIG["llm_url"]),
-        api_type=str(BOT_CONFIG.get("llm_api_type", "ollama")),
+def _build_llm_client() -> PlanApiClient:
+    return PlanApiClient(
+        base_url=str(BOT_CONFIG["plan_api_url"]),
+        api_token=str(BOT_CONFIG["plan_api_token"]),
+        timeout_sec=LLM_TIMEOUT_SEC,
     )
 
 
@@ -1490,11 +1480,15 @@ async def _process_plan(update: Update, context: ContextTypes.DEFAULT_TYPE, plan
         await update.message.reply_text(_m(user_id, "generating", timeout=LLM_TIMEOUT_SEC))
         try:
             draft = await asyncio.wait_for(
-                asyncio.to_thread(build_plan_draft, llm, plan_text),
+                asyncio.to_thread(llm.build_plan_draft, plan_text),
                 timeout=LLM_TIMEOUT_SEC
             )
         except asyncio.TimeoutError:
             await update.message.reply_text(_m(user_id, "llm_timeout", timeout=LLM_TIMEOUT_SEC))
+            state.status = "idle"
+            return
+        except PlanApiError as exc:
+            await update.message.reply_text(_m(user_id, "api_unreachable", err=exc))
             state.status = "idle"
             return
 
@@ -1649,7 +1643,7 @@ async def _handle_sbu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         await update.message.reply_text(_m(user_id, "sbu_custom_parsing"))
 
-        draft = await asyncio.to_thread(apply_custom_sbu_choice, llm, yaml_data, user_text)
+        draft = await asyncio.to_thread(llm.apply_custom_sbu_choice, yaml_data, user_text)
         state.yaml_text = draft.yaml_text
         state.pending_sbu_yaml_data = None
         state.pending_ambiguities = list(draft.ambiguities)

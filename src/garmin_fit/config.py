@@ -35,6 +35,7 @@ LOGS_DIR = RUNTIME_ROOT / "Logs"
 STATE_FILE = RUNTIME_ROOT / "state.json"
 USER_PROFILE = RUNTIME_ROOT / "user_profile.yaml"
 BOT_CONFIG_FILE = RUNTIME_ROOT / "bot_config.yaml"
+API_CONFIG_FILE = RUNTIME_ROOT / "api_config.yaml"
 
 
 def resolve_fitcsv_jar() -> Optional[Path]:

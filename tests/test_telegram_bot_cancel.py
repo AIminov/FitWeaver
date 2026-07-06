@@ -183,26 +183,44 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
             def check_connection(self):
                 return True
 
-        def _fake_build_plan_draft(_llm, _plan_text):
-            state.cancel_requested = True
-            return SimpleNamespace(
-                yaml_text="workouts: []",
-                data={"workouts": []},
-                validation_errors=[],
-                ambiguities=[],
-                warnings=[],
-                repairs=[],
-            )
+            def build_plan_draft(self, _plan_text):
+                state.cancel_requested = True
+                return SimpleNamespace(
+                    yaml_text="workouts: []",
+                    data={"workouts": []},
+                    validation_errors=[],
+                    ambiguities=[],
+                    warnings=[],
+                    repairs=[],
+                )
 
-        with patch("garmin_fit.telegram_bot._build_llm_client", return_value=_FakeLlm()), patch(
-            "garmin_fit.telegram_bot.build_plan_draft", side_effect=_fake_build_plan_draft
-        ):
+        with patch("garmin_fit.telegram_bot._build_llm_client", return_value=_FakeLlm()):
             await telegram_bot._process_plan(update, context, "10.03\nEasy 6 km")
 
         self.assertEqual(state.status, "idle")
         self.assertFalse(state.cancel_requested)
         self.assertTrue(any("reset" in text.lower() for text in replies))
         self.assertFalse(any("YAML ready" in text for text in replies))
+
+    async def test_process_plan_reports_api_unreachable_on_plan_api_error(self):
+        user_id = 2603
+        state = telegram_bot.get_state(user_id)
+        replies = []
+        update = self._make_update(user_id, replies, text="10.03\nEasy 6 km")
+        context = self._make_context()
+
+        class _FakeLlm:
+            def check_connection(self):
+                return True
+
+            def build_plan_draft(self, _plan_text):
+                raise telegram_bot.PlanApiError("Cannot connect to API at http://x", status_code=None)
+
+        with patch("garmin_fit.telegram_bot._build_llm_client", return_value=_FakeLlm()):
+            await telegram_bot._process_plan(update, context, "10.03\nEasy 6 km")
+
+        self.assertEqual(state.status, "idle")
+        self.assertTrue(any("Plan API" in text or "plan-generation service" in text for text in replies))
 
     async def test_garmin_connect_continues_when_status_reply_times_out(self):
         user_id = 2702
@@ -524,12 +542,12 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
             repairs=[],
         )
 
-        with patch("garmin_fit.telegram_bot._build_llm_client") as build_llm_mock, patch(
-            "garmin_fit.telegram_bot.apply_custom_sbu_choice", return_value=draft
-        ):
+        with patch("garmin_fit.telegram_bot._build_llm_client") as build_llm_mock:
+            build_llm_mock.return_value.apply_custom_sbu_choice.return_value = draft
             await telegram_bot._handle_sbu_choice(update, context, "custom drills")
 
         build_llm_mock.assert_called_once()
+        build_llm_mock.return_value.apply_custom_sbu_choice.assert_called_once()
         self.assertEqual(state.status, "awaiting_clarification")
         self.assertEqual(state.pending_ambiguities, ["unclear recovery pace"])
         self.assertIn("unclear recovery pace", state.pending_clarification)

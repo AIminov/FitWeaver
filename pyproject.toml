@@ -28,6 +28,10 @@ garmin-calendar = [
     "garminconnect>=0.3.0,<0.4.0",
     "garmin-auth>=0.3.0,<0.4.0",
 ]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
 
 [project.scripts]
 garmin-fit = "garmin_fit.cli:main"
@@ -37,6 +41,7 @@ garmin-fit-bot = "garmin_fit.bot:main"
 garmin-fit-llm = "garmin_fit.llm_cli:main"
 garmin-fit-runtime = "garmin_fit.runtime_cli:main"
 garmin-fit-validate = "garmin_fit.validate_cli:main"
+garmin-fit-api = "garmin_fit.api_cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
