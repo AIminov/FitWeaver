@@ -134,6 +134,15 @@ class PlanStoreTests(unittest.TestCase):
         self.assertEqual(on_disk["workouts"][0]["filename"], "W16_04-14_Tue_Intervals_Renamed")
         self.assertEqual(on_disk["workouts"][0]["name"], "W16_04-14_Tue_Intervals_Renamed")
 
+    def test_find_workout_id_by_filename(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        filename = self._filename_for(store, workout_id)
+
+        self.assertEqual(store.find_workout_id_by_filename(filename), workout_id)
+        self.assertIsNone(store.find_workout_id_by_filename("does_not_exist"))
+
     def test_move_workout_reorders_and_writes_through(self):
         store = self._open_store()
         store.load_from_yaml(self.yaml_path)

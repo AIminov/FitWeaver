@@ -266,6 +266,12 @@ class PlanStore:
         self._conn.commit()
         self._write_through()
 
+    def find_workout_id_by_filename(self, filename: str) -> int | None:
+        row = self._conn.execute(
+            "SELECT id FROM workouts WHERE filename = ?", (filename,)
+        ).fetchone()
+        return row[0] if row else None
+
     def _renumber_workouts(self) -> None:
         ids = [row[0] for row in
                self._conn.execute("SELECT id FROM workouts ORDER BY position").fetchall()]

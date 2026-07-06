@@ -45,6 +45,7 @@ WORKOUT_COLORS = {
     "easy":      "#94e2d5",
 }
 DEFAULT_WO_COLOR = "#89dceb"
+WEEKDAY_ABBR_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 STEP_INTENSITY_COLORS = {
     "warmup":   "#94e2d5",
@@ -120,6 +121,11 @@ class App(tk.Tk):
         self._builder_selected_index: int | None = None
         self._builder_range_start: int | None = None
         self._builder_range_end: int | None = None
+
+        # Calendar drag & drop (move a workout to another day)
+        self._drag_workout: dict | None = None
+        self._drag_start_xy: tuple[int, int] | None = None
+        self._drag_moved = False
 
         self._setup_style()
         self._build_ui()
@@ -694,6 +700,7 @@ class App(tk.Tk):
                     continue
                 date = datetime.date(self.cal_month.year, self.cal_month.month, day)
                 date_str = date.isoformat()
+                cell.calendar_date_str = date_str  # drop-target lookup for drag & drop
                 day_fg = RED if date == today else (MUTED if col >= 5 else FG)
                 tk.Label(cell, text=str(day), bg=BG3, fg=day_fg,
                          font=("Segoe UI", 8, "bold" if date == today else "normal"),
@@ -707,9 +714,83 @@ class App(tk.Tk):
         short = re.sub(r"^W\d+_\d{2}-\d{2}_\w+_", "", name)[:22]
         chip  = tk.Label(parent, text=short, bg=color, fg="#1e1e2e",
                          font=("Segoe UI", 7, "bold"),
-                         anchor="w", padx=3, pady=1, wraplength=130)
+                         anchor="w", padx=3, pady=1, wraplength=130, cursor="fleur")
         chip.pack(fill="x", padx=2, pady=1)
-        chip.bind("<Button-1>", lambda e, w=wo: self._show_detail(w))
+        chip.bind("<ButtonPress-1>", lambda e, w=wo: self._calendar_drag_start(e, w))
+        chip.bind("<B1-Motion>", self._calendar_drag_motion)
+        chip.bind("<ButtonRelease-1>", lambda e, w=wo: self._calendar_drag_release(e, w))
+
+    # ── Calendar drag & drop (move a workout to another day) ─────────────────
+    _DRAG_THRESHOLD_PX = 6
+
+    def _calendar_drag_start(self, event, wo):
+        self._drag_workout = wo
+        self._drag_start_xy = (event.x_root, event.y_root)
+        self._drag_moved = False
+
+    def _calendar_drag_motion(self, event):
+        if self._drag_start_xy is None:
+            return
+        sx, sy = self._drag_start_xy
+        if abs(event.x_root - sx) > self._DRAG_THRESHOLD_PX or abs(event.y_root - sy) > self._DRAG_THRESHOLD_PX:
+            self._drag_moved = True
+
+    def _cell_date_at_root_coords(self, x_root: int, y_root: int) -> str | None:
+        widget = self.winfo_containing(x_root, y_root)
+        while widget is not None:
+            date_str = getattr(widget, "calendar_date_str", None)
+            if date_str:
+                return date_str
+            widget = widget.master
+        return None
+
+    def _calendar_drag_release(self, event, wo):
+        moved = self._drag_moved
+        self._drag_workout = None
+        self._drag_start_xy = None
+        self._drag_moved = False
+
+        if not moved:
+            self._show_detail(wo)  # a plain click, not a drag
+            return
+
+        target_date_str = self._cell_date_at_root_coords(event.x_root, event.y_root)
+        if not target_date_str or target_date_str == wo.get("date"):
+            return
+        if self._store is None:
+            return
+
+        filename = wo.get("filename") or wo.get("name") or ""
+        workout_id = self._store.find_workout_id_by_filename(filename)
+        if workout_id is None:
+            self._log(f"[ERR] Не удалось найти тренировку «{filename}» для переноса")
+            return
+
+        new_date = datetime.date.fromisoformat(target_date_str)
+        new_filename = self._compute_renamed_filename(filename, new_date)
+        self._store.rename_workout_filename(workout_id, new_filename)
+        self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
+
+        from garmin_fit.plan_domain import plan_to_data
+        data = plan_to_data(self._store.get_plan())
+        self.workouts = self._parse_workouts(data)
+        self._draw_calendar()
+
+    def _compute_renamed_filename(self, old_filename: str, new_date: datetime.date) -> str:
+        """Rewrite the W{week}_{MM-DD}_{Day}_... prefix for a new date,
+        reusing plan_processing.normalize_workout_identifier to recompute
+        the ISO calendar week (it does not re-derive the weekday token, so
+        that's computed here from new_date directly)."""
+        from garmin_fit.plan_processing import normalize_workout_identifier
+
+        weekday = WEEKDAY_ABBR_EN[new_date.weekday()]
+        date_token = f"{new_date.month:02d}-{new_date.day:02d}"
+        candidate, n = re.subn(
+            r"_\d{2}-\d{2}_[A-Za-z]+_", f"_{date_token}_{weekday}_", old_filename, count=1)
+        if n == 0:
+            candidate = f"W00_{date_token}_{weekday}_{old_filename}"
+        return normalize_workout_identifier(
+            candidate, workout_index=0, inferred_year=new_date.year)
 
     def _show_detail(self, wo):
         parts = [p for p in [
