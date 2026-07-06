@@ -5,10 +5,11 @@ from pathlib import Path
 
 import yaml
 
-from garmin_fit.plan_domain import plan_from_data, plan_to_data
+from garmin_fit.plan_domain import Drill, WorkoutStep, plan_from_data, plan_to_data
 from garmin_fit.plan_processing import repair_plan_data
 from garmin_fit.plan_store import PlanStore
 from garmin_fit.plan_validator import validate_plan_data
+from garmin_fit.workout_utils import build_yaml_to_fit_index
 
 RAW_PLAN = {
     "workouts": [
@@ -198,9 +199,181 @@ class PlanStoreTests(unittest.TestCase):
         self.assertEqual(store_warnings, direct_warnings)
         self.assertTrue(store_errors)  # sanity: the bad fixture actually triggers an error
 
+    # ── step-level CRUD (visual workout builder) ────────────────────────────
+    def test_insert_step_before_repeat_offset_shifts_it_right(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+
+        store.insert_step(workout_id, 0, WorkoutStep(step_type="dist_open", km=1.0, intensity="warmup"))
+
+        steps = store.get_plan().workouts[0].steps
+        self.assertEqual(len(steps), 6)
+        repeat_step = next(s for s in steps if s.step_type == "repeat")
+        self.assertEqual(repeat_step.back_to_offset, 2)  # was 1, shifted by the insert at 0
+
+    def test_insert_step_after_repeat_offset_leaves_it_unchanged(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+
+        # insert at position 4 (right before the cooldown, after the repeat step itself)
+        store.insert_step(workout_id, 4, WorkoutStep(step_type="dist_open", km=0.2, intensity="active"))
+
+        steps = store.get_plan().workouts[0].steps
+        repeat_step = next(s for s in steps if s.step_type == "repeat")
+        self.assertEqual(repeat_step.back_to_offset, 1)  # unchanged
+
+    def test_delete_step_rejects_deleting_repeat_group_anchor(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        anchor_step_id = self._step_ids(store, workout_id)[1]  # position 1 == repeat's back_to_offset
+
+        before = store.get_plan()
+        with self.assertRaises(ValueError):
+            store.delete_step(anchor_step_id)
+
+        # nothing changed -- no partial write
+        self.assertEqual(plan_to_data(store.get_plan()), plan_to_data(before))
+        with open(self.yaml_path, encoding="utf-8") as f:
+            on_disk = yaml.safe_load(f)
+        self.assertEqual(len(on_disk["workouts"][0]["steps"]), 5)
+
+    def test_delete_step_shrinks_repeat_group_when_deleting_interior_step(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        recovery_step_id = self._step_ids(store, workout_id)[2]  # position 2, inside the group
+
+        store.delete_step(recovery_step_id)
+
+        steps = store.get_plan().workouts[0].steps
+        self.assertEqual(len(steps), 4)
+        repeat_step = next(s for s in steps if s.step_type == "repeat")
+        self.assertEqual(repeat_step.back_to_offset, 1)  # anchor position unaffected
+
+    def test_delete_step_before_group_shifts_offset_and_position_left(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        warmup_step_id = self._step_ids(store, workout_id)[0]  # position 0, before the group
+
+        store.delete_step(warmup_step_id)
+
+        steps = store.get_plan().workouts[0].steps
+        self.assertEqual(len(steps), 4)
+        repeat_step = next(s for s in steps if s.step_type == "repeat")
+        self.assertEqual(repeat_step.back_to_offset, 0)  # shifted left with everything else
+
+    def test_move_step_rejected_when_workout_has_repeat_step(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        step_id = self._step_ids(store, workout_id)[0]
+
+        with self.assertRaises(ValueError):
+            store.move_step(step_id, 3)
+
+    def test_move_step_succeeds_when_no_repeat_step_present(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[1]  # SBU workout, no repeat step
+        store.add_workout(filename="W16_solo", name="W16_solo",
+                           steps=[WorkoutStep(step_type="dist_open", km=1.0, intensity="active"),
+                                  WorkoutStep(step_type="dist_open", km=2.0, intensity="active")])
+        solo_id = self._workout_ids(store)[-1]
+        step_ids = self._step_ids(store, solo_id)
+
+        store.move_step(step_ids[0], 1)
+
+        steps = store.get_plan().workouts[-1].steps
+        self.assertEqual(steps[0].km, 2.0)
+        self.assertEqual(steps[1].km, 1.0)
+
+    def test_add_repeat_over_range_computes_back_to_offset_from_positions(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[1]  # SBU workout, single step at position 0
+        store.insert_step(workout_id, 1,
+                           WorkoutStep(step_type="dist_open", km=0.1, intensity="recovery"))
+
+        new_step_id = store.add_repeat_over_range(workout_id, 0, 1, count=6)
+
+        steps = store.get_plan().workouts[1].steps
+        repeat_step = next(s for s in steps if s.step_type == "repeat")
+        self.assertEqual(repeat_step.back_to_offset, 0)
+        self.assertEqual(repeat_step.count, 6)
+        self.assertGreater(new_step_id, 0)
+
+    def test_add_repeat_over_range_rejects_range_containing_existing_repeat_step(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]  # already has a repeat step at position 3
+
+        with self.assertRaises(ValueError):
+            store.add_repeat_over_range(workout_id, 0, 3, count=2)
+
+    def test_add_drill_delete_drill_move_drill_renumber(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        sbu_workout_id = self._workout_ids(store)[1]
+        sbu_step_id = self._step_ids(store, sbu_workout_id)[0]
+
+        new_drill_id = store.add_drill(sbu_step_id, Drill(name="Skips", seconds=30, reps=3))
+        drills = store.get_plan().workouts[1].steps[0].drills
+        self.assertEqual([d.name for d in drills], ["High Knees", "Bounds", "Skips"])
+
+        store.move_drill(new_drill_id, 0)
+        drills = store.get_plan().workouts[1].steps[0].drills
+        self.assertEqual([d.name for d in drills], ["Skips", "High Knees", "Bounds"])
+
+        store.delete_drill(new_drill_id)
+        drills = store.get_plan().workouts[1].steps[0].drills
+        self.assertEqual([d.name for d in drills], ["High Knees", "Bounds"])
+
+    def test_add_workout_from_scratch_appends_at_end_and_writes_through(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+
+        new_id = store.add_workout(
+            filename="W16_04-20_Mon_Easy_5km", name="W16_04-20_Mon_Easy_5km",
+            type_code="easy", distance_km=5.0, estimated_duration_min=32,
+            steps=[WorkoutStep(step_type="dist_open", km=5.0, intensity="active")],
+        )
+
+        plan = store.get_plan()
+        self.assertEqual(len(plan.workouts), 3)
+        self.assertEqual(plan.workouts[-1].filename, "W16_04-20_Mon_Easy_5km")
+        self.assertGreater(new_id, 0)
+        with open(self.yaml_path, encoding="utf-8") as f:
+            on_disk = yaml.safe_load(f)
+        self.assertEqual(len(on_disk["workouts"]), 3)
+
+    def test_step_mutations_keep_plan_valid_and_fit_index_buildable(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+
+        store.insert_step(workout_id, 0, WorkoutStep(step_type="dist_open", km=0.5, intensity="warmup"))
+        recovery_id = self._step_ids(store, workout_id)[3]  # shifted by the insert above
+        store.delete_step(recovery_id)
+
+        errors, warnings = store.validate()
+        self.assertEqual(errors, [])
+
+        for workout in store.get_plan().workouts:
+            build_yaml_to_fit_index(workout.steps)  # must not raise
+
     # ── helpers ────────────────────────────────────────────────────────────
     def _workout_ids(self, store: PlanStore) -> list[int]:
         cur = store._conn.execute("SELECT id FROM workouts ORDER BY position")
+        return [row[0] for row in cur.fetchall()]
+
+    def _step_ids(self, store: PlanStore, workout_id: int) -> list[int]:
+        cur = store._conn.execute(
+            "SELECT id FROM steps WHERE workout_id = ? ORDER BY position", (workout_id,)
+        )
         return [row[0] for row in cur.fetchall()]
 
     def _filename_for(self, store: PlanStore, workout_id: int) -> str:

@@ -18,6 +18,29 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-07-06 — Desktop GUI: SQLite-слой, мультипрофили, визуальный конструктор
+**Сделано:**
+- `plan_store.py` (новый) — SQLite как внутренний рабочий слой GUI. YAML остаётся единственным каноническим форматом для CLI/бота/сборки/Garmin-загрузки; `PlanStore` пишет обратно в YAML после каждой мутации. Уровень тренировок: `move_workout`, `duplicate_workout`, `delete_workout`, `rename_workout_filename`. Уровень шагов: `insert_step`, `delete_step` (отклоняет удаление anchor-шага repeat-группы), `move_step` (v1: отклоняет, если в тренировке уже есть repeat — безопасная переоценка только в черновике до коммита), `add_repeat_over_range` (вычисляет `back_to_offset` из позиций, GUI никогда не видит и не хранит индекс), `add_drill`/`delete_drill`/`move_drill`, `add_workout`.
+- `profile_store.py` (новый) — мультипрофили по email на одном ПК: свой `plan.db`/`user_profile.yaml`/`session.json` на профиль. Слаг профиля переиспользует ту же md5-схему, что и кэш токенов Garmin (`workflow._resolve_garmin_token_dir` теперь делегирует туда же). Онбординг новых профилей: авто-миграция легаси `user_profile.yaml` (одноразовая, через маркер-файл — иначе `activate_user_profile()` заново "подсовывает" данные активного профиля следующему новому профилю) либо диалог с вводом HR (макс./покоя, зоны считаются автоматически, можно пропустить).
+- `workout_builder.py` (новый) — визуальный конструктор тренировок без LLM. `BLOCK_DEFS` (палитра: разминка/актив-км/актив-мин/восстановление/заминка/СБУ), `TEMPLATES` (интервалы/темповый/длинный с ускорением), `compute_repeat_step()` (та же логика проверки диапазона, что и `PlanStore.add_repeat_over_range`, чтобы черновик и закоммиченный результат никогда не расходились), `validate_draft()`.
+- `fitweaver_gui.py` — новая 4-я вкладка "🧱 Конструктор": палитра блоков → список шагов (клик + Shift+клик выделяет диапазон) → "Повторить ×N" (без ручного ввода `back_to_offset`) → редактор полей блока → "Добавить в план". Плюс переключатель профилей в сайдбаре (Combobox вместо Entry email), диалог первого запуска для HR-профиля.
+- 251 тест (было 197 на начало сессии), полный набор проходит дважды подряд без утечек файлов.
+
+**Баги, пойманные тестами (не мной вручную):**
+- Числовые поля (`back_to_offset`, `km`, `hr_low`...) при чтении из SQLite возвращались строками — при экспорте попали бы в YAML в кавычках. Исправлено приведением типов на чтении.
+- `tests/test_000_temp_bootstrap.py` подменяет `tempfile.TemporaryDirectory` на вариант с ленивым созданием папки (внутри `__enter__`) — новые тесты, вызывавшие класс без `with`, писали временные файлы в реальный корень проекта. Исправлено явным `__enter__`/`__exit__`.
+- `activate_user_profile()` каждый раз кладёт данные активного профиля в общий глобальный `user_profile.yaml`-слот — из-за этого второй новый профиль ошибочно принимал этот слот за "легаси-данные" и крал чужой HR-профиль. Исправлено одноразовым маркер-файлом `profiles/.legacy_migrated`.
+- Ручной смок-тест вкладки "Конструктор" по ошибке дописал тестовую тренировку в реальный `Plan/running_plan_2026_v8.yaml` — обнаружено и откачено точечным `Edit`, реальный файл подтверждённо восстановлен (97 тренировок, без изменений).
+
+**Решения/отказы:**
+- Визуальный конструктор v1 строит только НОВЫЕ тренировки, не редактирует уже закоммиченные (с уже существующими repeat-блоками) — самый рискованный случай (перемещение/удаление шага вокруг существующего repeat-anchor) явно отложен, но `PlanStore` спроектирован так, чтобы это можно было включить позже без переделки.
+- LLM-настройки (URL/модель/таймаут) остаются общими на весь ПК, не per-профиль — это описание локального сервера, а не личные данные пользователя.
+- Единый API над `plan_service.py` (чтобы GUI/бот не дублировали логику генерации) и рефакторинг Telegram-бота — обсуждены и одобрены, но отложены на следующую сессию.
+
+**Следующие задачи:** единый API над `plan_service.py` + бот как тонкий клиент; либо продолжение конструктора (drag&drop между днями календаря, редактирование существующих тренировок).
+
+---
+
 ### 2026-04-23 (v10.4 / v10.4.1)
 **Сделано:**
 - `build_yaml_to_fit_index()` вынесен в `workout_utils.py` — теперь один источник правды для обоих билдеров
@@ -46,14 +69,16 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 **This file is the primary context source across machines.** The user (Amir / GitHub: AIminov) works on multiple PCs. Always read this file and `TODO.md` at the start of a session.
 
-**Current version:** v10.4.1 (2026-04-23)  
+**Current version:** v10.4.1 (2026-04-23) + Desktop GUI (2026-07-06)  
 **Repo:** https://github.com/AIminov/FitWeaver.git  
 **Git identity:** `git config --global user.email "iminov@gmail.com" && git config --global user.name "AIminov"`  
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed, start here):**
-1. `TODO #6` — Bot session timeout: `last_active` + `onboarded` in `UserState`, reset after 20 min inactivity, `SESSION_TIMEOUT_SEC` in `bot_config.yaml`
-2. `TODO #7` — YAML preview footer UX: add clear instructions for what to do if the plan is wrong (resend text / /cancel)
+1. Unified API over `plan_service.py` so the GUI ("LLM автора" mode) and the Telegram bot stop duplicating generation logic — bot becomes a thin client, not deleted.
+2. Visual Builder tab follow-ups: drag & drop workouts between calendar days, editing an already-committed workout's steps (currently v1-scoped to building new workouts only — see 2026-07-06 session log for why).
+3. `TODO #6` — Bot session timeout: `last_active` + `onboarded` in `UserState`, reset after 20 min inactivity, `SESSION_TIMEOUT_SEC` in `bot_config.yaml`
+4. `TODO #7` — YAML preview footer UX: add clear instructions for what to do if the plan is wrong (resend text / /cancel)
 
 **Working style preferences:**
 - Communicate in Russian, code/commits in English
@@ -74,7 +99,7 @@ pip install -e ".[garmin-calendar]"  # add Garmin Connect upload support
 ## Common Commands
 
 ```bash
-# Run all tests (197 passing as of v10.4.1)
+# Run all tests (251 passing as of the 2026-07-06 GUI session)
 python3 -m pytest tests/
 
 # Run a single test file
@@ -85,6 +110,9 @@ python3 -m pytest tests/test_plan_validator.py -k test_repeat_back_to_offset
 
 # Lint (tabs are the project style — E501/W19x are intentionally ignored)
 ruff check src/
+
+# Desktop GUI (recommended for local users) — Calendar / LLM Generator / Конструктор / Garmin Connect
+python fitweaver_gui.py
 
 # Full workflow
 python -m garmin_fit.cli run
@@ -143,6 +171,8 @@ The canonical `build_yaml_to_fit_index()` lives in `workout_utils.py` and is imp
 Both builders call `build_yaml_to_fit_index()` to translate it to the correct FIT runtime index at build time, accounting for `sbu_block` expansion.
 
 **Never** put FIT runtime indices directly in YAML — the validator will reject them (`back_to_offset >= s_idx`).
+
+The desktop GUI's "🧱 Конструктор" tab (visual workout builder, `workout_builder.py` + `plan_store.py`) is the recommended way to avoid hand-computing this value: select a range of blocks and click "Повторить ×N" — `back_to_offset` is computed from the selection, never typed.
 
 Example (SBU + accelerations):
 ```yaml
@@ -227,6 +257,9 @@ Key modules:
 - `llm/request_cli.py` — LLM generation CLI; `--workouts N` overrides expected count
 - `llm/benchmark.py` — LLM quality benchmark; `DEFAULT_SUITE` uses `PROJECT_ROOT`
 - `check_fit.py` — FIT file validator; large file threshold in `_LARGE_FILE_BYTES`
+- `plan_store.py` — SQLite staging layer for the desktop GUI only; YAML stays canonical everywhere else. `PlanStore` writes back to the loaded YAML file after every mutation
+- `profile_store.py` — per-user (email-keyed) GUI state: plan session, personal HR profile, onboarding/legacy-migration; reuses the same email slug as `workflow._resolve_garmin_token_dir`
+- `workout_builder.py` — pure-Python support for the GUI's visual workout builder (no Tkinter/SQLite): `BLOCK_DEFS`, `TEMPLATES`, `compute_repeat_step()`, `validate_draft()`
 
 ---
 

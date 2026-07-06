@@ -46,6 +46,40 @@ WORKOUT_COLORS = {
 }
 DEFAULT_WO_COLOR = "#89dceb"
 
+STEP_INTENSITY_COLORS = {
+    "warmup":   "#94e2d5",
+    "active":   "#f38ba8",
+    "recovery": "#6c7086",
+    "cooldown": "#89b4fa",
+}
+
+# Editable field set per step_type for the builder's generic block editor.
+# (field_attr_name, label, python_type)
+_STEP_TYPE_FIELDS = {
+    "dist_open": (("km", "Расстояние (км)", float),),
+    "dist_hr": (
+        ("km", "Расстояние (км)", float),
+        ("hr_low", "Пульс от", int),
+        ("hr_high", "Пульс до", int),
+    ),
+    "dist_pace": (
+        ("km", "Расстояние (км)", float),
+        ("pace_fast", "Темп быстрый (мм:сс)", str),
+        ("pace_slow", "Темп медленный (мм:сс)", str),
+    ),
+    "time_open": (("seconds", "Длительность (сек)", int),),
+    "time_hr": (
+        ("seconds", "Длительность (сек)", int),
+        ("hr_low", "Пульс от", int),
+        ("hr_high", "Пульс до", int),
+    ),
+    "time_pace": (
+        ("seconds", "Длительность (сек)", int),
+        ("pace_fast", "Темп быстрый (мм:сс)", str),
+        ("pace_slow", "Темп медленный (мм:сс)", str),
+    ),
+}
+
 MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь",
               "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 DAYS_RU   = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
@@ -79,6 +113,13 @@ class App(tk.Tk):
         self.cal_month = datetime.date.today().replace(day=1)
         self._store = None  # PlanStore | None — internal staging layer, YAML stays canonical
         self._active_profile_email: str | None = None
+
+        # Visual builder draft state (pre-commit, plain Python — no PlanStore
+        # writes happen until "Добавить в план")
+        self._builder_steps: list = []
+        self._builder_selected_index: int | None = None
+        self._builder_range_start: int | None = None
+        self._builder_range_end: int | None = None
 
         self._setup_style()
         self._build_ui()
@@ -494,15 +535,18 @@ class App(tk.Tk):
         self._nb = ttk.Notebook(parent)
         self._nb.pack(fill="both", expand=True)
 
-        cal_tab    = ttk.Frame(self._nb, padding=(6, 6))
-        llm_tab    = ttk.Frame(self._nb, padding=(6, 6))
-        garmin_tab = ttk.Frame(self._nb, padding=(6, 6))
-        self._nb.add(cal_tab,    text="📅  Календарь")
-        self._nb.add(llm_tab,    text="🤖  LLM Генератор")
-        self._nb.add(garmin_tab, text="🏃  Garmin Connect")
+        cal_tab     = ttk.Frame(self._nb, padding=(6, 6))
+        llm_tab     = ttk.Frame(self._nb, padding=(6, 6))
+        builder_tab = ttk.Frame(self._nb, padding=(6, 6))
+        garmin_tab  = ttk.Frame(self._nb, padding=(6, 6))
+        self._nb.add(cal_tab,     text="📅  Календарь")
+        self._nb.add(llm_tab,     text="🤖  LLM Генератор")
+        self._nb.add(builder_tab, text="🧱  Конструктор")
+        self._nb.add(garmin_tab,  text="🏃  Garmin Connect")
 
         self._build_calendar_tab(cal_tab)
         self._build_llm_tab(llm_tab)
+        self._build_builder_tab(builder_tab)
         self._build_garmin_tab(garmin_tab)
 
     # ── Calendar tab ──────────────────────────────────────────────────────────
@@ -975,6 +1019,396 @@ class App(tk.Tk):
         if path:
             self._nb.select(0)
             self._cmd_upload()
+
+    # ── Builder tab (visual, no-LLM workout construction) ─────────────────────
+    def _build_builder_tab(self, parent):
+        from garmin_fit.workout_builder import BLOCK_DEFS, TEMPLATES
+
+        # Top bar: filename + templates
+        top = ttk.Frame(parent)
+        top.pack(fill="x", pady=(0, 4))
+        ttk.Label(top, text="Тренировка:", style="Muted.TLabel").pack(side="left")
+        self._builder_filename_var = tk.StringVar()
+        ttk.Entry(top, textvariable=self._builder_filename_var, width=32).pack(
+            side="left", padx=(4, 12))
+        for key, (label, _factory) in TEMPLATES.items():
+            ttk.Button(top, text=label,
+                       command=lambda k=key: self._builder_apply_template(k)).pack(side="left", padx=2)
+        ttk.Button(top, text="Очистить", command=self._builder_clear).pack(side="left", padx=(12, 2))
+        tk.Label(parent, text="Имя по шаблону W{неделя}_{ММ-ДД}_{День}_{Тип}_{Детали}, "
+                              "иначе тренировка не появится в календаре по дате",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w").pack(fill="x", pady=(0, 6))
+
+        ttk.Separator(parent).pack(fill="x", pady=(0, 6))
+
+        body = ttk.Frame(parent)
+        body.pack(fill="both", expand=True)
+
+        # Palette
+        palette = tk.Frame(body, bg=BG, width=170)
+        palette.pack(side="left", fill="y")
+        palette.pack_propagate(False)
+        ttk.Label(palette, text="БЛОКИ", style="Section.TLabel").pack(anchor="w", pady=(0, 4))
+        for key, block_def in BLOCK_DEFS.items():
+            ttk.Button(palette, text=block_def.label,
+                       command=lambda k=key: self._builder_add_block(k)).pack(fill="x", pady=2)
+
+        ttk.Separator(body, orient="vertical").pack(side="left", fill="y", padx=4)
+
+        # Sequence list
+        sequence = ttk.Frame(body)
+        sequence.pack(side="left", fill="both", expand=True)
+
+        repeat_bar = ttk.Frame(sequence)
+        repeat_bar.pack(fill="x", pady=(0, 4))
+        self._builder_repeat_btn = ttk.Button(
+            repeat_bar, text="🔁  Повторить ×N", state="disabled", command=self._builder_add_repeat)
+        self._builder_repeat_btn.pack(side="left")
+        self._builder_repeat_count = tk.StringVar(value="4")
+        ttk.Spinbox(repeat_bar, from_=2, to=20, textvariable=self._builder_repeat_count,
+                    width=4).pack(side="left", padx=(6, 6))
+        tk.Label(repeat_bar, text="выделите блоки: клик, затем Shift+клик",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left")
+
+        seq_container = ttk.Frame(sequence)
+        seq_container.pack(fill="both", expand=True)
+        self._builder_canvas = tk.Canvas(seq_container, bg=BG2, highlightthickness=0)
+        seq_vsb = ttk.Scrollbar(seq_container, orient="vertical", command=self._builder_canvas.yview)
+        self._builder_canvas.configure(yscrollcommand=seq_vsb.set)
+        seq_vsb.pack(side="right", fill="y")
+        self._builder_canvas.pack(side="left", fill="both", expand=True)
+
+        self._builder_list_frame = tk.Frame(self._builder_canvas, bg=BG2)
+        self._builder_list_win = self._builder_canvas.create_window(
+            (0, 0), window=self._builder_list_frame, anchor="nw")
+        self._builder_list_frame.bind("<Configure>", self._builder_on_frame_resize)
+        self._builder_canvas.bind("<Configure>", self._builder_on_canvas_resize)
+        self._builder_canvas.bind("<MouseWheel>", self._builder_scroll)
+
+        ttk.Separator(body, orient="vertical").pack(side="left", fill="y", padx=4)
+
+        # Block editor
+        self._builder_editor_frame = tk.Frame(body, bg=BG, width=250)
+        self._builder_editor_frame.pack(side="left", fill="y")
+        self._builder_editor_frame.pack_propagate(False)
+
+        ttk.Separator(parent).pack(fill="x", pady=6)
+
+        bottom = ttk.Frame(parent)
+        bottom.pack(fill="x")
+        self._builder_validation_lbl = tk.Label(bottom, text="Добавьте хотя бы один блок",
+                                                 bg=BG, fg=MUTED, font=("Segoe UI", 9))
+        self._builder_validation_lbl.pack(side="left")
+        self._builder_add_btn = ttk.Button(bottom, text="➕  Добавить в план",
+                                            style="Primary.TButton", state="disabled",
+                                            command=self._builder_commit)
+        self._builder_add_btn.pack(side="right")
+
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_scroll(self, e):
+        self._builder_canvas.yview_scroll(-1 * (e.delta // 120), "units")
+
+    def _builder_bind_wheel(self, widget):
+        widget.bind("<MouseWheel>", self._builder_scroll)
+        for child in widget.winfo_children():
+            self._builder_bind_wheel(child)
+
+    def _builder_on_frame_resize(self, _e=None):
+        self._builder_canvas.configure(scrollregion=self._builder_canvas.bbox("all"))
+
+    def _builder_on_canvas_resize(self, e):
+        self._builder_canvas.itemconfig(self._builder_list_win, width=e.width)
+
+    def _builder_has_repeat(self) -> bool:
+        return any(s.step_type == "repeat" for s in self._builder_steps)
+
+    def _builder_add_block(self, key: str):
+        from garmin_fit.workout_builder import BLOCK_DEFS
+        step = BLOCK_DEFS[key].make()
+        self._builder_steps.append(step)
+        self._builder_select(len(self._builder_steps) - 1)
+
+    def _builder_apply_template(self, key: str):
+        from garmin_fit.workout_builder import TEMPLATES
+        if self._builder_steps and not messagebox.askyesno(
+                "Заменить черновик?",
+                "Текущий черновик будет заменён шаблоном. Продолжить?"):
+            return
+        _label, factory = TEMPLATES[key]
+        self._builder_steps = factory()
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_clear(self):
+        self._builder_steps = []
+        self._builder_filename_var.set("")
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_select(self, idx: int):
+        self._builder_range_start = idx
+        self._builder_range_end = idx
+        self._builder_selected_index = idx
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_extend_range(self, idx: int):
+        if self._builder_range_start is None:
+            self._builder_select(idx)
+            return
+        self._builder_range_end = idx
+        self._builder_render_list()
+
+    def _builder_delete(self, idx: int):
+        step = self._builder_steps[idx]
+        if step.step_type != "repeat" and self._builder_has_repeat():
+            messagebox.showinfo(
+                "Нельзя удалить",
+                "В тренировке уже есть блок повтора. Сначала удалите его, "
+                "чтобы менять остальные шаги.")
+            return
+        del self._builder_steps[idx]
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_move(self, idx: int, delta: int):
+        if self._builder_has_repeat():
+            messagebox.showinfo(
+                "Нельзя переместить",
+                "В тренировке уже есть блок повтора. Удалите его, чтобы менять "
+                "порядок остальных шагов, затем добавьте заново.")
+            return
+        new_idx = idx + delta
+        if not (0 <= new_idx < len(self._builder_steps)):
+            return
+        steps = self._builder_steps
+        steps[idx], steps[new_idx] = steps[new_idx], steps[idx]
+        self._builder_selected_index = new_idx
+        self._builder_range_start = self._builder_range_end = None
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_add_repeat(self):
+        from garmin_fit.workout_builder import compute_repeat_step
+        start, end = self._builder_range_start, self._builder_range_end
+        if start is None or end is None:
+            return
+        lo, hi = min(start, end), max(start, end)
+        try:
+            count = int(self._builder_repeat_count.get())
+        except (TypeError, ValueError):
+            messagebox.showwarning("Некорректно", "Количество повторов должно быть числом.")
+            return
+        try:
+            repeat_step = compute_repeat_step(self._builder_steps, lo, hi, count)
+        except ValueError as exc:
+            messagebox.showwarning("Нельзя повторить", str(exc))
+            return
+        self._builder_steps.insert(hi + 1, repeat_step)
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_list()
+        self._builder_render_editor()
+
+    def _builder_update_repeat_button_state(self):
+        start, end = self._builder_range_start, self._builder_range_end
+        valid = False
+        if start is not None and end is not None and self._builder_steps:
+            lo, hi = min(start, end), max(start, end)
+            valid = all(self._builder_steps[i].step_type != "repeat" for i in range(lo, hi + 1))
+        self._builder_repeat_btn.config(state="normal" if valid else "disabled")
+
+    def _builder_summarize(self, idx: int, step) -> str:
+        if step.step_type == "repeat":
+            return f"🔁  ×{step.count}  (шаги {step.back_to_offset + 1}-{idx})"
+        parts = []
+        if step.km is not None:
+            parts.append(f"{step.km} км")
+        if step.seconds is not None:
+            parts.append(f"{step.seconds} с")
+        if step.hr_low is not None and step.hr_high is not None:
+            parts.append(f"HR {step.hr_low}-{step.hr_high}")
+        if step.pace_fast and step.pace_slow:
+            parts.append(f"{step.pace_fast}-{step.pace_slow}")
+        if step.step_type == "sbu_block":
+            parts.append(f"{len(step.drills or [])} упражнений СБУ")
+        body = " · ".join(parts) if parts else step.step_type
+        intensity_ru = {"warmup": "Разминка", "active": "Активно",
+                        "recovery": "Восст.", "cooldown": "Заминка"}.get(step.intensity)
+        prefix = f"{intensity_ru}: " if intensity_ru else ""
+        return f"{idx + 1}. {prefix}{body}"
+
+    def _builder_row_bg(self, idx: int) -> str:
+        start, end = self._builder_range_start, self._builder_range_end
+        if start is not None and end is not None and min(start, end) <= idx <= max(start, end):
+            return BG3
+        return BG2
+
+    def _builder_render_row(self, idx: int, step):
+        bg = self._builder_row_bg(idx)
+        row = tk.Frame(self._builder_list_frame, bg=bg, pady=2)
+        row.pack(fill="x", padx=4, pady=1)
+
+        color = PURPLE if step.step_type == "repeat" else STEP_INTENSITY_COLORS.get(
+            step.intensity, DEFAULT_WO_COLOR)
+        tk.Label(row, text=" ", bg=color, width=2).pack(side="left", padx=(4, 6))
+
+        lbl = tk.Label(row, text=self._builder_summarize(idx, step), bg=bg, fg=FG,
+                       font=("Segoe UI", 9), anchor="w")
+        lbl.pack(side="left", fill="x", expand=True)
+
+        for widget in (row, lbl):
+            widget.bind("<Button-1>", lambda e, i=idx: self._builder_select(i))
+            widget.bind("<Shift-Button-1>", lambda e, i=idx: self._builder_extend_range(i))
+
+        tk.Button(row, text="✕", command=lambda i=idx: self._builder_delete(i),
+                  bg=bg, fg=RED, relief="flat", bd=0, font=("Segoe UI", 9),
+                  cursor="hand2").pack(side="right", padx=4)
+        if step.step_type != "repeat":
+            tk.Button(row, text="▼", command=lambda i=idx: self._builder_move(i, 1),
+                      bg=bg, fg=FG, relief="flat", bd=0, font=("Segoe UI", 7),
+                      cursor="hand2").pack(side="right", padx=1)
+            tk.Button(row, text="▲", command=lambda i=idx: self._builder_move(i, -1),
+                      bg=bg, fg=FG, relief="flat", bd=0, font=("Segoe UI", 7),
+                      cursor="hand2").pack(side="right", padx=1)
+
+    def _builder_render_list(self):
+        for w in self._builder_list_frame.winfo_children():
+            w.destroy()
+        for idx, step in enumerate(self._builder_steps):
+            self._builder_render_row(idx, step)
+        self._builder_bind_wheel(self._builder_list_frame)
+        self._builder_update_repeat_button_state()
+        self._builder_update_validation()
+
+    def _builder_render_editor(self):
+        for w in self._builder_editor_frame.winfo_children():
+            w.destroy()
+        idx = self._builder_selected_index
+        if idx is None or not (0 <= idx < len(self._builder_steps)):
+            tk.Label(self._builder_editor_frame, text="Выберите блок слева",
+                     bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=230,
+                     justify="left").pack(anchor="w", pady=8)
+            return
+        step = self._builder_steps[idx]
+        ttk.Label(self._builder_editor_frame, text=f"Блок №{idx + 1}",
+                  style="Section.TLabel").pack(anchor="w", pady=(4, 8))
+
+        if step.step_type == "repeat":
+            ttk.Label(self._builder_editor_frame, text="Повторов:",
+                      style="Muted.TLabel").pack(anchor="w")
+            count_var = tk.StringVar(value=str(step.count))
+
+            def _on_count_change(_e=None, s=step, v=count_var):
+                try:
+                    s.count = int(v.get())
+                except ValueError:
+                    pass
+                self._builder_render_list()
+
+            entry = ttk.Entry(self._builder_editor_frame, textvariable=count_var, width=8)
+            entry.pack(anchor="w", pady=(0, 8))
+            entry.bind("<FocusOut>", _on_count_change)
+            entry.bind("<Return>", _on_count_change)
+            ttk.Label(self._builder_editor_frame,
+                      text=f"Повторяет шаги {step.back_to_offset + 1}-{idx}",
+                      style="Muted.TLabel", wraplength=230, justify="left").pack(anchor="w")
+            return
+
+        if step.step_type == "sbu_block":
+            ttk.Label(self._builder_editor_frame, text="Упражнения СБУ (по умолчанию):",
+                      style="Muted.TLabel", wraplength=230, justify="left").pack(anchor="w", pady=(0, 4))
+            for d in (step.drills or []):
+                tk.Label(self._builder_editor_frame, text=f"· {d.name} — {d.seconds}с × {d.reps}",
+                         bg=BG, fg=FG, font=("Segoe UI", 9), anchor="w").pack(anchor="w")
+            return
+
+        for field_name, label, py_type in _STEP_TYPE_FIELDS.get(step.step_type, ()):
+            ttk.Label(self._builder_editor_frame, text=f"{label}:",
+                      style="Muted.TLabel").pack(anchor="w")
+            current = getattr(step, field_name)
+            var = tk.StringVar(value="" if current is None else str(current))
+
+            def _on_field_change(_e=None, s=step, fn=field_name, v=var, t=py_type):
+                raw = v.get().strip()
+                if raw == "":
+                    setattr(s, fn, None)
+                else:
+                    try:
+                        setattr(s, fn, t(raw))
+                    except ValueError:
+                        pass
+                self._builder_render_list()
+
+            entry = ttk.Entry(self._builder_editor_frame, textvariable=var, width=16)
+            entry.pack(anchor="w", pady=(0, 6))
+            entry.bind("<FocusOut>", _on_field_change)
+            entry.bind("<Return>", _on_field_change)
+
+        ttk.Label(self._builder_editor_frame, text="Интенсивность:",
+                  style="Muted.TLabel").pack(anchor="w")
+        intensity_var = tk.StringVar(value=step.intensity or "")
+
+        def _on_intensity_change(_e=None, s=step, v=intensity_var):
+            s.intensity = v.get() or None
+            self._builder_render_list()
+
+        cb = ttk.Combobox(self._builder_editor_frame, textvariable=intensity_var, width=13,
+                          values=["warmup", "active", "recovery", "cooldown"], state="readonly")
+        cb.pack(anchor="w", pady=(0, 6))
+        cb.bind("<<ComboboxSelected>>", _on_intensity_change)
+
+    def _builder_update_validation(self):
+        from garmin_fit.workout_builder import validate_draft
+        filename = self._builder_filename_var.get().strip()
+        if not self._builder_steps:
+            self._builder_validation_lbl.config(text="Добавьте хотя бы один блок", fg=MUTED)
+            self._builder_add_btn.config(state="disabled")
+            return
+        if not filename:
+            self._builder_validation_lbl.config(text="Укажите имя тренировки", fg=YELLOW)
+            self._builder_add_btn.config(state="disabled")
+            return
+        errors, warnings = validate_draft(filename, filename, self._builder_steps)
+        if errors:
+            self._builder_validation_lbl.config(text=f"Ошибка: {errors[0]}", fg=RED)
+            self._builder_add_btn.config(state="disabled")
+        elif warnings:
+            self._builder_validation_lbl.config(
+                text=f"Готово, {len(warnings)} предупреждений", fg=YELLOW)
+            self._builder_add_btn.config(state="normal")
+        else:
+            self._builder_validation_lbl.config(text="Готово к добавлению ✓", fg=GREEN)
+            self._builder_add_btn.config(state="normal")
+
+    def _builder_commit(self):
+        from garmin_fit.workout_builder import validate_draft
+
+        filename = self._builder_filename_var.get().strip()
+        if not filename or not self._builder_steps:
+            return
+        if self._store is None:
+            messagebox.showwarning(
+                "Нет плана", "Сначала откройте или создайте YAML план вверху окна.")
+            return
+        errors, warnings = validate_draft(filename, filename, self._builder_steps)
+        if errors:
+            messagebox.showwarning("Есть ошибки", "\n".join(errors))
+            return
+
+        self._store.add_workout(filename=filename, name=filename, steps=self._builder_steps)
+        self._log(f"[OK] Тренировка «{filename}» добавлена в план")
+
+        from garmin_fit.plan_domain import plan_to_data
+        data = plan_to_data(self._store.get_plan())
+        self.workouts = self._parse_workouts(data)
+        self._draw_calendar()
+
+        self._builder_clear()
 
     # ── Garmin Connect tab ────────────────────────────────────────────────────
     def _build_garmin_tab(self, parent):

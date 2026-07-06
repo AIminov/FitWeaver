@@ -200,13 +200,14 @@ class PlanStore:
             self._insert_drill(step_id, d_position, drill)
         return step_id
 
-    def _insert_drill(self, step_id: int, position: int, drill: Drill) -> None:
-        self._conn.execute(
+    def _insert_drill(self, step_id: int, position: int, drill: Drill) -> int:
+        cur = self._conn.execute(
             "INSERT INTO drills (step_id, position, name, seconds, reps, extra_json) "
             "VALUES (?,?,?,?,?,?)",
             (step_id, position, drill.name, _dump_scalar(drill.seconds),
              _dump_scalar(drill.reps), json.dumps(drill.extra)),
         )
+        return cur.lastrowid
 
     # ── Validation (delegates to the one existing implementation) ────────────
     def validate(self) -> tuple[list[str], list[str]]:
@@ -271,3 +272,256 @@ class PlanStore:
         for position, wid in enumerate(ids):
             self._conn.execute("UPDATE workouts SET position = ? WHERE id = ?", (position, wid))
         self._conn.commit()
+
+    # ── Step-level mutations (visual workout builder) ─────────────────────────
+    # back_to_offset is always a plain 0-based index into a workout's own
+    # steps list (see plan_domain.STEP_REQUIRED_FIELDS["repeat"] and
+    # workout_utils.build_yaml_to_fit_index, which does the FIT-index/sbu
+    # translation only at build time). All bookkeeping below is therefore
+    # pure list-index arithmetic against this workout's steps, nothing more.
+    @staticmethod
+    def _offset_of(back_to_offset) -> int | None:
+        try:
+            return int(back_to_offset)
+        except (TypeError, ValueError):
+            return None
+
+    def _shift_repeat_offsets(self, workout_id: int, insert_at: int, delta: int) -> None:
+        """Shift back_to_offset by delta for every repeat step in this workout
+        whose back_to_offset >= insert_at. delta=+1 on insert, -1 on delete."""
+        rows = self._conn.execute(
+            "SELECT id, back_to_offset FROM steps WHERE workout_id = ? AND step_type = 'repeat'",
+            (workout_id,),
+        ).fetchall()
+        for step_id, back_to_offset in rows:
+            offset = self._offset_of(back_to_offset)
+            if offset is not None and offset >= insert_at:
+                self._conn.execute(
+                    "UPDATE steps SET back_to_offset = ? WHERE id = ?",
+                    (str(offset + delta), step_id),
+                )
+
+    def insert_step(self, workout_id: int, position: int, step: WorkoutStep) -> int:
+        """Insert a step at `position`, shifting later steps' positions and
+        any existing repeat steps' back_to_offset by +1."""
+        rows = self._conn.execute(
+            "SELECT id, position FROM steps WHERE workout_id = ? AND position >= ?",
+            (workout_id, position),
+        ).fetchall()
+        for step_id, pos in rows:
+            self._conn.execute("UPDATE steps SET position = ? WHERE id = ?", (pos + 1, step_id))
+        self._shift_repeat_offsets(workout_id, position, +1)
+        new_step_id = self._insert_step(workout_id, position, step)
+        self._conn.commit()
+        self._write_through()
+        return new_step_id
+
+    def delete_step(self, step_id: int) -> None:
+        """Delete a step, shifting later positions and repeat offsets left.
+
+        Rejects (ValueError, no write) rather than silently corrupting data
+        when the deleted step is itself the anchor of an existing repeat
+        group, or when shifting would leave a repeat step's back_to_offset
+        pointing at or past its own (new) position.
+        """
+        row = self._conn.execute(
+            "SELECT workout_id, position FROM steps WHERE id = ?", (step_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"step id {step_id} not found")
+        workout_id, deleted_position = row
+
+        all_steps = self._conn.execute(
+            "SELECT id, position, step_type, back_to_offset FROM steps "
+            "WHERE workout_id = ? ORDER BY position",
+            (workout_id,),
+        ).fetchall()
+
+        for other_id, _pos, step_type, back_to_offset in all_steps:
+            if other_id == step_id or step_type != "repeat":
+                continue
+            if self._offset_of(back_to_offset) == deleted_position:
+                raise ValueError(
+                    f"Cannot delete step at position {deleted_position}: it is "
+                    f"the start of a repeat group (repeat step id {other_id}). "
+                    "Remove or edit that repeat block first."
+                )
+
+        # Compute the full post-delete state before writing anything, so an
+        # invalid resulting repeat offset aborts with zero partial writes.
+        updates = []
+        for other_id, pos, step_type, back_to_offset in all_steps:
+            if other_id == step_id:
+                continue
+            new_position = pos - 1 if pos > deleted_position else pos
+            new_offset_str = back_to_offset
+            if step_type == "repeat":
+                offset = self._offset_of(back_to_offset)
+                if offset is not None and offset > deleted_position:
+                    offset -= 1
+                    new_offset_str = str(offset)
+                if offset is not None and offset >= new_position:
+                    raise ValueError(
+                        f"Deleting step at position {deleted_position} would make "
+                        f"repeat step {other_id}'s back_to_offset invalid."
+                    )
+            updates.append((other_id, new_position, new_offset_str))
+
+        self._conn.execute("DELETE FROM steps WHERE id = ?", (step_id,))
+        for other_id, new_position, new_offset_str in updates:
+            self._conn.execute(
+                "UPDATE steps SET position = ?, back_to_offset = ? WHERE id = ?",
+                (new_position, new_offset_str, other_id),
+            )
+        self._conn.commit()
+        self._write_through()
+
+    def move_step(self, step_id: int, new_position: int) -> None:
+        """Reorder a step within its workout.
+
+        v1 scope: rejected whenever the workout contains ANY repeat step,
+        since moving a step into/out of an existing repeat group's range is
+        ambiguous without guessing user intent. The visual builder only
+        needs free reordering during its pre-commit draft phase (plain
+        Python list operations, never touching PlanStore), so this stricter
+        guard is never actually hit by the current GUI flow.
+        """
+        row = self._conn.execute(
+            "SELECT workout_id FROM steps WHERE id = ?", (step_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"step id {step_id} not found")
+        workout_id = row[0]
+        has_repeat = self._conn.execute(
+            "SELECT 1 FROM steps WHERE workout_id = ? AND step_type = 'repeat' LIMIT 1",
+            (workout_id,),
+        ).fetchone()
+        if has_repeat:
+            raise ValueError(
+                "Cannot reorder steps in a workout that already has a repeat "
+                "block. Reorder before adding a Repeat block, or remove the "
+                "repeat block first."
+            )
+        ids = [r[0] for r in self._conn.execute(
+            "SELECT id FROM steps WHERE workout_id = ? ORDER BY position", (workout_id,)
+        ).fetchall()]
+        ids.remove(step_id)
+        new_position = max(0, min(new_position, len(ids)))
+        ids.insert(new_position, step_id)
+        for position, sid in enumerate(ids):
+            self._conn.execute("UPDATE steps SET position = ? WHERE id = ?", (position, sid))
+        self._conn.commit()
+        self._write_through()
+
+    def add_repeat_over_range(
+        self, workout_id: int, start_position: int, end_position: int, count: int
+    ) -> int:
+        """Insert a repeat step covering [start_position, end_position],
+        computing back_to_offset internally so callers only ever pass the
+        positions they already have on screen -- never the offset itself."""
+        steps = self._conn.execute(
+            "SELECT id, position, step_type, back_to_offset FROM steps "
+            "WHERE workout_id = ? ORDER BY position",
+            (workout_id,),
+        ).fetchall()
+        n = len(steps)
+        if not (0 <= start_position <= end_position < n):
+            raise ValueError(f"invalid range [{start_position}, {end_position}] for {n} step(s)")
+        if count <= 0:
+            raise ValueError("count must be positive")
+
+        for _id, pos, step_type, back_to_offset in steps:
+            if step_type != "repeat":
+                continue
+            if start_position <= pos <= end_position:
+                raise ValueError(
+                    "selected range contains an existing repeat step; "
+                    "nested repeats are not supported"
+                )
+            offset = self._offset_of(back_to_offset)
+            if offset is not None and start_position <= offset <= end_position:
+                raise ValueError(
+                    "selected range overlaps an existing repeat group's start; "
+                    "nested/overlapping repeats are not supported"
+                )
+
+        new_step = WorkoutStep(step_type="repeat", back_to_offset=start_position, count=count)
+        return self.insert_step(workout_id, end_position + 1, new_step)
+
+    def add_drill(self, step_id: int, drill: Drill, position: int | None = None) -> int:
+        """Insert a drill into an sbu_block step's drill list. Drills never
+        participate in back_to_offset math (an sbu_block is one YAML step
+        regardless of drill count)."""
+        if position is None:
+            max_pos = self._conn.execute(
+                "SELECT COALESCE(MAX(position), -1) FROM drills WHERE step_id = ?", (step_id,)
+            ).fetchone()[0]
+            position = max_pos + 1
+        else:
+            self._conn.execute(
+                "UPDATE drills SET position = position + 1 WHERE step_id = ? AND position >= ?",
+                (step_id, position),
+            )
+        drill_id = self._insert_drill(step_id, position, drill)
+        self._conn.commit()
+        self._write_through()
+        return drill_id
+
+    def delete_drill(self, drill_id: int) -> None:
+        row = self._conn.execute("SELECT step_id FROM drills WHERE id = ?", (drill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"drill id {drill_id} not found")
+        step_id = row[0]
+        self._conn.execute("DELETE FROM drills WHERE id = ?", (drill_id,))
+        self._renumber_drills(step_id)
+        self._conn.commit()
+        self._write_through()
+
+    def move_drill(self, drill_id: int, new_position: int) -> None:
+        row = self._conn.execute("SELECT step_id FROM drills WHERE id = ?", (drill_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"drill id {drill_id} not found")
+        step_id = row[0]
+        ids = [r[0] for r in self._conn.execute(
+            "SELECT id FROM drills WHERE step_id = ? ORDER BY position", (step_id,)
+        ).fetchall()]
+        ids.remove(drill_id)
+        new_position = max(0, min(new_position, len(ids)))
+        ids.insert(new_position, drill_id)
+        for position, did in enumerate(ids):
+            self._conn.execute("UPDATE drills SET position = ? WHERE id = ?", (position, did))
+        self._conn.commit()
+        self._write_through()
+
+    def _renumber_drills(self, step_id: int) -> None:
+        ids = [r[0] for r in self._conn.execute(
+            "SELECT id FROM drills WHERE step_id = ? ORDER BY position", (step_id,)
+        ).fetchall()]
+        for position, did in enumerate(ids):
+            self._conn.execute("UPDATE drills SET position = ? WHERE id = ?", (position, did))
+
+    # ── Whole-workout creation (visual workout builder) ───────────────────────
+    def add_workout(
+        self, filename, name, desc="", type_code="",
+        distance_km=None, estimated_duration_min=None,
+        steps=None, position=None,
+    ) -> int:
+        """Append (or insert) a brand-new workout, e.g. one built in the
+        visual builder tab."""
+        if position is None:
+            position = self._conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM workouts"
+            ).fetchone()[0]
+        else:
+            self._conn.execute(
+                "UPDATE workouts SET position = position + 1 WHERE position >= ?", (position,)
+            )
+        workout = Workout(
+            filename=filename, name=name, desc=desc, type_code=type_code,
+            distance_km=distance_km, estimated_duration_min=estimated_duration_min,
+            steps=list(steps or []), extra={},
+        )
+        workout_id = self._insert_workout(position, workout)
+        self._conn.commit()
+        self._write_through()
+        return workout_id
