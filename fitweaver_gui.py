@@ -570,6 +570,12 @@ class App(tk.Tk):
         self._cal_frame = tk.Frame(parent, bg=BG2)
         self._cal_frame.pack(fill="both", expand=True)
 
+        ttk.Label(parent, text="ОБЪЁМ ПО НЕДЕЛЯМ (км)", style="Section.TLabel").pack(
+            anchor="w", pady=(6, 2))
+        self._chart_canvas = tk.Canvas(parent, bg=BG2, height=64, highlightthickness=0)
+        self._chart_canvas.pack(fill="x")
+        self._chart_canvas.bind("<Configure>", self._on_chart_canvas_resize)
+
         self._detail_var = tk.StringVar(value="Нажмите на тренировку для подробностей")
         tk.Label(parent, textvariable=self._detail_var,
                  bg=BG3, fg=FG, font=("Segoe UI", 9),
@@ -689,8 +695,12 @@ class App(tk.Tk):
                 row=0, column=col, padx=1, pady=1, sticky="ew")
             self._cal_frame.columnconfigure(col, weight=1)
 
-        for r, week in enumerate(
-                calendar.monthcalendar(self.cal_month.year, self.cal_month.month), start=1):
+        weeks = calendar.monthcalendar(self.cal_month.year, self.cal_month.month)
+        self._chart_weeks = weeks
+        self._chart_by_date = by_date
+        self._draw_weekly_chart(weeks, by_date)
+
+        for r, week in enumerate(weeks, start=1):
             self._cal_frame.rowconfigure(r, weight=1)
             for col, day in enumerate(week):
                 cell = tk.Frame(self._cal_frame,
@@ -707,6 +717,54 @@ class App(tk.Tk):
                          anchor="nw", padx=4, pady=2).pack(fill="x")
                 for wo in by_date.get(date_str, []):
                     self._add_chip(cell, wo)
+
+    def _on_chart_canvas_resize(self, _e=None):
+        if hasattr(self, "_chart_weeks"):
+            self._draw_weekly_chart(self._chart_weeks, self._chart_by_date)
+
+    def _draw_weekly_chart(self, weeks: list[list[int]], by_date: dict[str, list[dict]]):
+        """Bar chart of total km per week-row of the currently displayed
+        month calendar -- one bar per week, aligned with the grid below it,
+        so training-load spikes/gaps are visible at a glance."""
+        canvas = self._chart_canvas
+        canvas.delete("all")
+        canvas.update_idletasks()
+        width = canvas.winfo_width() or 900
+        height = int(canvas.cget("height"))
+
+        totals = []
+        for week in weeks:
+            total_km = 0.0
+            for day in week:
+                if not day:
+                    continue
+                date_str = datetime.date(self.cal_month.year, self.cal_month.month, day).isoformat()
+                for wo in by_date.get(date_str, []):
+                    km = wo.get("distance_km")
+                    if isinstance(km, (int, float)):
+                        total_km += km
+            totals.append(total_km)
+
+        if not totals:
+            return
+        max_km = max(totals) or 1.0
+        n = len(totals)
+        col_w = width / n
+        bar_w = col_w * 0.6
+        bottom = height - 4
+        top_margin = 16
+
+        for i, total_km in enumerate(totals):
+            bar_h = (total_km / max_km) * (height - top_margin - 4) if total_km else 0
+            x0 = i * col_w + (col_w - bar_w) / 2
+            x1 = x0 + bar_w
+            y1 = bottom
+            y0 = bottom - bar_h
+            color = ACCENT if total_km > 0 else BG3
+            canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
+            label = f"{total_km:.0f}" if total_km else "—"
+            canvas.create_text((x0 + x1) / 2, y0 - 8, text=label, fill=MUTED,
+                                font=("Segoe UI", 8))
 
     def _add_chip(self, parent, wo):
         color = WORKOUT_COLORS.get((wo.get("type_code") or "").lower(), DEFAULT_WO_COLOR)
