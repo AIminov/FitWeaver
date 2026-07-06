@@ -127,6 +127,9 @@ class App(tk.Tk):
         self._drag_start_xy: tuple[int, int] | None = None
         self._drag_moved = False
 
+        # Toast notifications (stacked, auto-dismiss)
+        self._active_toasts: list[tk.Toplevel] = []
+
         self._setup_style()
         self._build_ui()
         self._setup_text_bindings()
@@ -958,6 +961,52 @@ class App(tk.Tk):
         self._log_w.insert("end", text + "\n")
         self._log_w.see("end")
         self._log_w.config(state="disabled")
+        self._maybe_toast(text)
+
+    # ── Toast notifications ────────────────────────────────────────────────
+    # Piggybacks on the existing "[OK]"/"[ERR]"/"[WARN]"/"[FAIL]" prefix
+    # convention already used by every _log() call site across the app, so
+    # every existing status message gets a toast for free -- visible no
+    # matter which tab is currently open, unlike the log box (Calendar tab only).
+    def _maybe_toast(self, text: str) -> None:
+        stripped = text.strip()
+        for prefix, color in (("[OK]", GREEN), ("[ERR]", RED),
+                              ("[FAIL]", RED), ("[WARN]", YELLOW)):
+            if stripped.startswith(prefix):
+                message = stripped[len(prefix):].strip()
+                if message:
+                    self._show_toast(message, color)
+                return
+
+    def _show_toast(self, message: str, color: str = GREEN, duration_ms: int = 3000) -> None:
+        toast = tk.Toplevel(self)
+        toast.overrideredirect(True)
+        try:
+            toast.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        label = tk.Label(toast, text=message, bg=color, fg=BG,
+                         font=("Segoe UI", 9, "bold"), padx=14, pady=8,
+                         wraplength=380, justify="left")
+        label.pack()
+
+        self.update_idletasks()
+        x = self.winfo_rootx() + self.winfo_width() - label.winfo_reqwidth() - 24
+        y = self.winfo_rooty() + 44 + len(self._active_toasts) * 48
+        toast.geometry(f"+{max(x, self.winfo_rootx() + 10)}+{y}")
+
+        self._active_toasts.append(toast)
+
+        def _dismiss(_e=None):
+            if toast in self._active_toasts:
+                self._active_toasts.remove(toast)
+            try:
+                toast.destroy()
+            except tk.TclError:
+                pass
+
+        label.bind("<Button-1>", _dismiss)
+        toast.after(duration_ms, _dismiss)
 
     def _clear_log(self):
         self._log_w.config(state="normal")
