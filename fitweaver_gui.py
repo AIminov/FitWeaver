@@ -744,6 +744,9 @@ class App(tk.Tk):
             widget = widget.master
         return None
 
+    # Tk modifier-state bit for the Control key (Windows/X11)
+    _CONTROL_STATE_MASK = 0x0004
+
     def _calendar_drag_release(self, event, wo):
         moved = self._drag_moved
         self._drag_workout = None
@@ -754,27 +757,50 @@ class App(tk.Tk):
             self._show_detail(wo)  # a plain click, not a drag
             return
 
+        is_copy = bool(event.state & self._CONTROL_STATE_MASK)
         target_date_str = self._cell_date_at_root_coords(event.x_root, event.y_root)
-        if not target_date_str or target_date_str == wo.get("date"):
+        if not target_date_str:
             return
+        if not is_copy and target_date_str == wo.get("date"):
+            return  # dropped on its own day -- no-op
         if self._store is None:
             return
 
         filename = wo.get("filename") or wo.get("name") or ""
         workout_id = self._store.find_workout_id_by_filename(filename)
         if workout_id is None:
-            self._log(f"[ERR] Не удалось найти тренировку «{filename}» для переноса")
+            self._log(f"[ERR] Не удалось найти тренировку «{filename}»")
             return
 
         new_date = datetime.date.fromisoformat(target_date_str)
         new_filename = self._compute_renamed_filename(filename, new_date)
-        self._store.rename_workout_filename(workout_id, new_filename)
-        self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
+
+        if is_copy:
+            new_id = self._store.duplicate_workout(workout_id)
+            new_filename = self._dedupe_filename(new_filename, exclude_workout_id=new_id)
+            self._store.rename_workout_filename(new_id, new_filename)
+            self._log(f"[OK] «{filename}» скопирована на {target_date_str} → «{new_filename}»")
+        else:
+            self._store.rename_workout_filename(workout_id, new_filename)
+            self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
 
         from garmin_fit.plan_domain import plan_to_data
         data = plan_to_data(self._store.get_plan())
         self.workouts = self._parse_workouts(data)
         self._draw_calendar()
+
+    def _dedupe_filename(self, filename: str, exclude_workout_id: int) -> str:
+        """Append _copy / _copy2 / ... if filename collides with another
+        workout already in the plan (e.g. copying onto the same day the
+        source workout is already on recomputes an identical name)."""
+        candidate = filename
+        suffix = 1
+        while True:
+            existing_id = self._store.find_workout_id_by_filename(candidate)
+            if existing_id is None or existing_id == exclude_workout_id:
+                return candidate
+            suffix += 1
+            candidate = f"{filename}_copy{'' if suffix == 2 else suffix}"
 
     def _compute_renamed_filename(self, old_filename: str, new_date: datetime.date) -> str:
         """Rewrite the W{week}_{MM-DD}_{Day}_... prefix for a new date,
