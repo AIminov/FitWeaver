@@ -8,11 +8,11 @@ After publishing, workouts appear on the watch automatically on the
 next Garmin Connect sync.
 
 Usage (local CLI):
-    from garmin_fit.garmin_auth_manager import GarminAuthManager
+    from garmin_fit.garmin_auth_manager import GarminAuthManager, prompt_mfa_with_timeout
     from garmin_fit.garmin_calendar_export import GarminCalendarExporter
 
     manager = GarminAuthManager.from_env(
-        prompt_mfa=lambda: input("MFA code: ")
+        prompt_mfa=prompt_mfa_with_timeout
     )
     client = manager.connect()
 
@@ -418,9 +418,9 @@ def publish_plan_to_garmin(
     """
     from pathlib import Path
 
-    from .garmin_auth_manager import GarminAuthManager
+    from .garmin_auth_manager import GarminAuthManager, prompt_mfa_with_timeout
 
-    mfa_cb = prompt_mfa or (lambda: input("Garmin MFA code: "))
+    mfa_cb = prompt_mfa or prompt_mfa_with_timeout
     token_path = Path(token_dir) if token_dir else None
     manager = GarminAuthManager(
         email=email,

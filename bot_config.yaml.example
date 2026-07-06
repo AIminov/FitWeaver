@@ -32,6 +32,15 @@ llm_url: "http://127.0.0.1:1234/v1"
 llm_model: "local-model"
 
 # -----------------------------------------------------------------------
+# Session
+# -----------------------------------------------------------------------
+
+# Seconds of inactivity before a user's session resets and /start is
+# required again (also applies if a user never picked a language via /start
+# and sends plan text directly, e.g. a second phone). Default: 1200 (20 min)
+# session_timeout_sec: 1200
+
+# -----------------------------------------------------------------------
 # Garmin Connect (optional — enables /connect_garmin and /send_to_garmin)
 # -----------------------------------------------------------------------
 # Credentials are entered interactively via /connect_garmin in the bot.

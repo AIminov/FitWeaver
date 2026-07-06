@@ -13,9 +13,10 @@ Usage:
     manager = GarminAuthManager.from_env()
     client = manager.connect()
 
-    # Interactive MFA (CLI):
+    # Interactive MFA (CLI) -- prompt_mfa_with_timeout avoids hanging forever
+    # if no code is ever entered:
     manager = GarminAuthManager(email, password,
-                                prompt_mfa=lambda: input("MFA: "))
+                                prompt_mfa=prompt_mfa_with_timeout)
     client = manager.connect()
 
     # Async MFA (Telegram bot):
@@ -49,6 +50,38 @@ def _require_garmin_auth() -> None:
             "garmin-auth is not installed. "
             "Run: pip install garmin-auth"
         )
+
+
+DEFAULT_MFA_PROMPT_TIMEOUT_SEC = 120
+
+
+def prompt_mfa_with_timeout(
+    prompt: str = "Garmin MFA code: ",
+    timeout_sec: float = DEFAULT_MFA_PROMPT_TIMEOUT_SEC,
+) -> str:
+    """Read an MFA code from stdin without hanging a CLI/bot process forever.
+
+    input() has no built-in timeout, so this reads it on a background thread
+    and gives up after timeout_sec if nothing was entered. The thread is left
+    running as a daemon (Python cannot forcibly cancel a blocked input()
+    call) -- harmless since the process is expected to exit or move on.
+    """
+    import threading
+
+    result: dict[str, str] = {}
+
+    def _read() -> None:
+        try:
+            result["value"] = input(prompt)
+        except EOFError:
+            result["value"] = ""
+
+    thread = threading.Thread(target=_read, daemon=True)
+    thread.start()
+    thread.join(timeout_sec)
+    if thread.is_alive():
+        raise TimeoutError(f"No MFA code entered within {timeout_sec:.0f} seconds.")
+    return result.get("value", "")
 
 
 class GarminAuthManager:

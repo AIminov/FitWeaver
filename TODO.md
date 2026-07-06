@@ -1,6 +1,28 @@
 # TODO — FitWeaver
 
-_Обновлено: 2026-07-06_
+_Обновлено: 2026-07-06 (продолжение сессии — Фаза A backlog cleanup)_
+
+---
+
+## ✅ Закрыто 2026-07-06 (продолжение) — Backlog cleanup (Фаза A)
+
+- **TODO #6** — таймаут сессии бота: `UserState.last_active`/`onboarded`, сброс через
+  `_enforce_session()` при `not onboarded` или простое > `session_timeout_sec` (default 1200,
+  настраивается в `bot_config.yaml`). Точка входа — `handle_text_message`;
+  `handle_lang_choice` (реальный `/start`) помечает `onboarded=True`.
+- **TODO #7** — футер YAML-превью (`yaml_ready_footer`, `yaml_loaded_text_footer`, RU+EN)
+  теперь явно перечисляет все три действия: /build, отправить исправленный текст, /cancel.
+- **`garmin_auth_manager.prompt_mfa`** — добавлена `prompt_mfa_with_timeout()` (default 120с,
+  фоновый поток + `join(timeout)`, `TimeoutError` вместо бесконечного `input()`).
+  Заменены оба места (`workflow.py`, `garmin_calendar_export.py`), использовавшие голый `input()`.
+- **TODO #10** — тесты error-путей: невалидный YAML/пустой файл/нет workouts/validation errors
+  (`load_plan_build_input`), сетевая ошибка при upload/schedule (`garmin_calendar_export`),
+  ошибка записи файла (`build_all_fits_from_plan` — падение одной тренировки не прерывает сборку остальных).
+- **TODO #11** — вложенный `repeat` в `garmin_step_mapper.map_steps`: подтверждено и закреплено
+  тестом корректное поведение (позиционный replay, не иерархическая вложенность — активный/
+  восстановительный шаги логично встречаются и отдельно, и внутри вложенной repeat-группы).
+
+18 новых тестов, итого 279 проходят.
 
 ---
 
@@ -118,14 +140,12 @@ CLAUDE.md предупреждает "BOTH must stay in sync" — это зна�
 
 ## 🔵 Тесты (важные пробелы)
 
-### 10. Error paths почти не тестируются
-Все тесты — happy path. Нет тестов для:
-- невалидный YAML → `load_plan_build_input()`
-- сетевая ошибка → `garmin_calendar_export`
-- ошибка записи файла → `build_from_plan`
+### ~~10. Error paths почти не тестируются~~ ✅ FIXED 2026-07-06
+~~Все тесты — happy path. Нет тестов для: невалидный YAML → `load_plan_build_input()`;
+сетевая ошибка → `garmin_calendar_export`; ошибка записи файла → `build_from_plan`.~~
 
-### 11. Вложенные repeat не тестируются
-`test_garmin_step_mapper.py` покрывает обычные repeat и SBU, но нет теста для `repeat внутри repeat`.
+### ~~11. Вложенные repeat не тестируются~~ ✅ FIXED 2026-07-06
+~~`test_garmin_step_mapper.py` покрывает обычные repeat и SBU, но нет теста для `repeat внутри repeat`.~~
 
 ### ~~12. `test_config.py`: побочные эффекты между тестами~~ ✅ FIXED
 ~~`importlib.reload()` меняет глобальное состояние модуля.~~
@@ -136,7 +156,7 @@ CLAUDE.md предупреждает "BOTH must stay in sync" — это зна�
 ## ⚪ Мелкие
 
 - ~~`plan_schema.py`: `check_pace_ordering()` продублирована в `DistPaceStep` и `TimePaceStep` — вынести в `@staticmethod`.~~ ✅ FIXED
-- `garmin_auth_manager.py`: `prompt_mfa` — блокирующий вызов без таймаута, CLI может зависнуть.
+- ~~`garmin_auth_manager.py`: `prompt_mfa` — блокирующий вызов без таймаута, CLI может зависнуть.~~ ✅ FIXED 2026-07-06 (`prompt_mfa_with_timeout`)
 - ~~`llm/benchmark.py`: путь до фикстур захардкожен — сломается при перемещении `tests/`.~~ ✅ FIXED
 - ~~`check_fit.py`: порог предупреждения о размере файла (1 МБ) захардкожен.~~ ✅ FIXED (вынесен в `_LARGE_FILE_BYTES`)
 
@@ -162,24 +182,6 @@ CLAUDE.md предупреждает "BOTH must stay in sync" — это зна�
 ### 5. Тест: retry-цикл интеграционный
 Подать план с "до 130 уд/мин", убедиться что retry не срабатывает и YAML валиден.
 
-### 6. Сессия бота: сброс по таймауту неактивности
-Новый пользователь (или второй телефон) может обойти `/start` и сразу слать текст плана —
-бот принимает его, потому что `state.status == "idle"` без проверки, был ли пройден онбординг.
+### ~~6. Сессия бота: сброс по таймауту неактивности~~ ✅ FIXED 2026-07-06
 
-**Решение:**
-- Хранить в `UserState` поле `last_active: float` (unix timestamp) и `onboarded: bool`.
-- При каждом входящем сообщении: если `time.time() - last_active > SESSION_TIMEOUT_SEC` (например 1200 сек = 20 мин)
-  — сбросить состояние через `reset_state()` и показать `/start` заново.
-- Также сбрасывать если `not state.onboarded` — пользователь ещё не выбрал язык.
-- `SESSION_TIMEOUT_SEC` вынести в `bot_config.yaml` (default 1200).
-
-### 7. UX: подсказка «что делать если YAML неверный»
-После показа превью YAML бот пишет «если всё верно — нажмите /build», но не объясняет
-что делать если план неверный. Пользователь не понимает, можно ли отправить исправленный текст.
-
-**Решение:** дополнить footer-сообщение после YAML:
-```
-✅ Всё верно → /build
-✏️ Нужно исправить → отправьте скорректированный текст плана (начнётся новая генерация)
-❌ Отменить → /cancel
-```
+### ~~7. UX: подсказка «что делать если YAML неверный»~~ ✅ FIXED 2026-07-06

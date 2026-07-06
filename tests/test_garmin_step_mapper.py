@@ -453,6 +453,52 @@ class TestRepeat(unittest.TestCase):
         self.assertEqual(result[0]["type"], "RepeatGroupDTO")
         self.assertEqual(result[0]["numberOfIterations"], 3)
 
+    def test_nested_repeat_produces_repeat_group_inside_repeat_group(self):
+        """TODO #11: a repeat whose own range contains an earlier, already
+        self-contained repeat instruction must nest correctly rather than
+        crash or silently drop the inner group.
+
+        steps: warmup(0), active(1), recovery(2), repeat(back_to=1,count=2)(3),
+        cooldown(4), repeat(back_to=0,count=3)(5).
+
+        back_to_offset is a *position* replay, not a scoping construct: the
+        outer repeat (back_to_offset=0) walks positions 0..4 in order, so its
+        body is [warmup, active, recovery, <inner repeat instruction>,
+        cooldown] -- active/recovery legitimately appear once at their
+        original position AND again inside the inner RepeatGroupDTO, since
+        that's exactly what "replay steps 1-2, 2 more times" at position 3
+        means. This test locks in that this composes correctly instead of
+        crashing, dropping the inner group, or flattening it away.
+        """
+        steps = self._make_interval_block(count=2, back_to=1) + [
+            _step(step_type="dist_open", km=1, intensity="cooldown"),
+            _step(step_type="repeat", back_to_offset=0, count=3),
+        ]
+        result = map_steps(steps)
+
+        self.assertEqual(len(result), 1)
+        outer = result[0]
+        self.assertEqual(outer["type"], "RepeatGroupDTO")
+        self.assertEqual(outer["numberOfIterations"], 3)
+
+        outer_children = outer["workoutSteps"]
+        outer_types = [c["type"] for c in outer_children]
+        self.assertEqual(
+            outer_types,
+            ["ExecutableStepDTO", "ExecutableStepDTO", "ExecutableStepDTO",
+             "RepeatGroupDTO", "ExecutableStepDTO"],
+        )
+
+        inner = outer_children[3]
+        self.assertEqual(inner["numberOfIterations"], 2)
+        self.assertEqual(len(inner["workoutSteps"]), 2)
+        self.assertEqual([c["type"] for c in inner["workoutSteps"]],
+                         ["ExecutableStepDTO", "ExecutableStepDTO"])
+
+        # stepOrder is consecutive within each nesting level, independently
+        self.assertEqual([c["stepOrder"] for c in outer_children], [1, 2, 3, 4, 5])
+        self.assertEqual([c["stepOrder"] for c in inner["workoutSteps"]], [1, 2])
+
 
 # ---------------------------------------------------------------------------
 # Unknown step type

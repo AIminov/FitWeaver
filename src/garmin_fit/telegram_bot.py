@@ -49,6 +49,9 @@ LLM_TIMEOUT_SEC = 300
 MAX_PLAN_TEXT_LENGTH = 4000
 TELEGRAM_CONNECT_TIMEOUT_SEC = 30
 TELEGRAM_READ_TIMEOUT_SEC = 30
+
+# Fallback if bot_config.yaml doesn't set session_timeout_sec
+DEFAULT_SESSION_TIMEOUT_SEC = 1200
 TELEGRAM_WRITE_TIMEOUT_SEC = 30
 TELEGRAM_POOL_TIMEOUT_SEC = 30
 
@@ -225,7 +228,12 @@ MSG: dict[str, dict[str, str]] = {
         "yaml_ready_sbu": "YAML готов. Тренировок: {count}.\n\nНайден блок СБУ. Ответьте:\n• «стандарт» — оставить упражнения по умолчанию\n• текст с упражнениями — сгенерировать свои",
         "yaml_ready_ambig": "YAML готов. Тренировок: {count}.\n\nНайдены неоднозначности:\n{ambig}\n\nОтветьте уточнением и я перегенерирую, или /build чтобы продолжить как есть.",
         "yaml_ready": "YAML готов. Тренировок: {count}.",
-        "yaml_ready_footer": "Если всё верно — отправьте /build",
+        "yaml_ready_footer": (
+            "✅ Всё верно → /build\n"
+            "✏️ Нужно исправить → отправьте скорректированный текст плана "
+            "(начнётся новая генерация)\n"
+            "❌ Отменить → /cancel"
+        ),
         "build_queued": "Задача поставлена в очередь. Позиция: {pos}",
         "build_running": "Запускаю: YAML → прямая сборка FIT → валидация",
         "build_done": "✅ Сборка завершена!\nFIT-файлов: {count}  (корректных {valid}/{total})",
@@ -267,6 +275,7 @@ MSG: dict[str, dict[str, str]] = {
         ),
         "garmin_hint_connect": "\n\nСовет: /connect_garmin → /send_to_garmin — следующий раз загрузит прямо в календарь.",
         "op_in_progress": "Операция выполняется (статус: {status}).\nДождитесь завершения или отправьте /cancel.",
+        "session_expired": "Сессия сброшена из-за неактивности. Пожалуйста, начните заново: /start",
         "cooldown": "Пожалуйста, подождите ещё {sec} сек перед отправкой нового плана.",
         "plan_too_long": "Текст плана слишком длинный ({chars} симв.). Максимум: {max} симв.",
         "plan_too_short": "Текст плана слишком короткий. Пожалуйста, добавьте больше деталей.",
@@ -323,7 +332,11 @@ MSG: dict[str, dict[str, str]] = {
         "delete_error": "Ошибка: {err}",
         "yaml_loaded": "YAML-план загружен из {fname}.\n\nОтправьте /build для генерации FIT-файлов.",
         "yaml_loaded_text": "YAML-план распознан из сообщения.",
-        "yaml_loaded_text_footer": "Отправьте /build для генерации FIT-файлов.",
+        "yaml_loaded_text_footer": (
+            "✅ Всё верно → /build\n"
+            "✏️ Нужно исправить → отправьте скорректированный YAML или текст плана заново\n"
+            "❌ Отменить → /cancel"
+        ),
         "file_format_error": "Поддерживаемые форматы: .txt, .md (текст плана) или .yaml/.yml (готовый план).",
         "file_read_error": "Ошибка чтения файла: {err}",
         "plan_error": "Ошибка обработки плана: {err}",
@@ -391,7 +404,12 @@ MSG: dict[str, dict[str, str]] = {
         "yaml_ready_sbu": "YAML ready. Workouts: {count}.\n\nSBU block found. Reply with:\n• 'standard' to keep default drills\n• custom drill text to generate your own",
         "yaml_ready_ambig": "YAML ready. Workouts: {count}.\n\nAmbiguities found:\n{ambig}\n\nReply with clarification and I'll regenerate, or /build to proceed as-is.",
         "yaml_ready": "YAML ready. Workouts: {count}.",
-        "yaml_ready_footer": "If correct, send /build",
+        "yaml_ready_footer": (
+            "✅ Looks right → /build\n"
+            "✏️ Needs a fix → send a corrected plan text "
+            "(a new generation will start)\n"
+            "❌ Cancel → /cancel"
+        ),
         "build_queued": "Build queued. Position: {pos}",
         "build_running": "Running: YAML → direct FIT build → validate",
         "build_done": "✅ Build done!\nFIT files: {count}  (valid {valid}/{total})",
@@ -433,6 +451,7 @@ MSG: dict[str, dict[str, str]] = {
         ),
         "garmin_hint_connect": "\n\nTip: /connect_garmin → /send_to_garmin uploads directly to calendar next time.",
         "op_in_progress": "Operation in progress (status: {status}).\nWait for it to finish, or send /cancel to reset.",
+        "session_expired": "Session reset due to inactivity. Please start again: /start",
         "cooldown": "Please wait {sec} more seconds before sending another plan.",
         "plan_too_long": "Plan text is too long ({chars} chars). Maximum: {max} chars.",
         "plan_too_short": "Plan text is too short. Please send more details.",
@@ -489,7 +508,11 @@ MSG: dict[str, dict[str, str]] = {
         "delete_error": "Error: {err}",
         "yaml_loaded": "YAML plan loaded from {fname}.\n\nSend /build to generate FIT files.",
         "yaml_loaded_text": "YAML plan detected in your message.",
-        "yaml_loaded_text_footer": "Send /build to generate FIT files.",
+        "yaml_loaded_text_footer": (
+            "✅ Looks right → /build\n"
+            "✏️ Needs a fix → send a corrected YAML or plan text again\n"
+            "❌ Cancel → /cancel"
+        ),
         "file_format_error": "Supported formats: .txt, .md (plan text) or .yaml/.yml (ready plan).",
         "file_read_error": "File read error: {err}",
         "plan_error": "Plan processing error: {err}",
@@ -632,6 +655,8 @@ class UserState:
     clarification_attempted: bool = False          # prevent re-asking after one clarification
     cancel_requested: bool = False
     last_request_time: Optional[datetime] = None
+    last_active: Optional[datetime] = None
+    onboarded: bool = False
     language: str = "en"
     # Delivery choice (after build)
     pending_zip_path: Optional[Path] = None
@@ -728,6 +753,34 @@ def reset_state(user_id: int) -> None:
     new = UserState()
     new.language = lang
     USER_STATES[user_id] = new
+
+
+def _session_timed_out(state: UserState) -> bool:
+    """True if this user has an active (onboarded) session that has gone
+    quiet for longer than session_timeout_sec. A never-onboarded state
+    (state.last_active is None) is not a timeout -- that's just a brand
+    new user who hasn't done anything yet."""
+    if state.last_active is None:
+        return False
+    timeout_sec = BOT_CONFIG.get("session_timeout_sec", DEFAULT_SESSION_TIMEOUT_SEC)
+    return (datetime.now() - state.last_active).total_seconds() > timeout_sec
+
+
+async def _enforce_session(update: Update, user_id: int, state: UserState) -> bool:
+    """Reset and re-prompt /start if the user skipped onboarding (e.g. a
+    second phone sending plan text directly without ever choosing a
+    language) or if their session has been idle past session_timeout_sec.
+
+    Returns True if the session was reset (caller should stop processing
+    the current message), False if it's safe to continue.
+    """
+    if not state.onboarded or _session_timed_out(state):
+        reset_state(user_id)
+        if update.message is not None:
+            await update.message.reply_text(_m(user_id, "session_expired"))
+        return True
+    state.last_active = datetime.now()
+    return False
 
 
 def user_is_allowed(user_id: int) -> bool:
@@ -1146,6 +1199,8 @@ async def handle_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lang = (query.data or "").split(":", 1)[1]  # "ru" or "en"
     state = get_state(user_id)
     state.language = lang
+    state.onboarded = True
+    state.last_active = datetime.now()
 
     await query.edit_message_text(
         "🇷🇺 Выбран русский язык." if lang == "ru" else "🇬🇧 English selected."
@@ -1255,6 +1310,9 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     state = get_state(user_id)
     text = update.message.text
+
+    if await _enforce_session(update, user_id, state):
+        return
 
     if state.status == "awaiting_garmin_email":
         await _handle_garmin_email(update, context, text)

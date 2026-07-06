@@ -431,6 +431,7 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_pasted_yaml_skips_llm_and_loads_ready_plan(self):
         user_id = 2802
+        telegram_bot.get_state(user_id).onboarded = True
         yaml_text = (
             "workouts:\n"
             "- filename: W18_05-01_Fri_Easy_10km\n"
@@ -465,6 +466,7 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
     async def test_new_plan_resets_clarification_state(self):
         user_id = 3003
         state = telegram_bot.get_state(user_id)
+        state.onboarded = True
         state.clarification_attempted = True
         state.pending_clarification = "• old ambiguity"
         state.pending_ambiguities = ["old ambiguity"]
