@@ -18,6 +18,42 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-07-07 — Фаза D: простой/экспертный режим интерфейса
+**Сделано:**
+- Новый `self.ui_mode` (`"simple"`/`"expert"`, по умолчанию `"simple"`) в `fitweaver_gui.py` —
+  глобальная настройка (тот же уровень, что `llm_conn_mode`/`api_url`: описывает интерфейс
+  машины, а не личные данные пользователя), персистится в `.gui_session.json` по образцу
+  существующего `llm_conn_mode`-паттерна.
+- Чекбокс "Экспертный режим" в сайдбаре, `_on_ui_mode_change()` скрывает/показывает три блока:
+  секцию "ПРОДВИНУТЫЕ" в сайдбаре (Валидировать YAML/FIT, Диагностика, Архивировать и т.д.),
+  панели подключения LLM (`_conn_own`/`_conn_api`) на вкладке LLM, поле "Лимит" на вкладке
+  Garmin Connect.
+- На вкладке LLM панель подключения в простом режиме скрыта за кнопкой "Настроить
+  подключение" (не требует переключения в экспертный режим целиком для первичной настройки) —
+  `_toggle_llm_conn_expanded()`/`self._llm_conn_expanded`.
+- Попутно исправлена скрытая проблема с `pack()`/`pack_forget()`: повторный `pack()` без
+  `before=` добавляет виджет в КОНЕЦ списка управляемых потомков, а не на прежнее место —
+  при переключении режимов панель подключения LLM или поле "Лимит" могли бы визуально
+  "уехать" после первого переключения. Все повторные `pack()`-вызовы в этой зоне используют
+  `before=self._llm_check_row` / `before=self._gc_del_btn`, чтобы позиция была детерминирована.
+- Конструктор и Календарь не тронуты — намеренно (см. решение в предыдущей сессии: слишком
+  рискованно резать функциональность повторов/палитры блоков ради упрощения интерфейса).
+- Ручной smoke-тест через headless-инстанс `App()` (`pack_info()` вместо `winfo_ismapped()`,
+  т.к. скрытые вкладки `ttk.Notebook` не мапятся до выбора — обычный false negative для этой
+  проверки) — переключение simple↔expert, экспандер, персистентность в `.gui_session.json`
+  подтверждены. Нет автотестов на GUI (нет тестовой инфраструктуры для Tkinter в проекте — то
+  же решение, что в Фазе C).
+
+**Решения/отказы:**
+- Область действия сознательно сужена до "лёгкого" варианта (подтверждено вопросом
+  пользователю): сайдбар + LLM-подключение + Garmin-лимит. Не трогали Конструктор — упрощение
+  палитры блоков/повторов лишило бы простой режим возможности собрать интервальную тренировку.
+
+**Следующие задачи:** редактирование уже закоммиченных тренировок в Конструкторе;
+реальный remote-хостинг Plan API (пока проверен только localhost).
+
+---
+
 ### 2026-07-06 — Desktop GUI: SQLite-слой, мультипрофили, визуальный конструктор
 **Сделано:**
 - `plan_store.py` (новый) — SQLite как внутренний рабочий слой GUI. YAML остаётся единственным каноническим форматом для CLI/бота/сборки/Garmin-загрузки; `PlanStore` пишет обратно в YAML после каждой мутации. Уровень тренировок: `move_workout`, `duplicate_workout`, `delete_workout`, `rename_workout_filename`. Уровень шагов: `insert_step`, `delete_step` (отклоняет удаление anchor-шага repeat-группы), `move_step` (v1: отклоняет, если в тренировке уже есть repeat — безопасная переоценка только в черновике до коммита), `add_repeat_over_range` (вычисляет `back_to_offset` из позиций, GUI никогда не видит и не хранит индекс), `add_drill`/`delete_drill`/`move_drill`, `add_workout`.
@@ -116,16 +152,15 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 **This file is the primary context source across machines.** The user (Amir / GitHub: AIminov) works on multiple PCs. Always read this file and `TODO.md` at the start of a session.
 
-**Current version:** v10.4.1 (2026-04-23) + Desktop GUI (2026-07-06)  
+**Current version:** v10.4.1 (2026-04-23) + Desktop GUI (2026-07-07)  
 **Repo:** https://github.com/AIminov/FitWeaver.git  
 **Git identity:** `git config --global user.email "iminov@gmail.com" && git config --global user.name "AIminov"`  
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed, start here):**
-1. Unified API over `plan_service.py` so the GUI ("LLM автора" mode) and the Telegram bot stop duplicating generation logic — bot becomes a thin client, not deleted.
-2. Visual Builder tab follow-ups: drag & drop workouts between calendar days, editing an already-committed workout's steps (currently v1-scoped to building new workouts only — see 2026-07-06 session log for why).
-3. `TODO #6` — Bot session timeout: `last_active` + `onboarded` in `UserState`, reset after 20 min inactivity, `SESSION_TIMEOUT_SEC` in `bot_config.yaml`
-4. `TODO #7` — YAML preview footer UX: add clear instructions for what to do if the plan is wrong (resend text / /cancel)
+1. Editing an already-committed workout's steps in the Конструктор tab (currently v1-scoped to building new workouts only — see 2026-07-06 session log for why this was deferred).
+2. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
+3. See `TODO.md` for the full backlog.
 
 **Working style preferences:**
 - Communicate in Russian, code/commits in English

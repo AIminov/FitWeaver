@@ -116,6 +116,11 @@ class App(tk.Tk):
         self.api_url        = tk.StringVar(value="http://127.0.0.1:8008")
         self.api_token       = tk.StringVar(value="")
 
+        # UI mode ("simple" hides advanced/technical controls; "expert" shows
+        # everything) -- machine-wide preference, same tier as llm_conn_mode.
+        self.ui_mode = tk.StringVar(value="simple")   # "simple" | "expert"
+        self._llm_conn_expanded = False  # simple mode: connection details collapsed by default
+
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
         self._store = None  # PlanStore | None — internal staging layer, YAML stays canonical
@@ -172,6 +177,9 @@ class App(tk.Tk):
             self.api_url.set(data["api_url"])
         if data.get("api_token"):
             self.api_token.set(data["api_token"])
+        if data.get("ui_mode") in ("simple", "expert"):
+            self.ui_mode.set(data["ui_mode"])
+        self._on_ui_mode_change()
 
         if data.get("yaml_path"):
             self.yaml_path.set(data["yaml_path"])
@@ -341,6 +349,7 @@ class App(tk.Tk):
             # Plaintext, same as bot_config.yaml/api_config.yaml -- acceptable
             # for a single-user local desktop app, not a new risk class.
             "api_token":         self.api_token.get(),
+            "ui_mode":           self.ui_mode.get(),
         }
         SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                                 encoding="utf-8")
@@ -440,6 +449,11 @@ class App(tk.Tk):
         def hline():
             ttk.Separator(p).pack(fill="x", pady=6)
 
+        ttk.Checkbutton(p, text="Экспертный режим", variable=self.ui_mode,
+                        onvalue="expert", offvalue="simple",
+                        command=self._on_ui_mode_change).pack(anchor="w", pady=(0, 6))
+        hline()
+
         section("GARMIN CONNECT")
         ttk.Label(p, text="Email (профиль):", style="Muted.TLabel").pack(anchor="w")
         self._profile_combo = ttk.Combobox(p, textvariable=self.email_var)
@@ -468,13 +482,18 @@ class App(tk.Tk):
         ttk.Button(p, text="✕  Удалить из Garmin", style="Danger.TButton",
                    command=self._cmd_delete).pack(fill="x", pady=2)
 
-        hline(); section("ПРОДВИНУТЫЕ")
-        ttk.Button(p, text="✓  Валидировать YAML",   command=self._cmd_validate_yaml).pack(fill="x", pady=2)
-        ttk.Button(p, text="✓  Валидировать FIT",    command=self._cmd_validate_fit).pack(fill="x", pady=2)
-        ttk.Button(p, text="🔍  Диагностика",         command=self._cmd_doctor).pack(fill="x", pady=2)
-        ttk.Button(p, text="📦  Архивировать",        command=self._cmd_archive).pack(fill="x", pady=2)
-        ttk.Button(p, text="📋  Список архивов",      command=self._cmd_list_archives).pack(fill="x", pady=2)
-        ttk.Button(p, text="🔄  Восстановить архив",  command=self._cmd_restore).pack(fill="x", pady=2)
+        self._advanced_hline = ttk.Separator(p)
+        self._advanced_hline.pack(fill="x", pady=6)
+        self._advanced_actions_frame = ttk.Frame(p)
+        self._advanced_actions_frame.pack(fill="x")
+        section_adv = self._advanced_actions_frame
+        ttk.Label(section_adv, text="ПРОДВИНУТЫЕ", style="Section.TLabel").pack(anchor="w", pady=(4, 3))
+        ttk.Button(section_adv, text="✓  Валидировать YAML",   command=self._cmd_validate_yaml).pack(fill="x", pady=2)
+        ttk.Button(section_adv, text="✓  Валидировать FIT",    command=self._cmd_validate_fit).pack(fill="x", pady=2)
+        ttk.Button(section_adv, text="🔍  Диагностика",         command=self._cmd_doctor).pack(fill="x", pady=2)
+        ttk.Button(section_adv, text="📦  Архивировать",        command=self._cmd_archive).pack(fill="x", pady=2)
+        ttk.Button(section_adv, text="📋  Список архивов",      command=self._cmd_list_archives).pack(fill="x", pady=2)
+        ttk.Button(section_adv, text="🔄  Восстановить архив",  command=self._cmd_restore).pack(fill="x", pady=2)
 
         # Bind mousewheel on all child widgets so scrolling works anywhere in sidebar
         def _sb_scroll_wheel(e):
@@ -649,16 +668,20 @@ class App(tk.Tk):
         ttk.Entry(self._conn_api, textvariable=self.api_token, width=22, show="*").pack(
             side="left", padx=(4, 10))
 
-        self._on_llm_mode_change()  # pack whichever connection sub-frame is active
-
-        # ── Shared "check connection" row (packed after, so it sits below
-        #    whichever connection bar _on_llm_mode_change just packed) ───────
-        check_row = ttk.Frame(parent)
-        check_row.pack(fill="x", pady=(0, 8))
-        self._conn_check_btn = ttk.Button(check_row, text="Проверить связь", command=self._llm_check)
+        # ── Shared "check connection" row (created before _on_llm_mode_change
+        #    so conn frames can always be re-inserted right before it via
+        #    before=self._llm_check_row, regardless of pack_forget/pack order) ──
+        self._llm_check_row = ttk.Frame(parent)
+        self._llm_check_row.pack(fill="x", pady=(0, 8))
+        self._conn_check_btn = ttk.Button(self._llm_check_row, text="Проверить связь", command=self._llm_check)
         self._conn_check_btn.pack(side="left", padx=4)
-        self._llm_status = tk.Label(check_row, text="●", bg=BG, fg=MUTED, font=("Segoe UI", 14))
+        self._llm_status = tk.Label(self._llm_check_row, text="●", bg=BG, fg=MUTED, font=("Segoe UI", 14))
         self._llm_status.pack(side="left", padx=4)
+        self._llm_conn_toggle_btn = ttk.Button(self._llm_check_row, text="Настроить подключение",
+                                               command=self._toggle_llm_conn_expanded)
+        self._llm_conn_toggle_btn.pack(side="left", padx=4)
+
+        self._on_llm_mode_change()  # pack whichever connection sub-frame is active
 
         ttk.Separator(parent).pack(fill="x", pady=(0, 8))
 
@@ -722,12 +745,46 @@ class App(tk.Tk):
     def _on_llm_mode_change(self):
         self._conn_own.pack_forget()
         self._conn_api.pack_forget()
-        if self.llm_conn_mode.get() == "api":
-            self._conn_api.pack(fill="x", pady=(0, 4))
-        else:
-            self._conn_own.pack(fill="x", pady=(0, 4))
+        show_conn = self.ui_mode.get() == "expert" or self._llm_conn_expanded
+        if show_conn:
+            target = self._conn_api if self.llm_conn_mode.get() == "api" else self._conn_own
+            target.pack(fill="x", pady=(0, 4), before=self._llm_check_row)
+        if hasattr(self, "_llm_conn_toggle_btn"):
+            self._llm_conn_toggle_btn.config(
+                text="Скрыть настройки подключения" if show_conn else "Настроить подключение")
         if hasattr(self, "_llm_status"):
             self._llm_status.config(text="●", fg=MUTED)
+
+    def _toggle_llm_conn_expanded(self):
+        self._llm_conn_expanded = not self._llm_conn_expanded
+        self._on_llm_mode_change()
+
+    def _on_ui_mode_change(self):
+        simple = self.ui_mode.get() == "simple"
+
+        if hasattr(self, "_advanced_actions_frame"):
+            if simple:
+                self._advanced_actions_frame.pack_forget()
+                self._advanced_hline.pack_forget()
+            else:
+                self._advanced_hline.pack(fill="x", pady=6)
+                self._advanced_actions_frame.pack(fill="x")
+
+        if simple:
+            self._llm_conn_expanded = False
+        if hasattr(self, "_conn_own"):
+            self._on_llm_mode_change()
+        if hasattr(self, "_llm_conn_toggle_btn"):
+            if simple:
+                self._llm_conn_toggle_btn.pack(side="left", padx=4)
+            else:
+                self._llm_conn_toggle_btn.pack_forget()
+
+        if hasattr(self, "_gc_limit_frame"):
+            if simple:
+                self._gc_limit_frame.pack_forget()
+            else:
+                self._gc_limit_frame.pack(side="left", before=self._gc_del_btn)
 
     # ── Calendar drawing ──────────────────────────────────────────────────────
     def _draw_calendar(self):
@@ -1771,9 +1828,12 @@ class App(tk.Tk):
         ttk.Button(bar, text="🔄  Загрузить из Garmin",
                    style="Primary.TButton",
                    command=self._gc_load).pack(side="left", padx=(0, 8))
-        ttk.Label(bar, text="Лимит:", style="Muted.TLabel").pack(side="left")
+        self._gc_limit_frame = ttk.Frame(bar)
+        self._gc_limit_frame.pack(side="left")
+        ttk.Label(self._gc_limit_frame, text="Лимит:", style="Muted.TLabel").pack(side="left")
         self._gc_limit = tk.StringVar(value="200")
-        ttk.Entry(bar, textvariable=self._gc_limit, width=6).pack(side="left", padx=(4, 16))
+        ttk.Entry(self._gc_limit_frame, textvariable=self._gc_limit, width=6).pack(
+            side="left", padx=(4, 16))
         self._gc_del_btn = ttk.Button(bar, text="🗑  Удалить выбранные (0)",
                                       style="Danger.TButton",
                                       state="disabled",
