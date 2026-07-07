@@ -43,11 +43,18 @@ try {
         # Two separate spec files (not two Analysis blocks in one spec) so
         # each gets its own PyInstaller work directory -- see
         # fitweaver_gui.spec's docstring for why sharing one causes
-        # silently-corrupted onefile exes.
-        python -m PyInstaller packaging/fitweaver_gui.spec --distpath "$RepoRoot\dist" --workpath build --noconfirm
+        # silently-corrupted onefile exes. Each also gets its OWN --workpath
+        # root (build\gui, build\cli), not a shared "build" parent: running
+        # two PyInstaller invocations back-to-back against subdirectories of
+        # the same parent directory has been observed to hit a Windows
+        # file-locking race (FileNotFoundError creating base_library.zip in
+        # the second build's subdirectory, likely AV/OneDrive scanning the
+        # first build's freshly-written files) -- fully separate roots
+        # avoid any contention between the two.
+        python -m PyInstaller packaging/fitweaver_gui.spec --distpath "$RepoRoot\dist" --workpath build\gui --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "pyinstaller build failed (gui)" }
 
-        python -m PyInstaller packaging/fitweaver_cli.spec --distpath "$RepoRoot\dist" --workpath build --noconfirm
+        python -m PyInstaller packaging/fitweaver_cli.spec --distpath "$RepoRoot\dist" --workpath build\cli --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "pyinstaller build failed (cli)" }
     }
     finally {
