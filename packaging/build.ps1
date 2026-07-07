@@ -34,14 +34,20 @@ try {
 
     Push-Location $Stage
     try {
+        # Invoked as `python -m PyInstaller` rather than the bare
+        # `pyinstaller` command: pip installs the console-script wrapper
+        # into a Scripts/ directory that isn't always on PATH (seen in
+        # practice as "pyinstaller: command not found" even right after a
+        # successful `pip install`), while `python` itself reliably is.
+        #
         # Two separate spec files (not two Analysis blocks in one spec) so
         # each gets its own PyInstaller work directory -- see
         # fitweaver_gui.spec's docstring for why sharing one causes
         # silently-corrupted onefile exes.
-        pyinstaller packaging/fitweaver_gui.spec --distpath "$RepoRoot\dist" --workpath build --noconfirm
+        python -m PyInstaller packaging/fitweaver_gui.spec --distpath "$RepoRoot\dist" --workpath build --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "pyinstaller build failed (gui)" }
 
-        pyinstaller packaging/fitweaver_cli.spec --distpath "$RepoRoot\dist" --workpath build --noconfirm
+        python -m PyInstaller packaging/fitweaver_cli.spec --distpath "$RepoRoot\dist" --workpath build --noconfirm
         if ($LASTEXITCODE -ne 0) { throw "pyinstaller build failed (cli)" }
     }
     finally {
