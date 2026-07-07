@@ -64,6 +64,31 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 307 тестов (backend не тронут) по-прежнему проходят.
 
+**Продолжение той же сессии — реальный пользовательский прогон exe вскрыл 3 проблемы:**
+- `pyinstaller` не был на PATH → `build.ps1` падал на CLI-шаге молча оставляя старый .exe;
+  фикс — вызывать через `python -m PyInstaller`.
+- Два PyInstaller-вызова подряд в общий родительский `build\` ловили гонку блокировки файлов
+  Windows (`FileNotFoundError` при создании `base_library.zip` второй сборки) — фикс:
+  раздельные `--workpath` (`build\gui`, `build\cli`).
+- **Два реальных краш-бага в CLI**, не связанных с упаковкой (воспроизводятся и в
+  `python -m garmin_fit.cli` из исходников, просто раньше никто не передавал `--plan` с путём
+  вне `ROOT`/`PLAN_DIR`): `workflow_validate_yaml()` падал с `ValueError` на
+  `yaml_file.relative_to(ROOT)`, если план лежит вне корня — чисто косметическая строка лога
+  роняла всю команду. `check_prerequisites()` игнорировал переданный `--plan` и всегда требовал
+  хотя бы один YAML именно в `PLAN_DIR`, из-за чего `run --plan <путь>` фейлился на пустой
+  `Plan/` рядом с exe, даже если план лежит в другом месте. Оба чинятся: новый
+  `_shared_cli.display_path(path, root)` (relative-or-absolute-fallback, вместо голого
+  `relative_to`) и `check_prerequisites(plan_path=None)` теперь проверяет конкретный файл,
+  если он передан, вместо сканирования `PLAN_DIR`. 2 новых теста (`test_shared_cli.py`),
+  309 итого.
+- `doctor`'s `[FAIL] vendored sdk/py package not found` — НЕ баг, опциональная доп.проверка
+  (`--no-sdk-python-check` уже существует), не блокирует сборку/валидацию/upload — те уже
+  используют pip-пакет `garmin_fit_sdk`. Просто ожидаемое поведение в упакованном exe (папка
+  `sdk/py` не бандлится и не должна).
+- Найден (не исправлен, вне скоупа сессии) отдельный баг: `llm/benchmark.py` ссылается на
+  необъявленное имя `ROOT` вместо импортированного `PROJECT_ROOT` — вызовет `NameError` при
+  первом реальном запуске бенчмарка. Вынесен в отдельную задачу через spawn_task.
+
 ---
 
 ### 2026-07-07 — Фаза D: простой/экспертный режим интерфейса

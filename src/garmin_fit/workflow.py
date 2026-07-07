@@ -14,6 +14,7 @@ from pathlib import Path
 from time import perf_counter
 
 from .compare_build_modes import compare_build_modes
+from ._shared_cli import display_path
 from .config import OUTPUT_DIR, PLAN_DIR, ROOT, TEMPLATES_DIR
 from .logging_utils import setup_file_logging as _setup_file_logging
 from .orchestrator import run_generation_pipeline, select_active_yaml
@@ -169,17 +170,30 @@ def run_step(step_name, script_path=None, args=None, module_name=None, run_id=No
     return result.returncode
 
 
-def check_prerequisites():
-    """Check that required directories, modules and dependencies exist."""
+def check_prerequisites(plan_path=None):
+    """Check that required directories, modules and dependencies exist.
+
+    plan_path: when given, checks that specific file instead of requiring
+    at least one YAML in PLAN_DIR -- a caller-supplied plan (e.g. from the
+    GUI's file browser, or a packaged exe's --plan flag) can live anywhere
+    on disk, not just in this machine's PLAN_DIR.
+    """
     print_header("CHECKING PREREQUISITES")
     issues = []
 
-    yaml_plan_files = sorted(PLAN_DIR.glob("*.yaml")) + sorted(PLAN_DIR.glob("*.yml"))
-    if yaml_plan_files:
-        for plan_file in yaml_plan_files:
-            logger.info(f"[OK] YAML training plan found: {plan_file.name}")
+    if plan_path:
+        candidate = Path(plan_path)
+        if candidate.exists():
+            logger.info(f"[OK] YAML training plan found: {display_path(candidate, ROOT)}")
+        else:
+            issues.append(f"YAML plan not found: {candidate}")
     else:
-        issues.append(f"No YAML training plan found in {PLAN_DIR} (expected .yaml/.yml)")
+        yaml_plan_files = sorted(PLAN_DIR.glob("*.yaml")) + sorted(PLAN_DIR.glob("*.yml"))
+        if yaml_plan_files:
+            for plan_file in yaml_plan_files:
+                logger.info(f"[OK] YAML training plan found: {plan_file.name}")
+        else:
+            issues.append(f"No YAML training plan found in {PLAN_DIR} (expected .yaml/.yml)")
 
     required_modules = [
         "garmin_fit.workout_utils",
@@ -319,7 +333,7 @@ def workflow_full(validate_strict=False, run_id=None, plan_path=None):
     print("Complete workflow: YAML -> direct FIT build -> validation")
     print("")
 
-    if not check_prerequisites():
+    if not check_prerequisites(plan_path):
         return 1
 
     try:
@@ -398,7 +412,7 @@ def workflow_compare_build_modes(validate_strict=False, run_id=None, plan_path=N
     print("Diagnostic workflow: YAML -> direct FIT vs templates FIT")
     print("")
 
-    if not check_prerequisites():
+    if not check_prerequisites(plan_path):
         return 1
 
     try:
@@ -831,7 +845,7 @@ def workflow_validate_yaml(plan_path=None):
         logger.error(f"YAML file not found: {yaml_file}")
         return 1
 
-    logger.info(f"Validating: {yaml_file.relative_to(ROOT)}")
+    logger.info(f"Validating: {display_path(yaml_file, ROOT)}")
 
     # Read YAML
     try:
