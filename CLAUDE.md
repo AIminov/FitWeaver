@@ -18,6 +18,54 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-07-07 (продолжение) — Фаза E: упаковка GUI в standalone .exe
+**Сделано:**
+- Два фризед-безопасных фикса пути (предпосылка для exe): `config.py`'s `PROJECT_ROOT` и
+  `fitweaver_gui.py`'s собственный `PROJECT_ROOT` теперь ветвятся на `getattr(sys, "frozen",
+  False)` — в exe используют `Path(sys.executable).resolve().parent` (папку рядом с exe,
+  стабильную между запусками), иначе прежнее поведение из исходников не тронуто.
+- `_run()`/`_cli_command()`: сайдбар-кнопки ("Собрать FIT-файлы", "Загрузить/Удалить из
+  Garmin", вся секция "ПРОДВИНУТЫЕ") звали `[sys.executable, "-m", "garmin_fit.cli", ...]` —
+  во фризед exe `sys.executable` это сам GUI-exe, не интерпретатор, поэтому это не сработало
+  бы. Теперь в frozen-режиме зовут exe-соседа `garmin-fit-cli.exe`. Плюс `CREATE_NO_WINDOW`,
+  чтобы не мигало консольным окном при каждом клике.
+- `packaging/` (новое): `cli_entry.py` (обёртка над `garmin_fit.cli:main` для второго exe),
+  `fitweaver_gui.spec`/`fitweaver_cli.spec` (два отдельных spec-файла — важно, не два
+  `Analysis`/`PYZ`-блока в одном: PyInstaller именует промежуточный `PYZ-01.pyz` одинаково
+  внутри общей рабочей директории, и второй билд молча затирает архив первого на диске без
+  ошибки сборки), `build.ps1`.
+- **Ключевой найденный баг (не вручную, а через полноценный smoke-тест реального .exe):**
+  собранный `FitWeaver.exe` падал с `ModuleNotFoundError: No module named
+  'garmin_fit.workout_builder'` при открытии вкладки Конструктор. Причина: в корне репо
+  лежит `garmin_fit/` — легаси compatibility-bridge пакет (см. архитектуру: "alias bridge
+  layer, DO NOT edit directly"), который содержит только `__init__.py` + пустую `llm/`
+  и добавляет `src/garmin_fit` в свой `__path__` ТОЛЬКО во время реального выполнения
+  (`__path__.append(...)`). PyInstaller автоматически добавляет папку главного скрипта
+  (`fitweaver_gui.py` лежит в корне репо) в свой путь поиска, и при разрешении *лениво*
+  импортируемых модулей (а `fitweaver_gui.py` почти всё импортирует внутри методов, не на
+  уровне модуля) статический анализ не выполняет `__init__.py` и видит только реальные файлы
+  моста — которых там почти нет. Отсюда модули без одноимённого файла в мосте (`plan_store`,
+  `workout_builder`, и по факту почти всё остальное, что не проверялось вручную) тихо
+  выпадали из сборки без единой ошибки сборки. **Фикс:** `build.ps1` теперь собирает не из
+  живого дерева исходников, а из изолированной копии-стейджинга (`build/stage/`: только
+  `src/`, `fitweaver_gui.py`, `packaging/`) — без корневого `garmin_fit/`, однозначность
+  разрешения пакета гарантирована. Проверено через `PyZ`-TOC (61 подмодуль вместо 2) и
+  реальный запуск exe (Конструктор открывается, крэша нет).
+- Ручной smoke-тест: собранный `garmin-fit-cli.exe` реально выполнил `validate-yaml` на
+  тестовом YAML в чистой временной папке (без Python) — подтверждает, что весь путь
+  GUI→CLI-subprocess рабочий, а не только "модуль присутствует в архиве".
+
+**Решения/отказы:**
+- Только GUI (не бот, не Plan API) — подтверждено вопросом пользователю.
+- `onefile`, не `onedir` — безопасно, т.к. состояние резолвится через `sys.executable`,
+  стабильный между запусками даже при переизвлечении onefile во временную папку.
+- Установщик (Inno Setup/NSIS), подпись кода, авто-обновление — осознанно не делали, вне
+  рамок задачи.
+
+307 тестов (backend не тронут) по-прежнему проходят.
+
+---
+
 ### 2026-07-07 — Фаза D: простой/экспертный режим интерфейса
 **Сделано:**
 - Новый `self.ui_mode` (`"simple"`/`"expert"`, по умолчанию `"simple"`) в `fitweaver_gui.py` —
@@ -177,6 +225,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 pip install -e ".[dev]"          # editable install with test/lint deps
 pip install -e ".[garmin-calendar]"  # add Garmin Connect upload support
 pip install -e ".[api]"          # add the Plan API (FastAPI+uvicorn) -- needed to run garmin-fit-api
+pip install -e ".[build]"        # add PyInstaller -- needed to package the desktop GUI as .exe
 ```
 
 ## Common Commands
@@ -320,6 +369,48 @@ mandatory, not optional, if the API's port is ever reachable from outside localh
 
 ---
 
+## Desktop packaging (.exe)
+
+GUI-only (not the bot or Plan API — those stay Python-run services). `packaging/` has:
+`cli_entry.py` (wraps `garmin_fit.cli:main` for a second exe), `fitweaver_gui.spec` /
+`fitweaver_cli.spec` (two separate PyInstaller spec files — deliberately not two
+`Analysis`/`PYZ` blocks in one spec, see the docstring in `fitweaver_gui.spec` for why that
+silently corrupts one of the two onefile exes), and `build.ps1`.
+
+**Build:** `powershell packaging/build.ps1` (or manually: `pip install -e
+".[garmin-calendar,build]"`, then build from an isolated staging copy — see below — with
+`pyinstaller packaging/fitweaver_gui.spec` and `pyinstaller packaging/fitweaver_cli.spec`).
+Produces `dist/FitWeaver.exe` + `dist/garmin-fit-cli.exe`, which **must ship together in the
+same folder** — the GUI shells out to the CLI exe as a sibling process for every sidebar
+action ("Собрать FIT-файлы", Garmin upload/delete, the whole "ПРОДВИНУТЫЕ" section), since a
+frozen exe can't be re-run with `-m` like a real Python interpreter (`_cli_command()` in
+`fitweaver_gui.py` branches on `getattr(sys, "frozen", False)`).
+
+**Portable folder, not `%APPDATA%`:** writable state (`Plan/`, `profiles/`,
+`.gui_session.json`, `Output_fit/`, `Archive/`) resolves from `sys.executable`'s parent
+directory when frozen (`config.py`'s `PROJECT_ROOT`, `fitweaver_gui.py`'s own `PROJECT_ROOT`)
+— stable across onefile's per-launch temp extraction, and matches the existing
+"run-from-a-git-checkout" mental model users already have.
+
+**Why the build must happen from an isolated staging copy, not the live source tree:** the
+repo root also has a `garmin_fit/` compatibility bridge package (see Architecture below) that
+contains only `__init__.py` + an empty `llm/` dir and extends its `__path__` to
+`src/garmin_fit` via `__path__.append(...)` — but only at real runtime. PyInstaller
+auto-adds the main script's own directory (the repo root, since `fitweaver_gui.py` lives
+there) to its search path, and when resolving the *lazily* imported `garmin_fit` submodules
+that make up almost all of `fitweaver_gui.py`'s own imports (inside method bodies, not at
+module level), its static analysis doesn't execute `__init__.py` and so never sees the
+appended path — it silently resolves against the near-empty bridge directory instead,
+dropping modules like `plan_store`/`workout_builder` from the frozen build with **no
+build-time error or warning**. `build.ps1` copies `src/`, `fitweaver_gui.py`, and
+`packaging/` into `build/stage/` (no root-level `garmin_fit/` present there at all) and
+builds from there instead, removing the ambiguity entirely.
+
+Out of scope for now: packaging the bot/API as exes, a real installer (Inno
+Setup/NSIS)/code signing, auto-update.
+
+---
+
 ## Garmin Calendar localization
 
 `GarminCalendarExporter(client, language="ru")` — language flows to `map_workout()` → `map_steps()` → `_map_sbu_block()`. Recovery step label and unnamed drill fallback are localized. Bot passes user language automatically.
@@ -369,6 +460,10 @@ Key modules:
 - `workout_builder.py` — pure-Python support for the GUI's visual workout builder (no Tkinter/SQLite): `BLOCK_DEFS`, `TEMPLATES`, `compute_repeat_step()`, `validate_draft()`
 - `api/` — FastAPI facade over `plan_service.py` (`app.py`/`auth.py`/`rate_limit.py`/`schemas.py`/`config.py`); `api_cli.py` is the `garmin-fit-api` entry point
 - `api_client.py` — `PlanApiClient`/`PlanApiError`, the shared HTTP client the bot and the GUI's "LLM автора" mode both use to reach `api/`
+
+`packaging/` (repo root, not under `src/garmin_fit/`) — PyInstaller packaging for the desktop
+GUI: `cli_entry.py`, `fitweaver_gui.spec`/`fitweaver_cli.spec`, `build.ps1`. See "Desktop
+packaging (.exe)" above.
 
 ---
 

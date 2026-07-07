@@ -3,6 +3,7 @@
 
 import calendar
 import datetime
+import os
 import re
 import subprocess
 import sys
@@ -16,7 +17,13 @@ import json
 
 import yaml
 
-PROJECT_ROOT = Path(__file__).parent
+if getattr(sys, "frozen", False):
+    # PyInstaller-frozen exe: treat the exe's own folder as a portable app
+    # directory, so Plan/profiles/.gui_session.json persist next to it
+    # across launches instead of vanishing with the temp extraction folder.
+    PROJECT_ROOT = Path(sys.executable).resolve().parent
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent
 PYTHON = sys.executable
 SESSION_FILE = PROJECT_ROOT / ".gui_session.json"
 
@@ -1123,8 +1130,15 @@ class App(tk.Tk):
         self._log_w.config(state="disabled")
 
     # ── CLI runner ────────────────────────────────────────────────────────────
+    def _cli_command(self, args):
+        if getattr(sys, "frozen", False):
+            # Packaged exe: sys.executable is FitWeaver.exe itself, not a
+            # Python interpreter -- shell out to the sibling CLI exe instead.
+            return [str(PROJECT_ROOT / "garmin-fit-cli.exe")] + args
+        return [PYTHON, "-m", "garmin_fit.cli"] + args
+
     def _run(self, args):
-        cmd = [PYTHON, "-m", "garmin_fit.cli"] + args
+        cmd = self._cli_command(args)
         self._log(f"\n$ garmin_fit.cli {' '.join(args)}")
 
         def worker():
@@ -1133,6 +1147,7 @@ class App(tk.Tk):
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace",
                     cwd=PROJECT_ROOT,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
                 for line in proc.stdout:
                     self.after(0, self._log, line.rstrip())

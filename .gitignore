@@ -42,6 +42,10 @@ Plan/*
 # Garmin SDK — Java JARs not needed for Python users
 sdk/java/
 
+# PyInstaller build output (packaging/fitweaver.spec is checked in, this isn't)
+/dist/
+/build/
+
 # IDE / tool local settings
 .claude/
 .idea/

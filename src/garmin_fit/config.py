@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if getattr(sys, "frozen", False):
+    # PyInstaller-frozen exe: __file__ resolves inside the temp/onedir
+    # extraction folder, which isn't a stable location for writable state.
+    # sys.executable is the actual exe path and stays stable across launches.
+    PROJECT_ROOT = Path(sys.executable).resolve().parent
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def resolve_runtime_root() -> Path:

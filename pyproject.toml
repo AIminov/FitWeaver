@@ -32,6 +32,9 @@ api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+build = [
+    "pyinstaller>=6.0",
+]
 
 [project.scripts]
 garmin-fit = "garmin_fit.cli:main"
