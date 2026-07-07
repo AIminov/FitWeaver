@@ -92,6 +92,34 @@ MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май",
               "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 DAYS_RU   = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
 
+# Friendly-language hints shown under recognized CLI/subprocess error lines in
+# the log panel -- purely a GUI-side presentation layer, doesn't touch the
+# underlying CLI error text (power users running `python -m garmin_fit.cli`
+# directly still see the raw messages). Checked in order; first match wins.
+_ERROR_HINTS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"YAML (plan|file) not found", re.I),
+     "Проверьте путь к файлу — убедитесь, что он указан верно и файл существует."),
+    (re.compile(r"No YAML training plan found in"),
+     "В папке Plan рядом с программой нет ни одного .yaml-файла. "
+     "Выберите план через «Обзор…» или сначала сохраните его."),
+    (re.compile(r"Connection check failed|Cannot connect to (Ollama|OpenAI-compatible|API at)", re.I),
+     "Не удаётся подключиться к LLM. Проверьте, что сервер запущен, "
+     "и что адрес/порт в настройках подключения указаны верно."),
+    (re.compile(r"Timeout waiting for.*response", re.I),
+     "LLM слишком долго не отвечает. Попробуйте план покороче или проверьте, что модель загружена."),
+    (re.compile(r"Authentication failed", re.I),
+     "Не удалось войти в Garmin Connect — проверьте логин и пароль."),
+    (re.compile(r"(garmin-auth|garminconnect) not installed", re.I),
+     "Не хватает модуля для работы с Garmin Connect. Переустановите приложение "
+     "или сообщите разработчику."),
+    (re.compile(r"YAML validation errors found|VALIDATION ERRORS"),
+     "В плане есть ошибки — прокрутите лог немного выше, там подробности по каждой."),
+    (re.compile(r"No FIT files (found|generated)"),
+     "FIT-файлы не были созданы. Проверьте, что план прошёл валидацию без ошибок."),
+    (re.compile(r"temp directory is not writable"),
+     "Нет прав на запись во временную папку Windows — проверьте права доступа."),
+]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 class App(tk.Tk):
@@ -414,12 +442,14 @@ class App(tk.Tk):
         ttk.Button(top, text="↺",       command=self._reload_yaml, width=3).pack(side="left", padx=2)
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
-        body = ttk.Frame(self)
+        # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
+        # (not plain pack(side="left")) so the log panel is drag-resizable --
+        # long command output needs more room than a fixed-width column gives.
+        body = ttk.PanedWindow(self, orient="horizontal")
         body.pack(fill="both", expand=True)
 
         # Sidebar — scrollable
         sidebar_outer = ttk.Frame(body, width=240)
-        sidebar_outer.pack(side="left", fill="y")
         sidebar_outer.pack_propagate(False)
 
         self._sb_canvas = tk.Canvas(sidebar_outer, bg=BG, highlightthickness=0)
@@ -442,12 +472,19 @@ class App(tk.Tk):
 
         self._build_sidebar(sidebar)
 
-        ttk.Separator(body, orient="vertical").pack(side="left", fill="y")
-
         # Right: notebook (calendar + LLM)
         right = ttk.Frame(body, padding=(10, 8))
-        right.pack(side="left", fill="both", expand=True)
         self._build_right(right)
+
+        # Log panel: always visible regardless of active tab, unlike the old
+        # Calendar-tab-only version -- long command output needs its own room.
+        log_panel = ttk.Frame(body, width=380, padding=(10, 8))
+        log_panel.pack_propagate(False)
+        self._build_log_panel(log_panel)
+
+        body.add(sidebar_outer, weight=0)
+        body.add(right, weight=3)
+        body.add(log_panel, weight=1)
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     def _build_sidebar(self, p):
@@ -629,18 +666,20 @@ class App(tk.Tk):
                  bg=BG3, fg=FG, font=("Segoe UI", 9),
                  anchor="w", padx=8, pady=4).pack(fill="x", pady=(4, 0))
 
-        ttk.Separator(parent).pack(fill="x", pady=6)
+        self._draw_calendar()
+
+    # ── Log panel (side pane, visible regardless of active tab) ────────────────
+    def _build_log_panel(self, parent):
         log_hdr = ttk.Frame(parent)
         log_hdr.pack(fill="x")
         ttk.Label(log_hdr, text="ВЫВОД КОМАНДЫ", style="Section.TLabel").pack(side="left")
         ttk.Button(log_hdr, text="Очистить", command=self._clear_log, width=8).pack(side="right")
         self._log_w = scrolledtext.ScrolledText(
-            parent, height=8, bg=BG2, fg=GREEN,
+            parent, height=10, bg=BG2, fg=GREEN,
             font=("Consolas", 9), state="disabled",
             insertbackground=FG, relief="flat")
-        self._log_w.pack(fill="x", pady=(4, 0))
-
-        self._draw_calendar()
+        self._log_w.pack(fill="both", expand=True, pady=(4, 0))
+        self._log_w.tag_config("hint", foreground=YELLOW)
 
     # ── LLM tab ───────────────────────────────────────────────────────────────
     def _build_llm_tab(self, parent):
@@ -1078,6 +1117,7 @@ class App(tk.Tk):
         self._log_w.see("end")
         self._log_w.config(state="disabled")
         self._maybe_toast(text)
+        self._maybe_hint(text)
 
     # ── Toast notifications ────────────────────────────────────────────────
     # Piggybacks on the existing "[OK]"/"[ERR]"/"[WARN]"/"[FAIL]" prefix
@@ -1092,6 +1132,22 @@ class App(tk.Tk):
                 message = stripped[len(prefix):].strip()
                 if message:
                     self._show_toast(message, color)
+                return
+
+    # ── Friendly error hints ──────────────────────────────────────────────
+    # A second, independent pass over the same streamed lines as _maybe_toast
+    # -- doesn't replace the [OK]/[ERR]/[FAIL]/[WARN] toasts, just adds a
+    # plain-language explanation + suggested next step for recognized
+    # failures, for users who don't want to parse raw CLI/Python output.
+    def _maybe_hint(self, text: str) -> None:
+        stripped = text.strip()
+        for pattern, hint in _ERROR_HINTS:
+            if pattern.search(stripped):
+                self._log_w.config(state="normal")
+                self._log_w.insert("end", f"   💡 {hint}\n", ("hint",))
+                self._log_w.see("end")
+                self._log_w.config(state="disabled")
+                self._show_toast(hint, YELLOW, duration_ms=6000)
                 return
 
     def _show_toast(self, message: str, color: str = GREEN, duration_ms: int = 3000) -> None:
