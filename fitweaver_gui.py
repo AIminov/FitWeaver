@@ -2182,6 +2182,9 @@ class App(_AppBase):
         # Top bar
         bar = ttk.Frame(parent)
         bar.pack(fill="x", pady=(0, 6))
+        self._gc_check_btn = ttk.Button(
+            bar, text="✓  Проверить подключение", command=self._gc_check_connection)
+        self._gc_check_btn.pack(side="left", padx=(0, 8))
         ttk.Button(bar, text="🔄  Загрузить из Garmin",
                    style="Primary.TButton",
                    command=self._gc_load).pack(side="left", padx=(0, 8))
@@ -2196,7 +2199,7 @@ class App(_AppBase):
                                       state="disabled",
                                       command=self._gc_delete_selected)
         self._gc_del_btn.pack(side="left", padx=(0, 8))
-        self._gc_status = tk.Label(bar, text="Нажмите «Загрузить» для получения данных",
+        self._gc_status = tk.Label(bar, text="Подключение ещё не проверено",
                                    bg=BG, fg=MUTED, font=("Segoe UI", 9))
         self._gc_status.pack(side="left")
 
@@ -2242,6 +2245,33 @@ class App(_AppBase):
 
     def _gc_on_canvas_resize(self, e):
         self._gc_canvas.itemconfig(self._gc_list_win, width=e.width)
+
+    def _gc_check_connection(self):
+        if not self.email_var.get():
+            messagebox.showwarning("Нет email", "Сначала выберите профиль Garmin слева.")
+            return
+        if not self._begin_operation("Проверка подключения к Garmin"):
+            return
+        self._gc_status.config(text="⏳ Проверяю авторизацию Garmin Connect…", fg=YELLOW)
+
+        def worker():
+            try:
+                from garmin_fit.workflow import _connect_garmin_cli_client
+                client = _connect_garmin_cli_client(
+                    email=self.email_var.get() or None,
+                    password=self.pass_var.get() or None,
+                )
+                # A small read request verifies both authentication and API access.
+                client.get_workouts(0, 1)
+                self.after(0, self._gc_status.config,
+                           {"text": "✅ Garmin Connect подключён", "fg": GREEN})
+                self.after(0, self._end_operation, True)
+            except Exception as exc:
+                self.after(0, self._gc_status.config,
+                           {"text": f"❌ {self._gc_friendly_error(exc)}", "fg": RED})
+                self.after(0, self._end_operation, False)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _gc_load(self):
         if not self.email_var.get():
