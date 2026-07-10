@@ -266,6 +266,29 @@ class PlanStore:
         self._conn.commit()
         self._write_through()
 
+    def replace_workout_steps(self, workout_id: int, steps: list[WorkoutStep]) -> None:
+        """Replace a workout's complete step list and write it back to YAML.
+
+        The caller supplies an already validated draft. Rebuilding the step
+        rows in one transaction keeps repeat offsets exactly as represented in
+        that draft and avoids partial edits leaking into the canonical YAML.
+        """
+        exists = self._conn.execute(
+            "SELECT 1 FROM workouts WHERE id = ?", (workout_id,)
+        ).fetchone()
+        if exists is None:
+            raise ValueError(f"workout id {workout_id} not found")
+        try:
+            self._conn.execute("BEGIN")
+            self._conn.execute("DELETE FROM steps WHERE workout_id = ?", (workout_id,))
+            for position, step in enumerate(steps):
+                self._insert_step(workout_id, position, step)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        self._write_through()
+
     def find_workout_id_by_filename(self, filename: str) -> int | None:
         row = self._conn.execute(
             "SELECT id FROM workouts WHERE filename = ?", (filename,)

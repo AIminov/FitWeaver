@@ -209,6 +209,22 @@ class PlanStoreTests(unittest.TestCase):
         self.assertTrue(store_errors)  # sanity: the bad fixture actually triggers an error
 
     # ── step-level CRUD (visual workout builder) ────────────────────────────
+    def test_replace_workout_steps_preserves_repeat_draft_and_writes_yaml(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        steps = [deepcopy(step) for step in store.get_plan().workouts[0].steps]
+        steps[0].km = 2.5
+
+        store.replace_workout_steps(workout_id, steps)
+
+        saved = store.get_plan().workouts[0].steps
+        self.assertEqual(saved[0].km, 2.5)
+        self.assertEqual(saved[3].step_type, "repeat")
+        self.assertEqual(saved[3].back_to_offset, 1)
+        on_disk = yaml.safe_load(self.yaml_path.read_text(encoding="utf-8"))
+        self.assertEqual(on_disk["workouts"][0]["steps"][0]["km"], 2.5)
+
     def test_insert_step_before_repeat_offset_shifts_it_right(self):
         store = self._open_store()
         store.load_from_yaml(self.yaml_path)

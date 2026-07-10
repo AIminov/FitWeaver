@@ -188,6 +188,8 @@ class App(_AppBase):
         self._store = None  # PlanStore | None — internal staging layer, YAML stays canonical
         self._active_profile_email: str | None = None
         self._profile_status_var = tk.StringVar(value="Профиль не выбран")
+        self._selected_workout: dict | None = None
+        self._builder_edit_workout_id: int | None = None
 
         # Visual builder draft state (pre-commit, plain Python — no PlanStore
         # writes happen until "Добавить в план")
@@ -901,10 +903,16 @@ class App(_AppBase):
         self._chart_canvas.pack(fill="x")
         self._chart_canvas.bind("<Configure>", self._on_chart_canvas_resize)
 
+        detail_bar = ttk.Frame(parent)
+        detail_bar.pack(fill="x", pady=(4, 0))
         self._detail_var = tk.StringVar(value="Нажмите на тренировку для подробностей")
-        tk.Label(parent, textvariable=self._detail_var,
+        tk.Label(detail_bar, textvariable=self._detail_var,
                  bg=BG3, fg=FG, font=("Segoe UI", 9),
-                 anchor="w", padx=8, pady=4).pack(fill="x", pady=(4, 0))
+                 anchor="w", padx=8, pady=4).pack(side="left", fill="x", expand=True)
+        self._edit_selected_btn = ttk.Button(
+            detail_bar, text="Редактировать в конструкторе", state="disabled",
+            command=self._edit_selected_workout)
+        self._edit_selected_btn.pack(side="right")
 
         self._draw_calendar()
 
@@ -1297,6 +1305,8 @@ class App(_AppBase):
             candidate, workout_index=0, inferred_year=new_date.year)
 
     def _show_detail(self, wo):
+        self._selected_workout = wo
+        self._edit_selected_btn.config(state="normal")
         parts = [p for p in [
             wo.get("date"), wo.get("name"),
             f"[{wo['type_code']}]"     if wo.get("type_code")            else None,
@@ -1304,6 +1314,33 @@ class App(_AppBase):
             f"~{wo['estimated_duration_min']} мин" if wo.get("estimated_duration_min") else None,
         ] if p]
         self._detail_var.set("  " + "   ·   ".join(parts))
+
+    def _edit_selected_workout(self):
+        if not self._selected_workout or self._store is None:
+            return
+        filename = self._selected_workout.get("filename") or self._selected_workout.get("name")
+        workout_id = self._store.find_workout_id_by_filename(filename)
+        if workout_id is None:
+            self._log(f"[ERR] Не удалось найти тренировку «{filename}» в рабочем плане")
+            return
+        from garmin_fit.plan_domain import step_from_data, step_to_data
+
+        workout = next(
+            (item for item in self._store.get_plan().workouts if item.filename == filename),
+            None,
+        )
+        if workout is None:
+            return
+        self._builder_edit_workout_id = workout_id
+        self._builder_steps = [step_from_data(step_to_data(step)) for step in workout.steps]
+        self._builder_filename_var.set(workout.filename or "")
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_list()
+        self._builder_render_editor()
+        self._builder_add_btn.config(
+            text="Сохранить изменения", command=self._builder_save_edit
+        )
+        self._nb.select(2)
 
     def _prev_month(self):
         self.cal_month = (self.cal_month - datetime.timedelta(days=1)).replace(day=1)
@@ -1963,6 +2000,8 @@ class App(_AppBase):
                 "Заменить черновик?",
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
+        self._builder_edit_workout_id = None
+        self._builder_add_btn.config(text="➕  Добавить в план", command=self._builder_commit)
         _label, factory = TEMPLATES[key]
         self._builder_steps = factory()
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
@@ -1971,10 +2010,12 @@ class App(_AppBase):
 
     def _builder_clear(self):
         self._builder_steps = []
+        self._builder_edit_workout_id = None
         self._builder_filename_var.set("")
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
+        self._builder_add_btn.config(text="➕  Добавить в план", command=self._builder_commit)
 
     # ── Personal template library (per-profile, separate from the 3
     #    built-in TEMPLATES) ──────────────────────────────────────────────
@@ -2018,6 +2059,8 @@ class App(_AppBase):
                 "Заменить черновик?",
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
+        self._builder_edit_workout_id = None
+        self._builder_add_btn.config(text="➕  Добавить в план", command=self._builder_commit)
         from garmin_fit.plan_domain import step_from_data
         from garmin_fit.profile_store import list_user_templates
         steps_data = list_user_templates(self._active_profile_email).get(name, [])
@@ -2317,6 +2360,28 @@ class App(_AppBase):
         self.workouts = self._parse_workouts(data)
         self._draw_calendar()
 
+        self._builder_clear()
+
+    def _builder_save_edit(self):
+        from garmin_fit.workout_builder import validate_draft
+
+        workout_id = self._builder_edit_workout_id
+        filename = self._builder_filename_var.get().strip()
+        if workout_id is None or not filename or not self._builder_steps:
+            return
+        errors, warnings = validate_draft(filename, filename, self._builder_steps)
+        if errors:
+            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
+            return
+        try:
+            self._store.replace_workout_steps(workout_id, self._builder_steps)
+        except Exception as exc:
+            messagebox.showerror("Не удалось сохранить", str(exc), parent=self)
+            return
+        from garmin_fit.plan_domain import plan_to_data
+        self.workouts = self._parse_workouts(plan_to_data(self._store.get_plan()))
+        self._draw_calendar()
+        self._log(f"[OK] Изменения сохранены: «{filename}»")
         self._builder_clear()
 
     # ── Garmin Connect tab ────────────────────────────────────────────────────
