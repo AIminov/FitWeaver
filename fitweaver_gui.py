@@ -200,7 +200,7 @@ class App(_AppBase):
 
         self._setup_style()
         self._build_ui()
-        self.yaml_path.trace_add("write", lambda *_: self._update_yaml_context())
+        self.yaml_path.trace_add("write", lambda *_: self._on_yaml_path_change())
         self._update_yaml_context()
         self._setup_text_bindings()
         self._load_session()
@@ -1153,6 +1153,10 @@ class App(_AppBase):
         self._draw_calendar()
 
     # ── YAML load / save ──────────────────────────────────────────────────────
+    def _on_yaml_path_change(self) -> None:
+        self._yaml_ready = False
+        self._update_yaml_context()
+
     def _update_yaml_context(self) -> None:
         """Keep the top status and plan-dependent actions in sync."""
         path_text = self.yaml_path.get().strip()
@@ -1401,12 +1405,23 @@ class App(_AppBase):
                 ok = proc.returncode == 0
                 msg = "[OK] Готово" if ok else f"[FAIL] код {proc.returncode}"
                 self.after(0, self._log, msg)
+                self.after(0, self._handle_cli_result, args, ok)
                 self.after(0, self._end_operation, ok)
             except Exception as exc:
                 self.after(0, self._log, f"[ERR] {exc}")
+                self.after(0, self._handle_cli_result, args, False)
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _handle_cli_result(self, args, ok: bool) -> None:
+        if args and args[0] == "validate-yaml":
+            if ok:
+                self._set_yaml_status("YAML валиден · готово к сборке", ready=True)
+            else:
+                self._set_yaml_status(
+                    "YAML не прошёл проверку · см. вывод команды", ready=False
+                )
 
     def _append_garmin_args(self, args):
         if self.email_var.get(): args += ["--email",     self.email_var.get()]
@@ -1442,6 +1457,8 @@ class App(_AppBase):
         self._run(args)
 
     def _cmd_validate_yaml(self):
+        if self.yaml_path.get().strip():
+            self._set_yaml_status("Проверка YAML…", ready=False)
         args = ["validate-yaml"]
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
