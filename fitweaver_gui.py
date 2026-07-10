@@ -2239,6 +2239,8 @@ class App(_AppBase):
         self._gc_check_btn = ttk.Button(
             bar, text="✓  Проверить подключение", command=self._gc_check_connection)
         self._gc_check_btn.pack(side="left", padx=(0, 8))
+        ttk.Button(bar, text="⇩  Экспорт диагностики",
+                   command=self._export_gc_diagnostics).pack(side="left", padx=(0, 8))
         ttk.Button(bar, text="🔄  Загрузить из Garmin",
                    style="Primary.TButton",
                    command=self._gc_load).pack(side="left", padx=(0, 8))
@@ -2367,6 +2369,30 @@ class App(_AppBase):
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _export_gc_diagnostics(self):
+        path = filedialog.asksaveasfilename(
+            title="Сохранить диагностику Garmin",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialfile="fitweaver_garmin_diagnostics.json",
+        )
+        if not path:
+            return
+        payload = {
+            "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "profile_email": self.email_var.get().strip(),
+            "yaml_file": Path(self.yaml_path.get()).name if self.yaml_path.get() else "",
+            "history": self._gc_history[-8:],
+        }
+        try:
+            Path(path).write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            self._gc_status.config(text=f"Диагностика сохранена: {Path(path).name}", fg=GREEN)
+            self._log(f"[OK] Диагностика Garmin сохранена: {Path(path).name}")
+        except OSError as exc:
+            messagebox.showerror("Не удалось сохранить диагностику", str(exc), parent=self)
 
     def _gc_load(self):
         if not self.email_var.get():
