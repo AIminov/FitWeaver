@@ -18,6 +18,7 @@ import json
 import yaml
 
 from garmin_fit.gui_theme import configure_customtkinter, configure_ttk, load_customtkinter
+from garmin_fit.gui_validation import parse_builder_value, parse_repeat_count
 
 if getattr(sys, "frozen", False):
     # PyInstaller-frozen exe: treat the exe's own folder as a portable app
@@ -183,6 +184,7 @@ class App(_AppBase):
         self._builder_selected_index: int | None = None
         self._builder_range_start: int | None = None
         self._builder_range_end: int | None = None
+        self._builder_input_errors: set[tuple[int, str]] = set()
 
         # Calendar drag & drop (move a workout to another day)
         self._drag_workout: dict | None = None
@@ -1845,6 +1847,7 @@ class App(_AppBase):
     def _builder_render_editor(self):
         for w in self._builder_editor_frame.winfo_children():
             w.destroy()
+        self._builder_input_errors.clear()
         idx = self._builder_selected_index
         if idx is None or not (0 <= idx < len(self._builder_steps)):
             tk.Label(self._builder_editor_frame, text="Выберите блок слева",
@@ -1859,18 +1862,29 @@ class App(_AppBase):
             ttk.Label(self._builder_editor_frame, text="Повторов:",
                       style="Muted.TLabel").pack(anchor="w")
             count_var = tk.StringVar(value=str(step.count))
+            count_error = tk.StringVar()
 
-            def _on_count_change(_e=None, s=step, v=count_var):
-                try:
-                    s.count = int(v.get())
-                except ValueError:
-                    pass
+            def _on_count_change(_e=None, target_entry=None, s=step, v=count_var,
+                                 err=count_error):
+                value, error = parse_repeat_count(v.get())
+                err.set(error or "")
+                target_entry.configure(style="Invalid.TEntry" if error else "TEntry")
+                if error:
+                    self._builder_input_errors.add((idx, "count"))
+                    self._builder_update_validation()
+                    target_entry.focus_set()
+                    return
+                self._builder_input_errors.discard((idx, "count"))
+                s.count = value
                 self._builder_render_list()
 
             entry = ttk.Entry(self._builder_editor_frame, textvariable=count_var, width=8)
-            entry.pack(anchor="w", pady=(0, 8))
-            entry.bind("<FocusOut>", _on_count_change)
-            entry.bind("<Return>", _on_count_change)
+            entry.pack(anchor="w")
+            entry.bind("<FocusOut>", lambda e, fn=_on_count_change, target=entry: fn(e, target))
+            entry.bind("<Return>", lambda e, fn=_on_count_change, target=entry: fn(e, target))
+            ttk.Label(self._builder_editor_frame, textvariable=count_error,
+                      style="Error.TLabel", wraplength=230, justify="left").pack(
+                          anchor="w", pady=(2, 6))
             ttk.Label(self._builder_editor_frame,
                       text=f"Повторяет шаги {step.back_to_offset + 1}-{idx}",
                       style="Muted.TLabel", wraplength=230, justify="left").pack(anchor="w")
@@ -1889,22 +1903,29 @@ class App(_AppBase):
                       style="Muted.TLabel").pack(anchor="w")
             current = getattr(step, field_name)
             var = tk.StringVar(value="" if current is None else str(current))
+            field_error = tk.StringVar()
 
-            def _on_field_change(_e=None, s=step, fn=field_name, v=var, t=py_type):
-                raw = v.get().strip()
-                if raw == "":
-                    setattr(s, fn, None)
-                else:
-                    try:
-                        setattr(s, fn, t(raw))
-                    except ValueError:
-                        pass
+            def _on_field_change(_e=None, target_entry=None, s=step, fn=field_name,
+                                 v=var, t=py_type, err=field_error):
+                value, error = parse_builder_value(fn, v.get(), t)
+                err.set(error or "")
+                target_entry.configure(style="Invalid.TEntry" if error else "TEntry")
+                if error:
+                    self._builder_input_errors.add((idx, fn))
+                    self._builder_update_validation()
+                    target_entry.focus_set()
+                    return
+                self._builder_input_errors.discard((idx, fn))
+                setattr(s, fn, value)
                 self._builder_render_list()
 
             entry = ttk.Entry(self._builder_editor_frame, textvariable=var, width=16)
-            entry.pack(anchor="w", pady=(0, 6))
-            entry.bind("<FocusOut>", _on_field_change)
-            entry.bind("<Return>", _on_field_change)
+            entry.pack(anchor="w")
+            entry.bind("<FocusOut>", lambda e, fn=_on_field_change, target=entry: fn(e, target))
+            entry.bind("<Return>", lambda e, fn=_on_field_change, target=entry: fn(e, target))
+            ttk.Label(self._builder_editor_frame, textvariable=field_error,
+                      style="Error.TLabel", wraplength=230, justify="left").pack(
+                          anchor="w", pady=(2, 6))
 
         ttk.Label(self._builder_editor_frame, text="Интенсивность:",
                   style="Muted.TLabel").pack(anchor="w")
@@ -1921,6 +1942,11 @@ class App(_AppBase):
 
     def _builder_update_validation(self):
         from garmin_fit.workout_builder import validate_draft
+        if self._builder_input_errors:
+            self._builder_validation_lbl.config(
+                text="Исправьте ошибки в полях блока", fg=RED)
+            self._builder_add_btn.config(state="disabled")
+            return
         filename = self._builder_filename_var.get().strip()
         if not self._builder_steps:
             self._builder_validation_lbl.config(text="Добавьте хотя бы один блок", fg=MUTED)
