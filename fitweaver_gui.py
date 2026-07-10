@@ -152,9 +152,12 @@ class App(_AppBase):
         self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
         self.dry_run   = tk.BooleanVar(value=True)
         self._shell_status_var = tk.StringVar(value="Готово")
+        self._yaml_status_var = tk.StringVar(value="План не выбран")
+        self._yaml_ready = False
         self._operation_active = False
         self._operation_label = ""
         self._operation_button_states: dict[object, str] = {}
+        self._quick_action_buttons: dict[str, ttk.Button] = {}
 
         # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
@@ -197,6 +200,8 @@ class App(_AppBase):
 
         self._setup_style()
         self._build_ui()
+        self.yaml_path.trace_add("write", lambda *_: self._update_yaml_context())
+        self._update_yaml_context()
         self._setup_text_bindings()
         self._load_session()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -464,6 +469,8 @@ class App(_AppBase):
             side="left", fill="x", expand=True, padx=(0, 4))
         ttk.Button(plan_row, text="Обзор…", command=self._browse_yaml).pack(side="left", padx=2)
         ttk.Button(plan_row, text="↺", command=self._reload_yaml, width=3).pack(side="left", padx=2)
+        ttk.Label(plan_block, textvariable=self._yaml_status_var,
+                  style="Status.TLabel").pack(anchor="w", pady=(3, 0))
 
         ttk.Label(header, textvariable=self._shell_status_var,
                   style="Muted.TLabel").pack(side="right", padx=(14, 4))
@@ -472,14 +479,18 @@ class App(_AppBase):
         quick_actions.pack(fill="x")
         ttk.Label(quick_actions, text="Быстрые действия", style="Section.TLabel").pack(
             side="left", padx=(0, 10))
-        ttk.Button(quick_actions, text="Проверить YAML",
-                   command=self._cmd_validate_yaml).pack(side="left", padx=2)
-        ttk.Button(quick_actions, text="Собрать FIT",
-                   style="Primary.TButton", command=self._cmd_build).pack(side="left", padx=2)
-        ttk.Button(quick_actions, text="Загрузить в Garmin",
-                   style="Success.TButton", command=self._cmd_upload).pack(side="left", padx=2)
-        ttk.Button(quick_actions, text="Удалить из Garmin",
-                   style="Danger.TButton", command=self._cmd_delete).pack(side="left", padx=2)
+        self._quick_action_buttons["validate"] = ttk.Button(
+            quick_actions, text="Проверить YAML", command=self._cmd_validate_yaml)
+        self._quick_action_buttons["validate"].pack(side="left", padx=2)
+        self._quick_action_buttons["build"] = ttk.Button(
+            quick_actions, text="Собрать FIT", style="Primary.TButton", command=self._cmd_build)
+        self._quick_action_buttons["build"].pack(side="left", padx=2)
+        self._quick_action_buttons["upload"] = ttk.Button(
+            quick_actions, text="Загрузить в Garmin", style="Success.TButton", command=self._cmd_upload)
+        self._quick_action_buttons["upload"].pack(side="left", padx=2)
+        self._quick_action_buttons["delete"] = ttk.Button(
+            quick_actions, text="Удалить из Garmin", style="Danger.TButton", command=self._cmd_delete)
+        self._quick_action_buttons["delete"].pack(side="left", padx=2)
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
         # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
@@ -1142,6 +1153,36 @@ class App(_AppBase):
         self._draw_calendar()
 
     # ── YAML load / save ──────────────────────────────────────────────────────
+    def _update_yaml_context(self) -> None:
+        """Keep the top status and plan-dependent actions in sync."""
+        path_text = self.yaml_path.get().strip()
+        path = Path(path_text) if path_text else None
+        if path is None:
+            self._set_yaml_status("План не выбран · выберите YAML", ready=False)
+        elif not path.is_file():
+            self._set_yaml_status("Файл не найден · проверьте путь", ready=False)
+        elif not self._yaml_ready:
+            self._set_yaml_status("Файл выбран · нажмите ↺ для загрузки", ready=False)
+        else:
+            self._update_yaml_action_availability()
+
+    def _set_yaml_status(self, text: str, *, ready: bool) -> None:
+        self._yaml_ready = ready
+        self._yaml_status_var.set(text)
+        self._update_yaml_action_availability()
+
+    def _update_yaml_action_availability(self) -> None:
+        if not hasattr(self, "_quick_action_buttons"):
+            return
+        has_file = bool(self.yaml_path.get().strip()) and Path(self.yaml_path.get()).is_file()
+        states = {
+            "validate": "normal" if has_file else "disabled",
+            "build": "normal" if self._yaml_ready else "disabled",
+            "upload": "normal" if self._yaml_ready else "disabled",
+        }
+        for name, state in states.items():
+            self._quick_action_buttons[name].configure(state=state)
+
     def _browse_yaml(self):
         path = filedialog.askopenfilename(
             title="Выберите YAML план",
@@ -1155,6 +1196,7 @@ class App(_AppBase):
     def _reload_yaml(self):
         path = self.yaml_path.get()
         if not path or not Path(path).exists():
+            self._set_yaml_status("План не выбран · выберите YAML", ready=False)
             return
         try:
             from garmin_fit.plan_domain import plan_to_data
@@ -1174,12 +1216,16 @@ class App(_AppBase):
                 if dated:
                     self.cal_month = datetime.date.fromisoformat(dated[0]["date"]).replace(day=1)
             self._draw_calendar()
+            self._set_yaml_status(
+                f"План загружен · {len(self.workouts)} тренировок", ready=bool(self.workouts)
+            )
             self._log(f"[OK] Загружено {len(self.workouts)} тренировок из {Path(path).name}")
             if repairs:
                 self._log("[Авто-правки]")
                 for r in repairs:
                     self._log(f"  {r}")
         except Exception as exc:
+            self._set_yaml_status("Ошибка чтения YAML · проверьте файл", ready=False)
             self._log(f"[ERR] {exc}")
 
     def _parse_workouts(self, data):
