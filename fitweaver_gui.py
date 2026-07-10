@@ -172,6 +172,7 @@ class App(_AppBase):
         # everything) -- machine-wide preference, same tier as llm_conn_mode.
         self.ui_mode = tk.StringVar(value="simple")   # "simple" | "expert"
         self._llm_conn_expanded = False  # simple mode: connection details collapsed by default
+        self._period_expanded = False  # simple mode: Garmin date/dry-run options collapsed
 
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
@@ -526,14 +527,24 @@ class App(_AppBase):
         ttk.Label(p, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
 
-        hline(); section("ПЕРИОД")
-        ttk.Label(p, text="С (YYYY-MM-DD):", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(p, textvariable=self.from_var).pack(fill="x", pady=(0, 4))
-        ttk.Label(p, text="По (YYYY-MM-DD):", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(p, textvariable=self.to_var).pack(fill="x", pady=(0, 4))
-        ttk.Label(p, text="Год:", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(p, textvariable=self.year_var, width=10).pack(anchor="w")
-        ttk.Checkbutton(p, text="Dry-run (без изменений)",
+        self._period_toggle_btn = ttk.Button(
+            p, text="▸  Параметры периода", command=self._toggle_period_settings)
+        self._period_toggle_btn.pack(fill="x", pady=(10, 2))
+        self._period_frame = ttk.Frame(p)
+        self._period_frame.pack(fill="x")
+        ttk.Label(self._period_frame, text="ПЕРИОД", style="Section.TLabel").pack(
+            anchor="w", pady=(4, 3))
+        ttk.Label(self._period_frame, text="С (YYYY-MM-DD):",
+                  style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(self._period_frame, textvariable=self.from_var).pack(
+            fill="x", pady=(0, 4))
+        ttk.Label(self._period_frame, text="По (YYYY-MM-DD):",
+                  style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(self._period_frame, textvariable=self.to_var).pack(
+            fill="x", pady=(0, 4))
+        ttk.Label(self._period_frame, text="Год:", style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(self._period_frame, textvariable=self.year_var, width=10).pack(anchor="w")
+        ttk.Checkbutton(self._period_frame, text="Dry-run (без изменений)",
                         variable=self.dry_run).pack(anchor="w", pady=(6, 0))
 
         self._advanced_hline = ttk.Separator(p)
@@ -831,6 +842,10 @@ class App(_AppBase):
         self._llm_conn_expanded = not self._llm_conn_expanded
         self._on_llm_mode_change()
 
+    def _toggle_period_settings(self):
+        self._period_expanded = not self._period_expanded
+        self._on_ui_mode_change()
+
     def _on_ui_mode_change(self):
         simple = self.ui_mode.get() == "simple"
 
@@ -857,6 +872,20 @@ class App(_AppBase):
                 self._gc_limit_frame.pack_forget()
             else:
                 self._gc_limit_frame.pack(side="left", before=self._gc_del_btn)
+
+        if hasattr(self, "_period_frame"):
+            if simple:
+                self._period_toggle_btn.pack(fill="x", pady=(10, 2))
+                self._period_toggle_btn.config(
+                    text=("▾  Параметры периода" if self._period_expanded
+                          else "▸  Параметры периода"))
+                if self._period_expanded:
+                    self._period_frame.pack(fill="x", before=self._advanced_hline)
+                else:
+                    self._period_frame.pack_forget()
+            else:
+                self._period_toggle_btn.pack_forget()
+                self._period_frame.pack(fill="x", before=self._advanced_hline)
 
     # ── Calendar drawing ──────────────────────────────────────────────────────
     def _draw_calendar(self):
