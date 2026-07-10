@@ -151,6 +151,9 @@ class App(_AppBase):
         self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
         self.dry_run   = tk.BooleanVar(value=True)
         self._shell_status_var = tk.StringVar(value="Готово")
+        self._operation_active = False
+        self._operation_label = ""
+        self._operation_button_states: dict[object, str] = {}
 
         # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
@@ -440,6 +443,19 @@ class App(_AppBase):
 
         ttk.Label(header, textvariable=self._shell_status_var,
                   style="Muted.TLabel").pack(side="right", padx=(14, 4))
+
+        quick_actions = ttk.Frame(top, padding=(10, 0, 10, 10))
+        quick_actions.pack(fill="x")
+        ttk.Label(quick_actions, text="Быстрые действия", style="Section.TLabel").pack(
+            side="left", padx=(0, 10))
+        ttk.Button(quick_actions, text="Проверить YAML",
+                   command=self._cmd_validate_yaml).pack(side="left", padx=2)
+        ttk.Button(quick_actions, text="Собрать FIT",
+                   style="Primary.TButton", command=self._cmd_build).pack(side="left", padx=2)
+        ttk.Button(quick_actions, text="Загрузить в Garmin",
+                   style="Success.TButton", command=self._cmd_upload).pack(side="left", padx=2)
+        ttk.Button(quick_actions, text="Открыть конструктор",
+                   command=self._open_builder).pack(side="left", padx=(10, 2))
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
         # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
@@ -1126,6 +1142,52 @@ class App(_AppBase):
         self._maybe_toast(text)
         self._maybe_hint(text)
 
+    # ── Operation state ─────────────────────────────────────────────────────
+    def _iter_buttons(self):
+        """Yield buttons in the main window for operation-level locking."""
+        pending = [self]
+        while pending:
+            parent = pending.pop()
+            children = parent.winfo_children()
+            pending.extend(children)
+            for widget in children:
+                if isinstance(widget, (ttk.Button, tk.Button)):
+                    yield widget
+
+    def _begin_operation(self, label: str) -> bool:
+        if self._operation_active:
+            self._log(f"[WARN] Уже выполняется: {self._operation_label}")
+            return False
+        self._operation_active = True
+        self._operation_label = label
+        self._operation_button_states = {}
+        for button in self._iter_buttons():
+            try:
+                current = str(button.cget("state"))
+                if current != "disabled":
+                    self._operation_button_states[button] = current
+                    button.configure(state="disabled")
+            except tk.TclError:
+                continue
+        self._shell_status_var.set(label)
+        return True
+
+    def _end_operation(self, success: bool | None = None) -> None:
+        for button, state in self._operation_button_states.items():
+            try:
+                button.configure(state=state)
+            except tk.TclError:
+                pass
+        self._operation_button_states = {}
+        self._operation_active = False
+        self._operation_label = ""
+        if success is True:
+            self._shell_status_var.set("Готово")
+        elif success is False:
+            self._shell_status_var.set("Ошибка")
+        else:
+            self._shell_status_var.set("Готово")
+
     # ── Toast notifications ────────────────────────────────────────────────
     # Piggybacks on the existing "[OK]"/"[ERR]"/"[WARN]"/"[FAIL]" prefix
     # convention already used by every _log() call site across the app, so
@@ -1201,6 +1263,8 @@ class App(_AppBase):
         return [PYTHON, "-m", "garmin_fit.cli"] + args
 
     def _run(self, args):
+        if not self._begin_operation("Выполняется команда"):
+            return
         cmd = self._cli_command(args)
         self._log(f"\n$ garmin_fit.cli {' '.join(args)}")
 
@@ -1215,10 +1279,13 @@ class App(_AppBase):
                 for line in proc.stdout:
                     self.after(0, self._log, line.rstrip())
                 proc.wait()
-                msg = "[OK] Готово" if proc.returncode == 0 else f"[FAIL] код {proc.returncode}"
+                ok = proc.returncode == 0
+                msg = "[OK] Готово" if ok else f"[FAIL] код {proc.returncode}"
                 self.after(0, self._log, msg)
+                self.after(0, self._end_operation, ok)
             except Exception as exc:
                 self.after(0, self._log, f"[ERR] {exc}")
+                self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1272,6 +1339,10 @@ class App(_AppBase):
         if name:
             self._run(["restore", name.strip()])
 
+    def _open_builder(self):
+        if hasattr(self, "_nb"):
+            self._nb.select(2)
+
     # ── LLM tab helpers ───────────────────────────────────────────────────────
     def _make_llm_client(self, *, for_generation: bool = False):
         """Return either a direct UnifiedLLMClient ("own" mode) or a
@@ -1289,6 +1360,8 @@ class App(_AppBase):
         return UnifiedLLMClient(**kwargs)
 
     def _llm_check(self):
+        if not self._begin_operation("Проверка подключения"):
+            return
         self._llm_status.config(text="●", fg=YELLOW)
         self.update_idletasks()
 
@@ -1298,9 +1371,11 @@ class App(_AppBase):
                 ok = client.check_connection()
                 color = GREEN if ok else RED
                 self.after(0, self._llm_status.config, {"text": "●", "fg": color})
+                self.after(0, self._end_operation, ok)
             except Exception as exc:
                 self.after(0, self._llm_status.config, {"text": "●", "fg": RED})
                 self.after(0, self._set_progress, f"Ошибка: {exc}")
+                self.after(0, self._end_operation, False)
 
         threading.Thread(target=check, daemon=True).start()
 
@@ -1311,6 +1386,9 @@ class App(_AppBase):
         plan_text = self._plan_text.get("1.0", "end").strip()
         if not plan_text:
             messagebox.showwarning("Пустой план", "Введите текст плана тренировок.")
+            return
+
+        if not self._begin_operation("Генерация YAML"):
             return
 
         self._gen_btn.config(state="disabled")
@@ -1352,6 +1430,7 @@ class App(_AppBase):
                         status += f", {len(warnings)} предупреждений"
                     self._set_progress(status, GREEN)
                     self._gen_btn.config(state="normal")
+                    self._end_operation(True)
 
                     if repairs:
                         self._log("\n[Авто-правки]")
@@ -1374,12 +1453,14 @@ class App(_AppBase):
                 def on_api_err():
                     self._set_progress(f"❌ {msg}", RED)
                     self._gen_btn.config(state="normal")
+                    self._end_operation(False)
                 self.after(0, on_api_err)
 
             except Exception as exc:
                 def on_err():
                     self._set_progress(f"❌ Ошибка: {exc}", RED)
                     self._gen_btn.config(state="normal")
+                    self._end_operation(False)
                 self.after(0, on_err)
 
         threading.Thread(target=worker, daemon=True).start()

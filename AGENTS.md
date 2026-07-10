@@ -18,6 +18,15 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-07-10 (продолжение 2) — Action cards и busy-state операций
+Верхняя карточка GUI получила быстрые действия «Проверить YAML», «Собрать FIT»,
+«Загрузить в Garmin» и «Открыть конструктор». Добавлен общий
+`_begin_operation()`/`_end_operation()`: CLI-команды и LLM check/generation
+блокируют конфликтующие кнопки, показывают текущий статус и восстанавливают
+исходные состояния после завершения. Garmin Connect tab пока не подключён к
+этому менеджеру — требуется отдельная проверка массового удаления и refresh.
+Пересобраны оба exe, GUI smoke жив 8 секунд, CLI help работает, 309 тестов OK.
+
 ### 2026-07-10 (продолжение) — Foundation нового визуального shell
 Добавлен `src/garmin_fit/gui_theme.py` с общей палитрой и стилями ttk.
 `CustomTkinter` подключается как optional GUI extra с fallback на обычный
