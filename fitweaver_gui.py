@@ -2049,6 +2049,8 @@ class App(_AppBase):
         if not self.email_var.get():
             messagebox.showwarning("Нет email", "Введите email в левой панели.")
             return
+        if not self._begin_operation("Загрузка тренировок из Garmin"):
+            return
         self._gc_status.config(text="⏳ Подключаюсь к Garmin Connect…", fg=YELLOW)
         self._gc_clear_list()
 
@@ -2062,9 +2064,12 @@ class App(_AppBase):
                 limit = int(self._gc_limit.get() or 200)
                 workouts = client.get_workouts(0, limit)
                 self.after(0, self._gc_render, workouts)
+                self.after(0, self._end_operation, True)
+                self.after(0, self._gc_update_del_btn)
             except Exception as exc:
                 self.after(0, self._gc_status.config,
                            {"text": f"❌ {exc}", "fg": RED})
+                self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2220,6 +2225,9 @@ class App(_AppBase):
         return f"Ошибка: {exc}"
 
     def _gc_delete_one(self, workout_id: str, row_widget: tk.Frame):
+        if not self._begin_operation("Удаление тренировки из Garmin"):
+            return
+
         def worker():
             try:
                 from garmin_fit.workflow import _connect_garmin_cli_client
@@ -2231,12 +2239,15 @@ class App(_AppBase):
                 self.after(0, row_widget.destroy)
                 self.after(0, self._gc_update_del_btn)
                 self.after(0, self._gc_status.config,
-                           {"text": f"✅ Удалено {workout_id}", "fg": GREEN})
+                           {"text": f"✅ Удалено {workout_id}, обновляю список…", "fg": GREEN})
+                self.after(0, self._end_operation, True)
+                self.after(0, self._gc_load)
             except Exception as exc:
                 self.after(0, messagebox.showerror,
                            "Не удалось удалить", self._gc_friendly_error(exc))
                 self.after(0, self._gc_status.config,
                            {"text": "❌ Ошибка удаления", "fg": RED})
+                self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2248,6 +2259,9 @@ class App(_AppBase):
                 "Удалить выбранные",
                 f"Удалить {len(to_delete)} тренировок из Garmin Connect?\n\nЭто необратимо.",
                 icon="warning"):
+            return
+
+        if not self._begin_operation("Удаление выбранных тренировок"):
             return
 
         self._gc_del_btn.config(state="disabled")
@@ -2263,6 +2277,7 @@ class App(_AppBase):
             except Exception as exc:
                 self.after(0, self._gc_status.config,
                            {"text": f"❌ {exc}", "fg": RED})
+                self.after(0, self._end_operation, False)
                 return
 
             deleted, failed, atp = 0, 0, 0
@@ -2278,12 +2293,13 @@ class App(_AppBase):
                         failed += 1
 
             def finish():
-                self._gc_load()   # refresh list
                 parts = [f"✅ Удалено: {deleted}"]
                 if atp:    parts.append(f"ATP (пропущено): {atp}")
                 if failed: parts.append(f"Ошибок: {failed}")
                 self._gc_status.config(text="  |  ".join(parts),
                                        fg=GREEN if not failed else YELLOW)
+                self._end_operation(not failed)
+                self._gc_load()   # refresh list from Garmin after the batch
 
             self.after(0, finish)
 
