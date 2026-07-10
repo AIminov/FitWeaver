@@ -18,6 +18,16 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-07-10 (продолжение) — Foundation нового визуального shell
+Добавлен `src/garmin_fit/gui_theme.py` с общей палитрой и стилями ttk.
+`CustomTkinter` подключается как optional GUI extra с fallback на обычный
+Tkinter; root GUI получил современный тёмный режим, увеличенные размеры и
+карточку верхнего контекста с текущим планом и статусом. В PyInstaller spec
+добавлены данные `customtkinter`. Backend-тесты: 309, `OK`.
+
+Полный переход вкладок на новый shell пока не сделан: следующий блок —
+навигация и action cards, затем busy-state операций.
+
 ### 2026-07-10 — Базовый UX-аудит desktop GUI
 Проведена сверка GUI, упаковки exe и документации. Подтверждены 4 вкладки,
 simple/expert режим и пара `FitWeaver.exe` + `garmin-fit-cli.exe`. Backend-тесты

@@ -35,6 +35,9 @@ api = [
 build = [
     "pyinstaller>=6.0",
 ]
+gui = [
+    "customtkinter>=5.2",
+]
 
 [project.scripts]
 garmin-fit = "garmin_fit.cli:main"

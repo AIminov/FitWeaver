@@ -13,6 +13,13 @@ Deliver them to your watch via USB or directly to **Garmin Connect Calendar** â€
 
 `fitweaver_gui.py` â€” a Tkinter desktop app that wraps the entire pipeline without the command line.
 
+The modern visual shell uses the optional `customtkinter` GUI extra and keeps a
+native Tkinter fallback for source checkouts. Install it with:
+
+```bash
+pip install -e ".[gui]"
+```
+
 ```bash
 python fitweaver_gui.py
 ```

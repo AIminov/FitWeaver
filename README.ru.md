@@ -11,6 +11,14 @@
 
 `fitweaver_gui.py` — Tkinter-приложение, которое охватывает весь pipeline без командной строки.
 
+Современная визуальная оболочка использует дополнительный пакет
+`customtkinter`, но сохраняет fallback на обычный Tkinter для исходников.
+Установка:
+
+```bash
+pip install -e ".[gui]"
+```
+
 ```bash
 python fitweaver_gui.py
 ```

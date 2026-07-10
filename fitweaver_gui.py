@@ -17,6 +17,8 @@ import json
 
 import yaml
 
+from garmin_fit.gui_theme import configure_customtkinter, configure_ttk, load_customtkinter
+
 if getattr(sys, "frozen", False):
     # PyInstaller-frozen exe: treat the exe's own folder as a portable app
     # directory, so Plan/profiles/.gui_session.json persist next to it
@@ -28,6 +30,13 @@ PYTHON = sys.executable
 SESSION_FILE = PROJECT_ROOT / ".gui_session.json"
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+# Optional modern root toolkit. All existing native widgets remain supported;
+# the fallback keeps the source checkout usable without the GUI extra.
+_CTK = load_customtkinter()
+if _CTK is not None:
+    configure_customtkinter(_CTK)
+_AppBase = _CTK.CTk if _CTK is not None else tk.Tk
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 BG     = "#1e1e2e"
@@ -122,13 +131,16 @@ _ERROR_HINTS: list[tuple[re.Pattern, str]] = [
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-class App(tk.Tk):
+class App(_AppBase):
     def __init__(self):
         super().__init__()
         self.title("FitWeaver")
-        self.geometry("1380x900")
-        self.minsize(1060, 660)
-        self.configure(bg=BG)
+        self.geometry("1440x920")
+        self.minsize(1180, 720)
+        if _CTK is not None:
+            self.configure(fg_color=BG)
+        else:
+            self.configure(bg=BG)
 
         # Shared state
         self.yaml_path = tk.StringVar()
@@ -138,6 +150,7 @@ class App(tk.Tk):
         self.to_var    = tk.StringVar()
         self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
         self.dry_run   = tk.BooleanVar(value=True)
+        self._shell_status_var = tk.StringVar(value="Готово")
 
         # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
@@ -398,48 +411,35 @@ class App(tk.Tk):
     # ── Style ─────────────────────────────────────────────────────────────────
     def _setup_style(self):
         s = ttk.Style(self)
-        s.theme_use("clam")
-        s.configure(".",              background=BG,  foreground=FG, font=("Segoe UI", 10))
-        s.configure("TFrame",         background=BG)
-        s.configure("TLabel",         background=BG,  foreground=FG)
-        s.configure("Muted.TLabel",   background=BG,  foreground=MUTED, font=("Segoe UI", 9))
-        s.configure("TEntry",         fieldbackground=BG3, foreground=FG, insertcolor=FG)
-        s.configure("TCheckbutton",   background=BG,  foreground=FG)
-        s.map("TCheckbutton",         background=[("active", BG)])
-        s.configure("TCombobox",      fieldbackground=BG3, foreground=FG,
-                                      selectbackground=BG3, selectforeground=FG)
-        s.map("TCombobox",            fieldbackground=[("readonly", BG3)])
-        s.configure("TSeparator",     background=BG3)
-        s.configure("Title.TLabel",   background=BG,  foreground=PURPLE,
-                                      font=("Segoe UI", 14, "bold"))
-        s.configure("Section.TLabel", background=BG,  foreground=ACCENT,
-                                      font=("Segoe UI", 9, "bold"))
-        # Notebook
-        s.configure("TNotebook",          background=BG2, borderwidth=0)
-        s.configure("TNotebook.Tab",      background=BG3, foreground=MUTED,
-                                          padding=(14, 6), font=("Segoe UI", 10))
-        s.map("TNotebook.Tab",            background=[("selected", BG)],
-                                          foreground=[("selected", FG)])
-        # Buttons
-        for name, bg, fg in [
-            ("TButton",        BG3,    FG),
-            ("Primary.TButton", ACCENT, BG),
-            ("Danger.TButton",  RED,    BG),
-            ("Success.TButton", GREEN,  BG),
-        ]:
-            s.configure(name, background=bg, foreground=fg,
-                        padding=(8, 5), relief="flat", font=("Segoe UI", 10))
-            s.map(name, background=[("active", MUTED)])
+        configure_ttk(s)
 
     # ── Top layout ────────────────────────────────────────────────────────────
     def _build_ui(self):
-        top = ttk.Frame(self, padding=(10, 8, 10, 6))
-        top.pack(fill="x", side="top")
-        ttk.Label(top, text="FitWeaver", style="Title.TLabel").pack(side="left", padx=(0, 20))
-        ttk.Label(top, text="YAML план:", style="Muted.TLabel").pack(side="left")
-        ttk.Entry(top, textvariable=self.yaml_path, width=55).pack(side="left", padx=4)
-        ttk.Button(top, text="Обзор…",  command=self._browse_yaml).pack(side="left", padx=2)
-        ttk.Button(top, text="↺",       command=self._reload_yaml, width=3).pack(side="left", padx=2)
+        if _CTK is not None:
+            top = _CTK.CTkFrame(self, fg_color=BG2, corner_radius=12)
+        else:
+            top = ttk.Frame(self, style="Card.TFrame", padding=(10, 8, 10, 6))
+        top.pack(fill="x", side="top", padx=10, pady=(10, 6))
+
+        header = ttk.Frame(top, padding=(10, 8, 10, 6))
+        header.pack(fill="x")
+        title_block = ttk.Frame(header)
+        title_block.pack(side="left", padx=(0, 20))
+        ttk.Label(title_block, text="FitWeaver", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(title_block, text="Garmin workout workspace", style="Muted.TLabel").pack(anchor="w")
+
+        plan_block = ttk.Frame(header)
+        plan_block.pack(side="left", fill="x", expand=True)
+        ttk.Label(plan_block, text="Текущий план", style="Muted.TLabel").pack(anchor="w")
+        plan_row = ttk.Frame(plan_block)
+        plan_row.pack(fill="x")
+        ttk.Entry(plan_row, textvariable=self.yaml_path, width=55).pack(
+            side="left", fill="x", expand=True, padx=(0, 4))
+        ttk.Button(plan_row, text="Обзор…", command=self._browse_yaml).pack(side="left", padx=2)
+        ttk.Button(plan_row, text="↺", command=self._reload_yaml, width=3).pack(side="left", padx=2)
+
+        ttk.Label(header, textvariable=self._shell_status_var,
+                  style="Muted.TLabel").pack(side="right", padx=(14, 4))
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
         # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
@@ -1112,6 +1112,13 @@ class App(tk.Tk):
 
     # ── Log ───────────────────────────────────────────────────────────────────
     def _log(self, text):
+        stripped = text.strip()
+        if stripped.startswith(("[ERR]", "[FAIL]")):
+            self._shell_status_var.set("Ошибка")
+        elif stripped.startswith("[OK]"):
+            self._shell_status_var.set("Готово")
+        elif stripped.startswith(("[WARN]", "⏳")):
+            self._shell_status_var.set("Выполняется")
         self._log_w.config(state="normal")
         self._log_w.insert("end", text + "\n")
         self._log_w.see("end")

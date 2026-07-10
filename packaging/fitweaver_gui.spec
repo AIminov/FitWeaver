@@ -38,6 +38,7 @@ block_cipher = None
 # state, so PyInstaller's own module-relative path resolution handles them
 # correctly once they're actually included via datas=.
 llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt"])
+ctk_datas = collect_data_files("customtkinter")
 
 # fitweaver_gui.py imports most of garmin_fit lazily (inside methods, e.g.
 # `from garmin_fit.plan_store import PlanStore`). PyInstaller's static
@@ -48,7 +49,7 @@ garmin_fit_submodules = collect_submodules("garmin_fit")
 a = Analysis(
     [str(REPO_ROOT / "fitweaver_gui.py")],
     pathex=[str(SRC_DIR)],
-    datas=llm_datas,
+    datas=llm_datas + ctk_datas,
     hiddenimports=garmin_fit_submodules,
     noarchive=False,
 )

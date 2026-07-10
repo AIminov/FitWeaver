@@ -7,7 +7,7 @@ $Stage = Join-Path $RepoRoot "build\stage"
 
 Push-Location $RepoRoot
 try {
-    pip install -e ".[garmin-calendar,build]"
+    python -m pip install -e ".[garmin-calendar,build,gui]"
     if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 
     # Build from an isolated staging copy, not the live source tree. The
