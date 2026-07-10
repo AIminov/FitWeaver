@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import tkinter as tk
+import urllib.request
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
@@ -30,6 +31,8 @@ else:
     PROJECT_ROOT = Path(__file__).resolve().parent
 PYTHON = sys.executable
 SESSION_FILE = PROJECT_ROOT / ".gui_session.json"
+APP_VERSION = "10.4.1"
+LATEST_RELEASE_URL = "https://api.github.com/repos/AIminov/FitWeaver/releases/latest"
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -206,9 +209,61 @@ class App(_AppBase):
         self._update_yaml_context()
         self._setup_text_bindings()
         self._load_session()
+        self.after(1500, self._check_for_updates)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ── Session persistence ───────────────────────────────────────────────────
+    @staticmethod
+    def _version_tuple(value: str) -> tuple[int, ...]:
+        parts = re.findall(r"\d+", value or "")
+        return tuple(int(part) for part in parts[:3]) or (0,)
+
+    def _check_for_updates(self, manual: bool = False) -> None:
+        """Check GitHub release metadata without downloading or installing anything."""
+        if manual:
+            self._shell_status_var.set("Проверяю обновления…")
+
+        def worker():
+            try:
+                request = urllib.request.Request(
+                    LATEST_RELEASE_URL,
+                    headers={"User-Agent": f"FitWeaver/{APP_VERSION}", "Accept": "application/vnd.github+json"},
+                )
+                with urllib.request.urlopen(request, timeout=4) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                tag = str(data.get("tag_name") or "").lstrip("v")
+                url = str(data.get("html_url") or "https://github.com/AIminov/FitWeaver/releases")
+                newer = self._version_tuple(tag) > self._version_tuple(APP_VERSION)
+                self.after(0, self._finish_update_check, newer, tag, url, manual)
+            except Exception:
+                self.after(0, self._finish_update_check, False, "", "", manual)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_update_check(self, newer: bool, tag: str, url: str, manual: bool) -> None:
+        self._shell_status_var.set("Готово")
+        if not tag:
+            if manual:
+                messagebox.showwarning(
+                    "Не удалось проверить обновления",
+                    "Проверьте подключение к интернету и попробуйте ещё раз.",
+                    parent=self,
+                )
+            return
+        if newer:
+            self._show_toast(
+                f"Доступна новая версия FitWeaver v{tag}. Скачивание не выполняется автоматически.",
+                YELLOW, duration_ms=7000,
+            )
+            if manual:
+                messagebox.showinfo(
+                    "Доступно обновление",
+                    f"Доступна версия FitWeaver v{tag}.\n\nОткройте релизы проекта:\n{url}",
+                    parent=self,
+                )
+        elif manual:
+            self._show_toast("Установлена последняя доступная версия FitWeaver.", GREEN)
+
     # LLM connection settings (url/model/type/timeout) describe the local LLM
     # server on this machine, not the person using it — they stay in the one
     # global SESSION_FILE, shared across every profile. yaml_path/year are
@@ -544,7 +599,13 @@ class App(_AppBase):
         title_block = ttk.Frame(header)
         title_block.pack(side="left", padx=(0, 20))
         ttk.Label(title_block, text="FitWeaver", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(title_block, text="Garmin workout workspace", style="Muted.TLabel").pack(anchor="w")
+        version_row = ttk.Frame(title_block)
+        version_row.pack(anchor="w")
+        ttk.Label(version_row, text=f"v{APP_VERSION} · Garmin workout workspace",
+                  style="Muted.TLabel").pack(side="left")
+        ttk.Button(version_row, text="Проверить обновления",
+                   command=lambda: self._check_for_updates(manual=True)).pack(
+                       side="left", padx=(8, 0))
 
         plan_block = ttk.Frame(header)
         plan_block.pack(side="left", fill="x", expand=True)
