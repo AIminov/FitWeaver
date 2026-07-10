@@ -379,6 +379,8 @@ class App(_AppBase):
         if not new_email or new_email == self._active_profile_email:
             return
         self._save_current_profile_session()
+        # Пароль не сохраняется в профиле и не должен переноситься между email.
+        self.pass_var.set("")
         self._activate_profile(new_email, reset_if_missing=True)
         self._refresh_profile_list()
         if self.yaml_path.get() and Path(self.yaml_path.get()).exists():
@@ -387,6 +389,25 @@ class App(_AppBase):
             self.workouts = []
             self._draw_calendar()
         self._log(f"[OK] Профиль переключён: {new_email}")
+
+    def _create_profile(self):
+        email = simpledialog.askstring(
+            "Новый профиль",
+            "Введите email Garmin для нового профиля:",
+            parent=self,
+        )
+        email = (email or "").strip()
+        if not email:
+            return
+        if "@" not in email:
+            messagebox.showwarning(
+                "Некорректный email",
+                "Введите email в формате user@example.com.",
+                parent=self,
+            )
+            return
+        self.email_var.set(email)
+        self._on_email_change()
 
     def _save_session(self):
         self._save_current_profile_session()
@@ -517,10 +538,21 @@ class App(_AppBase):
                         command=self._on_ui_mode_change).pack(anchor="w", pady=(0, 6))
         hline()
 
-        section("GARMIN CONNECT")
-        ttk.Label(p, text="Email (профиль):", style="Muted.TLabel").pack(anchor="w")
-        self._profile_combo = ttk.Combobox(p, textvariable=self.email_var)
-        self._profile_combo.pack(fill="x", pady=(0, 4))
+        section("ПРОФИЛЬ GARMIN")
+        ttk.Label(
+            p,
+            text="Выберите существующий или создайте новый профиль:",
+            style="Muted.TLabel",
+            wraplength=215,
+            justify="left",
+        ).pack(anchor="w")
+        profile_row = ttk.Frame(p)
+        profile_row.pack(fill="x", pady=(3, 4))
+        self._profile_combo = ttk.Combobox(profile_row, textvariable=self.email_var)
+        self._profile_combo.pack(side="left", fill="x", expand=True)
+        ttk.Button(profile_row, text="＋ Новый", command=self._create_profile).pack(
+            side="left", padx=(4, 0)
+        )
         self._profile_combo.bind("<<ComboboxSelected>>", self._on_email_change)
         self._profile_combo.bind("<FocusOut>", self._on_email_change)
         self._profile_combo.bind("<Return>", self._on_email_change)
@@ -880,7 +912,9 @@ class App(_AppBase):
                     text=("▾  Параметры периода" if self._period_expanded
                           else "▸  Параметры периода"))
                 if self._period_expanded:
-                    self._period_frame.pack(fill="x", before=self._advanced_hline)
+                    # Разделитель скрыт в simple mode, поэтому он не может быть
+                    # якорем для pack на всех версиях Tk.
+                    self._period_frame.pack(fill="x")
                 else:
                     self._period_frame.pack_forget()
             else:

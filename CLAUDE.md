@@ -18,6 +18,13 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-07-10 (продолжение 8) — профили и раскрытие параметров периода
+По обратной связи после запуска exe исправлено раскрытие блока «Параметры периода» в Simple mode:
+панель больше не пытается размещаться относительно скрытого разделителя Tk. В боковой панели
+профиль Garmin стал явным: подпись объясняет выбор профиля, рядом добавлена кнопка «＋ Новый»
+с проверкой email. При смене email поле пароля очищается, чтобы случайно не переносить учётные
+данные между профилями. Пройден полный набор из 314 тестов.
+
 ### 2026-07-10 (продолжение 7) — Simple mode и параметры периода
 В Simple mode sidebar теперь показывает профиль и пароль, а технические поля
 дат, года и dry-run скрыты в раскрывающемся блоке «Параметры периода». В Expert
@@ -335,9 +342,10 @@ smoke-тест (headless `App()`: 3 панели в PanedWindow, hint сраба
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed, start here):**
-1. Editing an already-committed workout's steps in the Конструктор tab (currently v1-scoped to building new workouts only — see 2026-07-06 session log for why this was deferred).
-2. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
-3. See `TODO.md` for the full backlog.
+1. Show current YAML validation status in the top context card and connect it to global action availability.
+2. Editing an already-committed workout's steps in the Конструктор tab (currently v1-scoped to building new workouts only — see 2026-07-06 session log for why this was deferred).
+3. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
+4. See `TODO.md` for the full backlog.
 
 **Working style preferences:**
 - Communicate in Russian, code/commits in English
