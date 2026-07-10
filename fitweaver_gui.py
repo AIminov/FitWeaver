@@ -454,6 +454,8 @@ class App(_AppBase):
                    style="Primary.TButton", command=self._cmd_build).pack(side="left", padx=2)
         ttk.Button(quick_actions, text="Загрузить в Garmin",
                    style="Success.TButton", command=self._cmd_upload).pack(side="left", padx=2)
+        ttk.Button(quick_actions, text="Удалить из Garmin",
+                   style="Danger.TButton", command=self._cmd_delete).pack(side="left", padx=2)
         ttk.Button(quick_actions, text="Открыть конструктор",
                    command=self._open_builder).pack(side="left", padx=(10, 2))
         ttk.Separator(self, orient="horizontal").pack(fill="x")
@@ -533,14 +535,6 @@ class App(_AppBase):
         ttk.Entry(p, textvariable=self.year_var, width=10).pack(anchor="w")
         ttk.Checkbutton(p, text="Dry-run (без изменений)",
                         variable=self.dry_run).pack(anchor="w", pady=(6, 0))
-
-        hline(); section("ОСНОВНЫЕ ДЕЙСТВИЯ")
-        ttk.Button(p, text="⚙  Собрать FIT-файлы", style="Primary.TButton",
-                   command=self._cmd_build).pack(fill="x", pady=2)
-        ttk.Button(p, text="↑  Загрузить в Garmin",
-                   command=self._cmd_upload).pack(fill="x", pady=2)
-        ttk.Button(p, text="✕  Удалить из Garmin", style="Danger.TButton",
-                   command=self._cmd_delete).pack(fill="x", pady=2)
 
         self._advanced_hline = ttk.Separator(p)
         self._advanced_hline.pack(fill="x", pady=6)
@@ -799,9 +793,9 @@ class App(_AppBase):
 
         ttk.Button(actions, text="💾  Сохранить YAML",
                    command=self._save_yaml).pack(side="right", padx=2)
-        ttk.Button(actions, text="📅  Загрузить в Garmin",
+        ttk.Button(actions, text="📅  Загрузить этот YAML",
                    command=self._yaml_to_garmin).pack(side="right", padx=2)
-        ttk.Button(actions, text="⚙  Собрать FIT", style="Success.TButton",
+        ttk.Button(actions, text="⚙  Собрать этот YAML в FIT", style="Success.TButton",
                    command=self._yaml_to_build).pack(side="right", padx=2)
 
     def _on_llm_mode_change(self):
