@@ -49,7 +49,7 @@ def _resolve_garmin_token_dir(email=None, token_dir=None):
     return resolved
 
 
-def _connect_garmin_cli_client(email=None, password=None, token_dir=None):
+def _connect_garmin_cli_client(email=None, password=None, token_dir=None, prompt_mfa=None):
     """Authenticate Garmin Connect for CLI workflows."""
     from .garmin_auth_manager import GarminAuthManager, prompt_mfa_with_timeout
 
@@ -57,7 +57,7 @@ def _connect_garmin_cli_client(email=None, password=None, token_dir=None):
         email=email,
         password=password,
         token_dir=_resolve_garmin_token_dir(email=email, token_dir=token_dir),
-        prompt_mfa=prompt_mfa_with_timeout,
+        prompt_mfa=prompt_mfa or prompt_mfa_with_timeout,
     )
     client = manager.connect()
     if client == "needs_mfa":

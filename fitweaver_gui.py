@@ -5,6 +5,7 @@ import calendar
 import datetime
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -404,6 +405,54 @@ class App(_AppBase):
         self._prompt_hr_profile(self._active_profile_email)
         self._refresh_profile_status()
 
+    def _clear_garmin_auth(self):
+        """Remove only the cached Garmin token for the active email."""
+        email = self._active_profile_email or self.email_var.get().strip()
+        if not email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
+            return
+        from garmin_fit.workflow import _resolve_garmin_token_dir
+
+        token_dir = _resolve_garmin_token_dir(email=email)
+        if not token_dir or not token_dir.exists():
+            self.pass_var.set("")
+            self._gc_status.config(text="Сохранённой авторизации нет", fg=MUTED)
+            return
+        if not messagebox.askyesno(
+                "Выйти из Garmin",
+                f"Очистить сохранённую авторизацию только для {email}?\n\n"
+                "План и настройки профиля не будут удалены.",
+                icon="warning", parent=self):
+            return
+        try:
+            shutil.rmtree(token_dir)
+            self.pass_var.set("")
+            self._gc_status.config(text="Авторизация очищена · войдите заново", fg=YELLOW)
+            self._log(f"[OK] Сохранённая авторизация очищена для {email}")
+        except OSError as exc:
+            self._gc_status.config(text=f"Не удалось очистить авторизацию: {exc}", fg=RED)
+
+    def _gui_mfa_prompt(self, prompt: str = "Код Garmin MFA") -> str:
+        """Ask for MFA on the GUI thread while auth continues in a worker."""
+        result: dict[str, str] = {}
+        completed = threading.Event()
+
+        def ask() -> None:
+            try:
+                value = simpledialog.askstring(
+                    "Подтверждение Garmin",
+                    "Введите код MFA из приложения или email Garmin:",
+                    parent=self,
+                )
+                result["value"] = (value or "").strip()
+            finally:
+                completed.set()
+
+        self.after(0, ask)
+        if not completed.wait(120):
+            raise TimeoutError("Код MFA не введён за 120 секунд.")
+        return result.get("value", "")
+
     def _save_current_profile_session(self) -> None:
         if not self._active_profile_email:
             return
@@ -607,6 +656,8 @@ class App(_AppBase):
                    command=self._edit_hr_profile).pack(fill="x", pady=(4, 2))
         ttk.Label(p, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
+        ttk.Button(p, text="⌫  Выйти из Garmin",
+                   command=self._clear_garmin_auth).pack(fill="x", pady=(2, 0))
 
         self._period_toggle_btn = ttk.Button(
             p, text="▸  Параметры периода", command=self._toggle_period_settings)
@@ -2260,6 +2311,7 @@ class App(_AppBase):
                 client = _connect_garmin_cli_client(
                     email=self.email_var.get() or None,
                     password=self.pass_var.get() or None,
+                    prompt_mfa=self._gui_mfa_prompt,
                 )
                 # A small read request verifies both authentication and API access.
                 client.get_workouts(0, 1)
@@ -2288,6 +2340,7 @@ class App(_AppBase):
                 client = _connect_garmin_cli_client(
                     email=self.email_var.get() or None,
                     password=self.pass_var.get() or None,
+                    prompt_mfa=self._gui_mfa_prompt,
                 )
                 limit = int(self._gc_limit.get() or 200)
                 workouts = client.get_workouts(0, limit)
@@ -2462,6 +2515,7 @@ class App(_AppBase):
                 client = _connect_garmin_cli_client(
                     email=self.email_var.get() or None,
                     password=self.pass_var.get() or None,
+                    prompt_mfa=self._gui_mfa_prompt,
                 )
                 client.delete_workout(workout_id)
                 self.after(0, row_widget.destroy)
@@ -2501,6 +2555,7 @@ class App(_AppBase):
                 client = _connect_garmin_cli_client(
                     email=self.email_var.get() or None,
                     password=self.pass_var.get() or None,
+                    prompt_mfa=self._gui_mfa_prompt,
                 )
             except Exception as exc:
                 self.after(0, self._gc_status.config,
