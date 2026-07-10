@@ -1,12 +1,12 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 See `version.txt` for project version history. See `TODO.md` for the full task backlog.
 
 ---
 
-## ⚡ Правило для Claude: обновляй этот файл и TODO.md в конце каждой сессии
+## ⚡ Правило для Codex: обновляй этот файл и TODO.md в конце каждой сессии
 
 В конце каждой рабочей сессии (перед финальным коммитом):
 1. Обнови раздел **«Журнал сессий»** ниже — что сделано, какие решения приняты, что отложено и почему.

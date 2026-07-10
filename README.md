@@ -23,10 +23,14 @@ python fitweaver_gui.py
 |-----|----------|
 | **📅 Calendar** | Monthly view of workouts from your YAML plan; click a workout for details; run any CLI command from the sidebar |
 | **🤖 LLM Generator** | Connect a local LLM (LM Studio / Ollama), paste plan text, generate and preview YAML, then build FIT or upload to Garmin in one click |
+| **🧱 Builder** | Create a new workout visually from blocks and templates; repeat ranges calculate `back_to_offset` automatically |
 | **🏃 Garmin Connect** | Live workout list from the API; multi-select and bulk delete; mouse-wheel scrolling |
 
 Sidebar holds all settings (credentials, date range, dry-run) and quick-access buttons for every CLI command.
 Session state (email, YAML path, LLM settings) is saved between runs — no need to re-enter each time.
+
+The GUI has **Simple** and **Expert** modes. In the packaged Windows build, ship
+`FitWeaver.exe` and `garmin-fit-cli.exe` together in the same folder.
 
 ---
 
