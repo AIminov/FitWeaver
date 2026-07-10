@@ -5,6 +5,7 @@ from garmin_fit.workout_builder import (
     BLOCK_DEFS,
     TEMPLATES,
     compute_repeat_step,
+    delete_step_from_draft,
     validate_draft,
 )
 
@@ -53,6 +54,21 @@ class ComputeRepeatStepTests(unittest.TestCase):
         # points at -- would create an overlapping/ambiguous group.
         with self.assertRaises(ValueError):
             compute_repeat_step(steps, start_position=0, end_position=1, count=2)
+
+    def test_delete_before_repeat_shifts_anchor_left(self):
+        steps = self.steps + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]
+        delete_step_from_draft(steps, 0)
+        self.assertEqual(steps[-1].back_to_offset, 0)
+
+    def test_delete_repeat_anchor_is_rejected(self):
+        steps = self.steps + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]
+        with self.assertRaises(ValueError):
+            delete_step_from_draft(steps, 1)
+
+    def test_delete_step_after_anchor_keeps_repeat_offset(self):
+        steps = self.steps + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]
+        delete_step_from_draft(steps, 2)
+        self.assertEqual(steps[-1].back_to_offset, 1)
 
 
 class BlockDefsTests(unittest.TestCase):

@@ -2092,14 +2092,12 @@ class App(_AppBase):
         self._builder_render_list()
 
     def _builder_delete(self, idx: int):
-        step = self._builder_steps[idx]
-        if step.step_type != "repeat" and self._builder_has_repeat():
-            messagebox.showinfo(
-                "Нельзя удалить",
-                "В тренировке уже есть блок повтора. Сначала удалите его, "
-                "чтобы менять остальные шаги.")
+        from garmin_fit.workout_builder import delete_step_from_draft
+        try:
+            delete_step_from_draft(self._builder_steps, idx)
+        except ValueError as exc:
+            messagebox.showinfo("Нельзя удалить шаг", str(exc), parent=self)
             return
-        del self._builder_steps[idx]
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()

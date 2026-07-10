@@ -55,6 +55,36 @@ def compute_repeat_step(
     return WorkoutStep(step_type="repeat", back_to_offset=start_position, count=count)
 
 
+def delete_step_from_draft(steps: list[WorkoutStep], position: int) -> None:
+    """Delete one draft step while keeping existing repeat offsets valid.
+
+    A repeat anchor cannot be deleted because that would make the group
+    ambiguous. Other steps are safe: repeats pointing at or after the removed
+    position are shifted left by one, matching ``PlanStore.delete_step``.
+    """
+    if not (0 <= position < len(steps)):
+        raise ValueError(f"invalid step position {position}")
+    for step in steps:
+        if step.step_type != "repeat":
+            continue
+        try:
+            offset = int(step.back_to_offset)
+        except (TypeError, ValueError):
+            continue
+        if offset == position:
+            raise ValueError("cannot delete a repeat group's anchor step")
+    for step in steps:
+        if step.step_type != "repeat":
+            continue
+        try:
+            offset = int(step.back_to_offset)
+        except (TypeError, ValueError):
+            continue
+        if offset >= position:
+            step.back_to_offset = offset - 1
+    del steps[position]
+
+
 def validate_draft(filename: str, name: str, steps: list[WorkoutStep]) -> tuple[list[str], list[str]]:
     """Validate a draft before it's ever written to PlanStore, reusing the
     one existing validator rather than a second implementation."""
