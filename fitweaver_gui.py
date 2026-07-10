@@ -456,8 +456,6 @@ class App(_AppBase):
                    style="Success.TButton", command=self._cmd_upload).pack(side="left", padx=2)
         ttk.Button(quick_actions, text="Удалить из Garmin",
                    style="Danger.TButton", command=self._cmd_delete).pack(side="left", padx=2)
-        ttk.Button(quick_actions, text="Открыть конструктор",
-                   command=self._open_builder).pack(side="left", padx=(10, 2))
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
         # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
@@ -1332,10 +1330,6 @@ class App(_AppBase):
                                       "Введите имя архива:", parent=self)
         if name:
             self._run(["restore", name.strip()])
-
-    def _open_builder(self):
-        if hasattr(self, "_nb"):
-            self._nb.select(2)
 
     # ── LLM tab helpers ───────────────────────────────────────────────────────
     def _make_llm_client(self, *, for_generation: bool = False):
