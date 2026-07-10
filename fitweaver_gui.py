@@ -285,6 +285,8 @@ class App(_AppBase):
             self.year_var.set(profile_data["year"])
         elif reset_if_missing:
             self.year_var.set(str(datetime.date.today().year))
+        self._gc_history = list(profile_data.get("garmin_history", []))[-8:]
+        self._refresh_gc_history()
 
         if not has_user_profile(email):
             if migrate_legacy_user_profile(email):
@@ -460,6 +462,7 @@ class App(_AppBase):
         save_session(self._active_profile_email, {
             "yaml_path": self.yaml_path.get(),
             "year":      self.year_var.get(),
+            "garmin_history": self._gc_history[-8:],
         })
 
     def _on_email_change(self, event=None):
@@ -2280,8 +2283,44 @@ class App(_AppBase):
         self._gc_summary.pack(fill="x", side="bottom", pady=(4, 0))
 
         self._gc_workouts: list[dict] = []
+        self._gc_history: list[dict] = []
         self._gc_checks:   dict[str, tk.BooleanVar] = {}
         self._gc_month_ids: dict[str, list[str]] = {}
+
+        history_box = ttk.LabelFrame(parent, text="Последние операции", padding=4)
+        history_box.pack(fill="x", side="bottom", pady=(4, 0))
+        self._gc_history_tree = ttk.Treeview(
+            history_box, columns=("time", "action", "result"),
+            show="headings", height=4)
+        self._gc_history_tree.heading("time", text="Время")
+        self._gc_history_tree.heading("action", text="Операция")
+        self._gc_history_tree.heading("result", text="Результат")
+        self._gc_history_tree.column("time", width=58, stretch=False)
+        self._gc_history_tree.column("action", width=180, stretch=True)
+        self._gc_history_tree.column("result", width=210, stretch=True)
+        self._gc_history_tree.pack(fill="x")
+
+    def _refresh_gc_history(self) -> None:
+        if not hasattr(self, "_gc_history_tree"):
+            return
+        for item in self._gc_history_tree.get_children():
+            self._gc_history_tree.delete(item)
+        for entry in self._gc_history[-8:][::-1]:
+            self._gc_history_tree.insert(
+                "", "end",
+                values=(entry.get("time", ""), entry.get("action", ""),
+                        entry.get("result", "")),
+            )
+
+    def _record_gc_operation(self, action: str, success: bool, result: str) -> None:
+        self._gc_history.append({
+            "time": datetime.datetime.now().strftime("%H:%M"),
+            "action": action,
+            "result": result,
+        })
+        self._gc_history = self._gc_history[-8:]
+        self._refresh_gc_history()
+        self._save_current_profile_session()
 
     def _gc_scroll(self, e):
         self._gc_canvas.yview_scroll(-1 * (e.delta // 120), "units")
@@ -2317,10 +2356,14 @@ class App(_AppBase):
                 client.get_workouts(0, 1)
                 self.after(0, self._gc_status.config,
                            {"text": "✅ Garmin Connect подключён", "fg": GREEN})
+                self.after(0, self._record_gc_operation,
+                           "Проверка подключения", True, "Подключено")
                 self.after(0, self._end_operation, True)
             except Exception as exc:
                 self.after(0, self._gc_status.config,
                            {"text": f"❌ {self._gc_friendly_error(exc)}", "fg": RED})
+                self.after(0, self._record_gc_operation,
+                           "Проверка подключения", False, self._gc_friendly_error(exc))
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2345,11 +2388,15 @@ class App(_AppBase):
                 limit = int(self._gc_limit.get() or 200)
                 workouts = client.get_workouts(0, limit)
                 self.after(0, self._gc_render, workouts)
+                self.after(0, self._record_gc_operation,
+                           "Загрузка тренировок", True, f"Получено: {len(workouts)}")
                 self.after(0, self._end_operation, True)
                 self.after(0, self._gc_update_del_btn)
             except Exception as exc:
                 self.after(0, self._gc_status.config,
                            {"text": f"❌ {exc}", "fg": RED})
+                self.after(0, self._record_gc_operation,
+                           "Загрузка тренировок", False, str(exc))
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2522,6 +2569,8 @@ class App(_AppBase):
                 self.after(0, self._gc_update_del_btn)
                 self.after(0, self._gc_status.config,
                            {"text": f"✅ Удалено {workout_id}, обновляю список…", "fg": GREEN})
+                self.after(0, self._record_gc_operation,
+                           "Удаление тренировки", True, f"Удалено: {workout_id}")
                 self.after(0, self._end_operation, True)
                 self.after(0, self._gc_load)
             except Exception as exc:
@@ -2529,6 +2578,8 @@ class App(_AppBase):
                            "Не удалось удалить", self._gc_friendly_error(exc))
                 self.after(0, self._gc_status.config,
                            {"text": "❌ Ошибка удаления", "fg": RED})
+                self.after(0, self._record_gc_operation,
+                           "Удаление тренировки", False, self._gc_friendly_error(exc))
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2560,6 +2611,8 @@ class App(_AppBase):
             except Exception as exc:
                 self.after(0, self._gc_status.config,
                            {"text": f"❌ {exc}", "fg": RED})
+                self.after(0, self._record_gc_operation,
+                           "Удаление выбранных", False, str(exc))
                 self.after(0, self._end_operation, False)
                 return
 
@@ -2581,6 +2634,10 @@ class App(_AppBase):
                 if failed: parts.append(f"Ошибок: {failed}")
                 self._gc_status.config(text="  |  ".join(parts),
                                        fg=GREEN if not failed else YELLOW)
+                self._record_gc_operation(
+                    "Удаление выбранных", not failed,
+                    f"Удалено: {deleted}; ошибок: {failed}; ATP: {atp}",
+                )
                 self._end_operation(not failed)
                 self._gc_load()   # refresh list from Garmin after the batch
 
