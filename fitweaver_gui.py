@@ -162,6 +162,8 @@ class App(_AppBase):
         self._operation_label = ""
         self._operation_button_states: dict[object, str] = {}
         self._quick_action_buttons: dict[str, ttk.Button] = {}
+        self._next_step_var = tk.StringVar(value="Создайте или выберите Garmin-профиль")
+        self._next_step_btn: ttk.Button | None = None
 
         # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
@@ -638,6 +640,13 @@ class App(_AppBase):
         self._quick_action_buttons["delete"] = ttk.Button(
             quick_actions, text="Удалить из Garmin", style="Danger.TButton", command=self._cmd_delete)
         self._quick_action_buttons["delete"].pack(side="left", padx=2)
+        next_step = ttk.Frame(top, padding=(10, 0, 10, 8))
+        next_step.pack(fill="x")
+        ttk.Label(next_step, text="ДАЛЬШЕ", style="Section.TLabel").pack(side="left", padx=(0, 10))
+        ttk.Label(next_step, textvariable=self._next_step_var,
+                  style="Status.TLabel").pack(side="left", fill="x", expand=True)
+        self._next_step_btn = ttk.Button(next_step, text="Открыть")
+        self._next_step_btn.pack(side="right")
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
         # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
@@ -1322,6 +1331,24 @@ class App(_AppBase):
             self._set_yaml_status("Файл выбран · нажмите ↺ для загрузки", ready=False)
         else:
             self._update_yaml_action_availability()
+        self._refresh_next_step()
+
+    def _refresh_next_step(self) -> None:
+        if self._next_step_btn is None:
+            return
+        if self._operation_active:
+            text, label, command = "Выполняется текущая операция…", "", None
+        elif not self._active_profile_email:
+            text, label, command = "Создайте или выберите Garmin-профиль", "Создать профиль", self._create_profile
+        elif not self.yaml_path.get().strip():
+            text, label, command = "Выберите YAML-план для работы", "Выбрать YAML", self._browse_yaml
+        elif not self._yaml_ready:
+            text, label, command = "Загрузите выбранный YAML-план", "Загрузить план", self._reload_yaml
+        else:
+            text, label, command = "План готов к сборке FIT", "Собрать FIT", self._cmd_build
+        self._next_step_var.set(text)
+        self._next_step_btn.configure(text=label or "Готово", command=command,
+                                      state="normal" if command else "disabled")
 
     def _set_yaml_status(self, text: str, *, ready: bool) -> None:
         self._yaml_ready = ready
@@ -1446,6 +1473,7 @@ class App(_AppBase):
             except tk.TclError:
                 continue
         self._shell_status_var.set(label)
+        self._refresh_next_step()
         return True
 
     def _end_operation(self, success: bool | None = None) -> None:
@@ -1463,6 +1491,7 @@ class App(_AppBase):
             self._shell_status_var.set("Ошибка")
         else:
             self._shell_status_var.set("Готово")
+        self._refresh_next_step()
 
     # ── Toast notifications ────────────────────────────────────────────────
     # Piggybacks on the existing "[OK]"/"[ERR]"/"[WARN]"/"[FAIL]" prefix
