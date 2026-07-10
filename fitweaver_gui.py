@@ -650,8 +650,22 @@ class App(_AppBase):
         self._build_builder_tab(builder_tab)
         self._build_garmin_tab(garmin_tab)
 
+    def _build_page_header(self, parent, title: str, subtitle: str) -> None:
+        """Render one consistent header for each workspace page."""
+        card = tk.Frame(parent, bg=BG3, padx=12, pady=9)
+        card.pack(fill="x", pady=(0, 8))
+        tk.Frame(card, bg=ACCENT, width=4).pack(side="left", fill="y", padx=(0, 10))
+        text_box = tk.Frame(card, bg=BG3)
+        text_box.pack(side="left", fill="x", expand=True)
+        tk.Label(text_box, text=title, bg=BG3, fg=FG,
+                 font=("Segoe UI", 12, "bold"), anchor="w").pack(anchor="w")
+        tk.Label(text_box, text=subtitle, bg=BG3, fg=MUTED,
+                 font=("Segoe UI", 9), anchor="w").pack(anchor="w", pady=(2, 0))
+
     # ── Calendar tab ──────────────────────────────────────────────────────────
     def _build_calendar_tab(self, parent):
+        self._build_page_header(
+            parent, "Календарь тренировок", "Просмотр плана, дат и недельного объёма")
         nav = ttk.Frame(parent)
         nav.pack(fill="x", pady=(0, 6))
         ttk.Button(nav, text="◀", command=self._prev_month, width=3).pack(side="left")
@@ -693,6 +707,8 @@ class App(_AppBase):
 
     # ── LLM tab ───────────────────────────────────────────────────────────────
     def _build_llm_tab(self, parent):
+        self._build_page_header(
+            parent, "Генератор тренировок", "Текст плана → YAML → FIT или Garmin Connect")
         # ── Mode toggle ───────────────────────────────────────────────────────
         mode_bar = ttk.Frame(parent)
         mode_bar.pack(fill="x", pady=(0, 4))
@@ -1515,6 +1531,8 @@ class App(_AppBase):
     def _build_builder_tab(self, parent):
         from garmin_fit.workout_builder import BLOCK_DEFS, TEMPLATES
 
+        self._build_page_header(
+            parent, "Визуальный конструктор", "Соберите новую тренировку из блоков, шаблонов и повторов")
         # Top bar: filename + templates
         top = ttk.Frame(parent)
         top.pack(fill="x", pady=(0, 4))
@@ -1995,6 +2013,8 @@ class App(_AppBase):
 
     # ── Garmin Connect tab ────────────────────────────────────────────────────
     def _build_garmin_tab(self, parent):
+        self._build_page_header(
+            parent, "Garmin Connect", "Просмотр и управление тренировками в аккаунте Garmin")
         # Top bar
         bar = ttk.Frame(parent)
         bar.pack(fill="x", pady=(0, 6))
