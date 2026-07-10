@@ -181,6 +181,7 @@ class App(_AppBase):
         self.cal_month = datetime.date.today().replace(day=1)
         self._store = None  # PlanStore | None — internal staging layer, YAML stays canonical
         self._active_profile_email: str | None = None
+        self._profile_status_var = tk.StringVar(value="Профиль не выбран")
 
         # Visual builder draft state (pre-commit, plain Python — no PlanStore
         # writes happen until "Добавить в план")
@@ -296,6 +297,7 @@ class App(_AppBase):
             self._log(f"[ERR] Не удалось применить профиль {email}: {exc}")
 
         self._builder_refresh_my_templates()
+        self._refresh_profile_status()
 
     def _prompt_hr_profile(self, email: str) -> None:
         """First-run onboarding: ask for max/resting HR so the LLM prompt can
@@ -369,6 +371,38 @@ class App(_AppBase):
     def _refresh_profile_list(self) -> None:
         from garmin_fit.profile_store import list_profiles
         self._profile_combo["values"] = list_profiles()
+
+    def _refresh_profile_status(self) -> None:
+        if not hasattr(self, "_profile_status_var"):
+            return
+        email = self._active_profile_email
+        if not email:
+            self._profile_status_var.set("Профиль не выбран")
+            return
+        from garmin_fit.profile_store import user_profile_yaml_path
+
+        path = user_profile_yaml_path(email)
+        if not path.exists():
+            self._profile_status_var.set("HR-профиль ещё не настроен")
+            return
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            self._profile_status_var.set("HR-профиль повреждён · настройте заново")
+            return
+        if isinstance(data, dict) and data.get("max_hr"):
+            self._profile_status_var.set(
+                f"HR-профиль настроен · макс. пульс {data['max_hr']}"
+            )
+        else:
+            self._profile_status_var.set("HR-профиль пропущен · можно настроить")
+
+    def _edit_hr_profile(self):
+        if not self._active_profile_email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите или создайте профиль.", parent=self)
+            return
+        self._prompt_hr_profile(self._active_profile_email)
+        self._refresh_profile_status()
 
     def _save_current_profile_session(self) -> None:
         if not self._active_profile_email:
@@ -567,6 +601,10 @@ class App(_AppBase):
         self._profile_combo.bind("<<ComboboxSelected>>", self._on_email_change)
         self._profile_combo.bind("<FocusOut>", self._on_email_change)
         self._profile_combo.bind("<Return>", self._on_email_change)
+        ttk.Label(p, textvariable=self._profile_status_var,
+                  style="Status.TLabel", wraplength=215, justify="left").pack(anchor="w")
+        ttk.Button(p, text="⚙  Настроить HR-профиль",
+                   command=self._edit_hr_profile).pack(fill="x", pady=(4, 2))
         ttk.Label(p, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
 
