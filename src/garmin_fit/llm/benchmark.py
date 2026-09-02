@@ -87,8 +87,8 @@ def run_case(
     retries: int,
 ) -> dict[str, Any]:
     case_id = str(case["id"])
-    input_path = ROOT / str(case["input_path"])
-    yaml_path = ROOT / str(case.get("yaml_path", ""))
+    input_path = PROJECT_ROOT / str(case["input_path"])
+    yaml_path = PROJECT_ROOT / str(case.get("yaml_path", ""))
 
     source_text = input_path.read_text(encoding="utf-8")
     if mode == "generate":
@@ -118,8 +118,8 @@ def run_case(
     return {
         "id": case_id,
         "status": status,
-        "input_path": str(input_path.relative_to(ROOT)),
-        "yaml_path": str(yaml_path.relative_to(ROOT)) if yaml_path.exists() else None,
+        "input_path": str(input_path.relative_to(PROJECT_ROOT)),
+        "yaml_path": str(yaml_path.relative_to(PROJECT_ROOT)) if yaml_path.exists() else None,
         "validation_errors": validation_errors,
         "warning_count": len(soft_failures),
         "checks": [
@@ -260,7 +260,7 @@ def main() -> int:
 
     suite_path = Path(args.suite)
     if not suite_path.is_absolute():
-        suite_path = ROOT / suite_path
+        suite_path = PROJECT_ROOT / suite_path
 
     report = run_suite(
         suite_path,

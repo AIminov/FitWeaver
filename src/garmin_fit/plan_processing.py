@@ -11,7 +11,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from .plan_domain import INTENSITY_ALIASES, INTENSITY_DEFAULTS, STEP_TYPE_ALIASES
+from .plan_domain import (
+    INTENSITY_ALIASES,
+    INTENSITY_DEFAULTS,
+    PACE_CONSTANT_VALUES,
+    STEP_TYPE_ALIASES,
+)
 
 FILENAME_SAFE_RE = re.compile(r"[^\w.-]+", re.UNICODE)
 
@@ -429,6 +434,9 @@ def normalize_pace_value(value: Any) -> Any:
     stripped = value.strip().strip("\"'")
     if not stripped:
         return value
+
+    if stripped in PACE_CONSTANT_VALUES:
+        return stripped
 
     match = PACE_RE.fullmatch(stripped) or PACE_SPACED_RE.fullmatch(stripped)
     if not match:

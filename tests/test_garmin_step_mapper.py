@@ -12,7 +12,6 @@ Covers:
 
 import datetime
 import unittest
-from unittest.mock import patch
 
 from garmin_fit.garmin_step_mapper import (
     END_COND_DISTANCE,
@@ -29,7 +28,6 @@ from garmin_fit.garmin_step_mapper import (
     map_workout,
 )
 from garmin_fit.plan_domain import Drill, Workout, WorkoutStep
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -498,6 +496,21 @@ class TestRepeat(unittest.TestCase):
         # stepOrder is consecutive within each nesting level, independently
         self.assertEqual([c["stepOrder"] for c in outer_children], [1, 2, 3, 4, 5])
         self.assertEqual([c["stepOrder"] for c in inner["workoutSteps"]], [1, 2])
+
+    def test_nested_repeat_with_nonzero_outer_start_uses_relative_offset(self):
+        steps = [
+            _step(step_type="dist_open", km=1),
+            _step(step_type="dist_open", km=1),
+            _step(step_type="dist_open", km=1),
+            _step(step_type="repeat", back_to_offset=2, count=2),
+            _step(step_type="dist_open", km=1),
+            _step(step_type="repeat", back_to_offset=1, count=3),
+        ]
+        result = map_steps(steps)
+        outer = result[1]
+        nested = outer["workoutSteps"][2]
+        self.assertEqual(nested["type"], "RepeatGroupDTO")
+        self.assertEqual(len(nested["workoutSteps"]), 1)
 
 
 # ---------------------------------------------------------------------------

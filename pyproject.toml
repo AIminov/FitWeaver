@@ -63,13 +63,15 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+# must match requires-python (>=3.10) so 3.11+-only syntax is flagged
+target-version = "py310"
 exclude = ["sdk/", "examples/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 # W191/W29x: whole codebase uses tabs — pre-existing style, not changing
-ignore = ["E501", "W191", "W291", "W292", "W293"]
+# E701: aligned one-line guard clauses in the GUI are a deliberate table-style idiom
+ignore = ["E501", "W191", "W291", "W292", "W293", "E701"]
 
 [tool.ruff.lint.per-file-ignores]
 # Scripts/ and garmin_fit/ are compatibility shims — intentional re-exports

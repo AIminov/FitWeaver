@@ -3,19 +3,17 @@
 
 import calendar
 import datetime
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import tkinter as tk
 import urllib.request
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
-
-import json
 
 import yaml
 
@@ -157,7 +155,11 @@ class App(_AppBase):
         self.dry_run   = tk.BooleanVar(value=True)
         self._shell_status_var = tk.StringVar(value="Готово")
         self._yaml_status_var = tk.StringVar(value="План не выбран")
+        self._yaml_loaded = False
         self._yaml_ready = False
+        self._yaml_validation_running = False
+        self._fit_ready = False
+        self._garmin_applied = False
         self._operation_active = False
         self._operation_label = ""
         self._operation_button_states: dict[object, str] = {}
@@ -182,6 +184,7 @@ class App(_AppBase):
         self.ui_mode = tk.StringVar(value="simple")   # "simple" | "expert"
         self._llm_conn_expanded = False  # simple mode: connection details collapsed by default
         self._period_expanded = False  # simple mode: Garmin date/dry-run options collapsed
+        self._log_expanded = False  # simple mode: raw command output collapsed by default
 
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
@@ -438,6 +441,8 @@ class App(_AppBase):
         if not hasattr(self, "_profile_status_var"):
             return
         email = self._active_profile_email
+        if hasattr(self, "_top_profile_var"):
+            self._top_profile_var.set(f"Профиль Garmin: {email or 'не выбран'}")
         if not email:
             self._profile_status_var.set("Профиль не выбран")
             return
@@ -619,9 +624,12 @@ class App(_AppBase):
         ttk.Entry(plan_row, textvariable=self.yaml_path, width=55).pack(
             side="left", fill="x", expand=True, padx=(0, 4))
         ttk.Button(plan_row, text="Обзор…", command=self._browse_yaml).pack(side="left", padx=2)
-        ttk.Button(plan_row, text="↺", command=self._reload_yaml, width=3).pack(side="left", padx=2)
+        ttk.Button(plan_row, text="Обновить", command=self._reload_yaml).pack(side="left", padx=2)
         ttk.Label(plan_block, textvariable=self._yaml_status_var,
                   style="Status.TLabel").pack(anchor="w", pady=(3, 0))
+        self._top_profile_var = tk.StringVar(value="Профиль Garmin: не выбран")
+        ttk.Label(plan_block, textvariable=self._top_profile_var,
+                  style="Muted.TLabel").pack(anchor="w")
 
         ttk.Label(header, textvariable=self._shell_status_var,
                   style="Muted.TLabel").pack(side="right", padx=(14, 4))
@@ -630,6 +638,22 @@ class App(_AppBase):
         quick_actions.pack(fill="x")
         ttk.Label(quick_actions, text="Быстрые действия", style="Section.TLabel").pack(
             side="left", padx=(0, 10))
+        mode_box = ttk.Frame(top, padding=(10, 0, 10, 6))
+        mode_box.pack(fill="x")
+        ttk.Label(mode_box, text="Garmin Connect:", style="Section.TLabel").pack(
+            side="left", padx=(0, 10))
+        self._garmin_mode_badge = ttk.Label(
+            mode_box, text="ПРЕДПРОСМОТР — изменения не применяются",
+            style="Warning.TLabel")
+        self._garmin_mode_badge.pack(side="left", padx=(0, 10))
+        ttk.Radiobutton(
+            mode_box, text="Предпросмотр (ничего не менять)",
+            variable=self.dry_run, value=True,
+            command=self._on_dry_run_change).pack(side="left", padx=(0, 8))
+        ttk.Radiobutton(
+            mode_box, text="Применить в Garmin",
+            variable=self.dry_run, value=False,
+            command=self._on_dry_run_change).pack(side="left")
         self._quick_action_buttons["validate"] = ttk.Button(
             quick_actions, text="Проверить YAML", command=self._cmd_validate_yaml)
         self._quick_action_buttons["validate"].pack(side="left", padx=2)
@@ -642,9 +666,18 @@ class App(_AppBase):
         self._quick_action_buttons["delete"] = ttk.Button(
             quick_actions, text="Удалить из Garmin", style="Danger.TButton", command=self._cmd_delete)
         self._quick_action_buttons["delete"].pack(side="left", padx=2)
+        self._quick_action_hint_var = tk.StringVar(value="")
+        ttk.Label(quick_actions, textvariable=self._quick_action_hint_var,
+                  style="Muted.TLabel").pack(side="left", padx=(10, 0))
+        self._update_garmin_mode_ui()
         next_step = ttk.Frame(top, padding=(10, 0, 10, 8))
         next_step.pack(fill="x")
-        ttk.Label(next_step, text="ДАЛЬШЕ", style="Section.TLabel").pack(side="left", padx=(0, 10))
+        ttk.Label(next_step, text="ПРОЦЕСС", style="Section.TLabel").pack(side="left", padx=(0, 10))
+        self._stepper_labels = []
+        for index, title in enumerate(("Профиль", "План", "Проверен", "FIT", "Garmin"), start=1):
+            label = ttk.Label(next_step, text=f"{index} {title}", style="Muted.TLabel")
+            label.pack(side="left", padx=(0 if index == 1 else 8, 8))
+            self._stepper_labels.append(label)
         ttk.Label(next_step, textvariable=self._next_step_var,
                   style="Status.TLabel").pack(side="left", fill="x", expand=True)
         self._next_step_btn = ttk.Button(next_step, text="Открыть")
@@ -741,19 +774,17 @@ class App(_AppBase):
         self._period_frame.pack(fill="x")
         ttk.Label(self._period_frame, text="ПЕРИОД", style="Section.TLabel").pack(
             anchor="w", pady=(4, 3))
-        ttk.Label(self._period_frame, text="С (YYYY-MM-DD):",
+        ttk.Label(self._period_frame, text="С (YYYY-MM-DD) — фильтр Garmin:",
                   style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(self._period_frame, textvariable=self.from_var).pack(
             fill="x", pady=(0, 4))
-        ttk.Label(self._period_frame, text="По (YYYY-MM-DD):",
+        ttk.Label(self._period_frame, text="По (YYYY-MM-DD) — фильтр Garmin:",
                   style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(self._period_frame, textvariable=self.to_var).pack(
             fill="x", pady=(0, 4))
-        ttk.Label(self._period_frame, text="Год:", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(self._period_frame, text="Год плана — для расстановки дат:",
+                  style="Muted.TLabel").pack(anchor="w")
         ttk.Entry(self._period_frame, textvariable=self.year_var, width=10).pack(anchor="w")
-        ttk.Checkbutton(self._period_frame, text="Dry-run (без изменений)",
-                        variable=self.dry_run).pack(anchor="w", pady=(6, 0))
-
         self._advanced_hline = ttk.Separator(p)
         self._advanced_hline.pack(fill="x", pady=6)
         self._advanced_actions_frame = ttk.Frame(p)
@@ -884,6 +915,8 @@ class App(_AppBase):
     def _build_calendar_tab(self, parent):
         self._build_page_header(
             parent, "Календарь тренировок", "Просмотр плана, дат и недельного объёма")
+        ttk.Label(parent, text="Подсказка: перетащите тренировку на другой день; Ctrl+перетаскивание создаёт копию.",
+                  style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
         nav = ttk.Frame(parent)
         nav.pack(fill="x", pady=(0, 6))
         ttk.Button(nav, text="◀", command=self._prev_month, width=3).pack(side="left")
@@ -921,13 +954,49 @@ class App(_AppBase):
         log_hdr = ttk.Frame(parent)
         log_hdr.pack(fill="x")
         ttk.Label(log_hdr, text="ВЫВОД КОМАНДЫ", style="Section.TLabel").pack(side="left")
+        self._log_toggle_btn = ttk.Button(log_hdr, text="Показать подробности",
+                                          command=self._toggle_log, width=22)
+        self._log_toggle_btn.pack(side="right", padx=(4, 0))
         ttk.Button(log_hdr, text="Очистить", command=self._clear_log, width=8).pack(side="right")
+        self._result_var = tk.StringVar(value="Здесь появится результат последней операции")
+        ttk.Label(parent, textvariable=self._result_var, style="Status.TLabel",
+                  wraplength=360, justify="left").pack(fill="x", pady=(4, 2))
+        result_actions = ttk.Frame(parent)
+        result_actions.pack(fill="x", pady=(0, 4))
+        self._result_action_buttons = {
+            "open_fit": ttk.Button(result_actions, text="Открыть папку FIT",
+                                    command=self._open_fit_folder, state="disabled"),
+            "go_garmin": ttk.Button(result_actions, text="Перейти к Garmin",
+                                     command=lambda: self._nb.select(3), state="disabled"),
+            "apply": ttk.Button(result_actions, text="Перейти к применению",
+                                 command=self._switch_to_apply_mode, state="disabled"),
+        }
+        for button in self._result_action_buttons.values():
+            button.pack(side="left", padx=(0, 4))
+        self._log_body = ttk.Frame(parent)
+        self._log_body.pack(fill="both", expand=True)
         self._log_w = scrolledtext.ScrolledText(
-            parent, height=10, bg=BG2, fg=GREEN,
+            self._log_body, height=10, bg=BG2, fg=GREEN,
             font=("Consolas", 9), state="disabled",
             insertbackground=FG, relief="flat")
         self._log_w.pack(fill="both", expand=True, pady=(4, 0))
         self._log_w.tag_config("hint", foreground=YELLOW)
+
+    def _toggle_log(self) -> None:
+        self._log_expanded = not self._log_expanded
+        self._apply_log_visibility()
+
+    def _apply_log_visibility(self) -> None:
+        if not hasattr(self, "_log_body"):
+            return
+        show = self.ui_mode.get() == "expert" or self._log_expanded
+        if show:
+            self._log_body.pack(fill="both", expand=True)
+        else:
+            self._log_body.pack_forget()
+        if hasattr(self, "_log_toggle_btn"):
+            self._log_toggle_btn.configure(
+                text="Скрыть подробности" if show else "Показать подробности")
 
     # ── LLM tab ───────────────────────────────────────────────────────────────
     def _build_llm_tab(self, parent):
@@ -936,9 +1005,9 @@ class App(_AppBase):
         # ── Mode toggle ───────────────────────────────────────────────────────
         mode_bar = ttk.Frame(parent)
         mode_bar.pack(fill="x", pady=(0, 4))
-        ttk.Radiobutton(mode_bar, text="Своя LLM", variable=self.llm_conn_mode,
+        ttk.Radiobutton(mode_bar, text="Своя модель (локально)", variable=self.llm_conn_mode,
                        value="own", command=self._on_llm_mode_change).pack(side="left", padx=(0, 12))
-        ttk.Radiobutton(mode_bar, text="LLM автора", variable=self.llm_conn_mode,
+        ttk.Radiobutton(mode_bar, text="Общий сервер (URL и токен)", variable=self.llm_conn_mode,
                        value="api", command=self._on_llm_mode_change).pack(side="left")
 
         # ── "Своя LLM" connection bar ─────────────────────────────────────────
@@ -1031,12 +1100,8 @@ class App(_AppBase):
                                       font=("Segoe UI", 9))
         self._llm_progress.pack(side="left", padx=8)
 
-        ttk.Button(actions, text="💾  Сохранить YAML",
+        ttk.Button(actions, text="💾  Сохранить как текущий план",
                    command=self._save_yaml).pack(side="right", padx=2)
-        ttk.Button(actions, text="📅  Загрузить этот YAML",
-                   command=self._yaml_to_garmin).pack(side="right", padx=2)
-        ttk.Button(actions, text="⚙  Собрать этот YAML в FIT", style="Success.TButton",
-                   command=self._yaml_to_build).pack(side="right", padx=2)
 
     def _on_llm_mode_change(self):
         self._conn_own.pack_forget()
@@ -1061,6 +1126,8 @@ class App(_AppBase):
 
     def _on_ui_mode_change(self):
         simple = self.ui_mode.get() == "simple"
+
+        self._apply_log_visibility()
 
         if hasattr(self, "_advanced_actions_frame"):
             if simple:
@@ -1353,7 +1420,10 @@ class App(_AppBase):
 
     # ── YAML load / save ──────────────────────────────────────────────────────
     def _on_yaml_path_change(self) -> None:
+        self._yaml_loaded = False
         self._yaml_ready = False
+        self._fit_ready = False
+        self._garmin_applied = False
         self._update_yaml_context()
 
     def _update_yaml_context(self) -> None:
@@ -1365,7 +1435,7 @@ class App(_AppBase):
         elif not path.is_file():
             self._set_yaml_status("Файл не найден · проверьте путь", ready=False)
         elif not self._yaml_ready:
-            self._set_yaml_status("Файл выбран · нажмите ↺ для загрузки", ready=False)
+            self._set_yaml_status("Файл выбран · нажмите «Обновить» для загрузки", ready=False)
         else:
             self._update_yaml_action_availability()
         self._refresh_next_step()
@@ -1386,11 +1456,13 @@ class App(_AppBase):
         self._next_step_var.set(text)
         self._next_step_btn.configure(text=label or "Готово", command=command,
                                       state="normal" if command else "disabled")
+        self._refresh_stepper()
 
     def _set_yaml_status(self, text: str, *, ready: bool) -> None:
         self._yaml_ready = ready
         self._yaml_status_var.set(text)
         self._update_yaml_action_availability()
+        self._refresh_stepper()
 
     def _update_yaml_action_availability(self) -> None:
         if not hasattr(self, "_quick_action_buttons"):
@@ -1399,10 +1471,64 @@ class App(_AppBase):
         states = {
             "validate": "normal" if has_file else "disabled",
             "build": "normal" if self._yaml_ready else "disabled",
-            "upload": "normal" if self._yaml_ready else "disabled",
+            "upload": "normal" if self._yaml_ready and self._active_profile_email else "disabled",
+            "delete": "normal" if self._active_profile_email else "disabled",
         }
         for name, state in states.items():
             self._quick_action_buttons[name].configure(state=state)
+        if hasattr(self, "_quick_action_hint_var"):
+            if not self._active_profile_email:
+                hint = "Следующий шаг: выберите профиль Garmin"
+            elif not has_file:
+                hint = "Следующий шаг: выберите YAML-план"
+            elif not self._yaml_loaded:
+                hint = "Следующий шаг: нажмите «Обновить»"
+            elif not self._yaml_ready:
+                hint = "Следующий шаг: дождитесь успешной проверки YAML"
+            else:
+                hint = ("Garmin: режим предпросмотра"
+                        if self.dry_run.get() else "Garmin: изменения будут применены")
+            self._quick_action_hint_var.set(hint)
+        self._update_garmin_mode_ui()
+
+    def _on_dry_run_change(self) -> None:
+        """Refresh action labels immediately when the Garmin mode changes."""
+        self._update_garmin_mode_ui()
+        self._refresh_next_step()
+
+    def _update_garmin_mode_ui(self) -> None:
+        if not hasattr(self, "_garmin_mode_badge"):
+            return
+        preview = self.dry_run.get()
+        self._garmin_mode_badge.configure(
+            text=("ПРЕДПРОСМОТР — изменения не применяются" if preview
+                  else "ПРИМЕНЕНИЕ — изменения будут внесены"),
+            style="Warning.TLabel" if preview else "Danger.TLabel",
+        )
+        if hasattr(self, "_quick_action_buttons"):
+            if "upload" in self._quick_action_buttons:
+                self._quick_action_buttons["upload"].configure(
+                    text="Предпросмотр загрузки" if preview else "Загрузить в Garmin")
+            if "delete" in self._quick_action_buttons:
+                self._quick_action_buttons["delete"].configure(
+                    text="Предпросмотр удаления" if preview else "Удалить из Garmin")
+
+    def _refresh_stepper(self) -> None:
+        if not hasattr(self, "_stepper_labels"):
+            return
+        steps = [
+            bool(self._active_profile_email),
+            bool(self._yaml_loaded),
+            bool(self._yaml_ready),
+            bool(self._fit_ready),
+            bool(self._garmin_applied),
+        ]
+        if self.dry_run.get() and steps[4]:
+            steps[4] = False
+        titles = ("Профиль", "План", "Проверен", "FIT", "Garmin")
+        for label, title, done in zip(self._stepper_labels, titles, steps):
+            label.configure(text=f"✓ {title}" if done else title,
+                            style="Status.TLabel" if done else "Muted.TLabel")
 
     def _browse_yaml(self):
         path = filedialog.askopenfilename(
@@ -1417,6 +1543,7 @@ class App(_AppBase):
     def _reload_yaml(self):
         path = self.yaml_path.get()
         if not path or not Path(path).exists():
+            self._yaml_loaded = False
             self._set_yaml_status("План не выбран · выберите YAML", ready=False)
             return
         try:
@@ -1437,15 +1564,18 @@ class App(_AppBase):
                 if dated:
                     self.cal_month = datetime.date.fromisoformat(dated[0]["date"]).replace(day=1)
             self._draw_calendar()
+            self._yaml_loaded = True
             self._set_yaml_status(
-                f"План загружен · {len(self.workouts)} тренировок", ready=bool(self.workouts)
+                f"План загружен · {len(self.workouts)} тренировок · проверяю YAML…", ready=False
             )
             self._log(f"[OK] Загружено {len(self.workouts)} тренировок из {Path(path).name}")
             if repairs:
                 self._log("[Авто-правки]")
                 for r in repairs:
                     self._log(f"  {r}")
+            self.after(50, self._cmd_validate_yaml)
         except Exception as exc:
+            self._yaml_loaded = False
             self._set_yaml_status("Ошибка чтения YAML · проверьте файл", ready=False)
             self._log(f"[ERR] {exc}")
 
@@ -1471,10 +1601,16 @@ class App(_AppBase):
         stripped = text.strip()
         if stripped.startswith(("[ERR]", "[FAIL]")):
             self._shell_status_var.set("Ошибка")
+            if hasattr(self, "_result_var"):
+                self._result_var.set(stripped)
         elif stripped.startswith("[OK]"):
             self._shell_status_var.set("Готово")
+            if hasattr(self, "_result_var"):
+                self._result_var.set(stripped)
         elif stripped.startswith(("[WARN]", "⏳")):
             self._shell_status_var.set("Выполняется")
+            if hasattr(self, "_result_var"):
+                self._result_var.set(stripped)
         self._log_w.config(state="normal")
         self._log_w.insert("end", text + "\n")
         self._log_w.see("end")
@@ -1596,6 +1732,27 @@ class App(_AppBase):
         self._log_w.delete("1.0", "end")
         self._log_w.config(state="disabled")
 
+    def _set_result_actions(self, *enabled: str) -> None:
+        for name, button in getattr(self, "_result_action_buttons", {}).items():
+            button.configure(state="normal" if name in enabled else "disabled")
+
+    def _open_fit_folder(self) -> None:
+        output_dir = PROJECT_ROOT / "Output_fit"
+        output_dir.mkdir(exist_ok=True)
+        try:
+            if os.name == "nt":
+                os.startfile(str(output_dir))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(output_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(output_dir)])
+        except OSError as exc:
+            self._log(f"[ERR] Не удалось открыть папку FIT: {exc}")
+
+    def _switch_to_apply_mode(self) -> None:
+        self.dry_run.set(False)
+        self._on_dry_run_change()
+
     # ── CLI runner ────────────────────────────────────────────────────────────
     def _cli_command(self, args):
         if getattr(sys, "frozen", False):
@@ -1635,12 +1792,32 @@ class App(_AppBase):
 
     def _handle_cli_result(self, args, ok: bool) -> None:
         if args and args[0] == "validate-yaml":
+            self._yaml_validation_running = False
             if ok:
                 self._set_yaml_status("YAML валиден · готово к сборке", ready=True)
+                self._result_var.set("YAML проверен: план готов к сборке FIT")
             else:
                 self._set_yaml_status(
-                    "YAML не прошёл проверку · см. вывод команды", ready=False
+                    "YAML содержит ошибки · см. вывод команды", ready=False
                 )
+                self._result_var.set("YAML не прошёл проверку. Подробности — в логе ниже.")
+                self._set_result_actions()
+        elif args and args[0] == "run" and ok:
+            self._fit_ready = True
+            self._result_var.set("FIT-файлы собраны. Их можно открыть в папке Output_fit.")
+            self._set_result_actions("open_fit", "go_garmin")
+            self._refresh_stepper()
+        elif args and args[0] == "garmin-calendar" and ok and "--dry-run" not in args:
+            self._garmin_applied = True
+            self._result_var.set("Изменения применены в Garmin Connect.")
+            self._set_result_actions("go_garmin")
+            self._refresh_stepper()
+        if args and args[0] in {"garmin-calendar", "garmin-calendar-delete"} and "--dry-run" in args:
+            if ok:
+                self._result_var.set("Предпросмотр завершён: изменения НЕ применены.")
+                self._set_result_actions("apply", "go_garmin")
+                self._log("[OK] Это был предпросмотр: изменения НЕ применены. "
+                          "Переключите режим на «Применить в Garmin», чтобы выполнить действие.")
 
     def _append_garmin_args(self, args):
         if self.email_var.get(): args += ["--email",     self.email_var.get()]
@@ -1651,12 +1828,29 @@ class App(_AppBase):
 
     # ── CLI commands ──────────────────────────────────────────────────────────
     def _cmd_build(self):
+        self._fit_ready = False
         args = ["run"]
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
         self._run(args)
 
     def _cmd_upload(self):
+        if not self._active_profile_email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
+            return
+        if not self.dry_run.get():
+            count = len(self.workouts)
+            period = f"{self.from_var.get() or 'начало не задано'} — {self.to_var.get() or 'конец не задан'}"
+            if not messagebox.askyesno(
+                    "Применить изменения в Garmin",
+                    f"Будет изменён календарь Garmin Connect.\n\n"
+                    f"План: {Path(self.yaml_path.get()).name}\n"
+                    f"Профиль: {self._active_profile_email}\n"
+                    f"Период: {period}\n"
+                    f"Тренировок в плане: {count}\n\n"
+                    "Режим: ПРИМЕНИТЬ — изменения будут внесены.\nПродолжить?",
+                    icon="warning", parent=self):
+                return
         args = ["garmin-calendar"]
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
@@ -1666,10 +1860,18 @@ class App(_AppBase):
         self._run(args)
 
     def _cmd_delete(self):
-        if not self.dry_run.get():
-            if not messagebox.askyesno("Подтверждение",
-                    "Удалить тренировки из Garmin Connect?\nЭто необратимо.", icon="warning"):
-                return
+        if not self._active_profile_email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
+            return
+        mode = "ПРЕДПРОСМОТР" if self.dry_run.get() else "ПРИМЕНИТЬ"
+        if not self.dry_run.get() and not messagebox.askyesno(
+                "Удалить тренировки из Garmin",
+                f"Профиль: {self._active_profile_email}\n"
+                f"Период: {self.from_var.get() or 'начало не задано'} — "
+                f"{self.to_var.get() or 'конец не задан'}\n\n"
+                f"Режим: {mode} — удаление необратимо.\nПродолжить?",
+                icon="warning", parent=self):
+            return
         args = ["garmin-calendar-delete"]
         self._append_garmin_args(args)
         args += ["--dry-run"] if self.dry_run.get() else ["--confirm"]
@@ -1678,6 +1880,7 @@ class App(_AppBase):
     def _cmd_validate_yaml(self):
         if self.yaml_path.get().strip():
             self._set_yaml_status("Проверка YAML…", ready=False)
+            self._yaml_validation_running = True
         args = ["validate-yaml"]
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
@@ -1808,8 +2011,9 @@ class App(_AppBase):
                 self.after(0, on_api_err)
 
             except Exception as exc:
+                msg = str(exc)  # capture before Python clears exc at end of except block
                 def on_err():
-                    self._set_progress(f"❌ Ошибка: {exc}", RED)
+                    self._set_progress(f"❌ Ошибка: {msg}", RED)
                     self._gen_btn.config(state="normal")
                     self._end_operation(False)
                 self.after(0, on_err)
@@ -1885,6 +2089,8 @@ class App(_AppBase):
         self._builder_filename_var = tk.StringVar()
         ttk.Entry(top, textvariable=self._builder_filename_var, width=32).pack(
             side="left", padx=(4, 12))
+        ttk.Label(top, text="Дата и тип задаются в имени Wнеделя_ММ-ДД_…",
+                  style="Muted.TLabel").pack(side="left", padx=(0, 8))
         for key, (label, _factory) in TEMPLATES.items():
             ttk.Button(top, text=label,
                        command=lambda k=key: self._builder_apply_template(k)).pack(side="left", padx=2)

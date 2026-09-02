@@ -23,6 +23,20 @@ KNOWN_PACE_CONSTANTS = frozenset(
     }
 )
 
+# Symbolic pace names are part of the YAML format.  Keep their canonical
+# values in the domain layer so every consumer (FIT and Garmin Connect) uses
+# the same interpretation.
+PACE_CONSTANT_VALUES = {
+    "EASY_F": "6:00",
+    "EASY_S": "6:30",
+    "AERO_F": "5:30",
+    "AERO_S": "5:50",
+    "LONG_F": "5:30",
+    "LONG_S": "6:00",
+    "TEMPO_F": "4:50",
+    "TEMPO_S": "5:10",
+}
+
 ALLOWED_INTENSITY = frozenset({"active", "warmup", "cooldown", "recovery"})
 
 INTENSITY_DEFAULTS = {

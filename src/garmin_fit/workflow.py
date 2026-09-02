@@ -4,17 +4,17 @@ Workflow orchestration for Garmin FIT generation.
 This module contains business workflow logic separate from CLI parsing.
 """
 
+import datetime
 import logging
 import subprocess
 import sys
 import tempfile
-import datetime
 from importlib.util import find_spec
 from pathlib import Path
 from time import perf_counter
 
-from .compare_build_modes import compare_build_modes
 from ._shared_cli import display_path
+from .compare_build_modes import compare_build_modes
 from .config import OUTPUT_DIR, PLAN_DIR, ROOT, TEMPLATES_DIR
 from .logging_utils import setup_file_logging as _setup_file_logging
 from .orchestrator import run_generation_pipeline, select_active_yaml
@@ -640,6 +640,20 @@ def workflow_garmin_calendar(
         return 1
 
     from .plan_domain import plan_from_data
+    from .plan_processing import repair_plan_data
+    from .plan_validator import validate_plan_data
+
+    plan_data, repairs = repair_plan_data(plan_data)
+    for repair in repairs:
+        print(f"[REPAIR] {repair}")
+    errors, warnings = validate_plan_data(plan_data)
+    for w in warnings:
+        print(f"[WARN] {w}")
+    if errors:
+        for e in errors:
+            print(f"[FAIL] {e}")
+        print(f"[FAIL] Plan validation failed ({len(errors)} error(s)) — aborting Calendar upload")
+        return 1
 
     plan = plan_from_data(plan_data)
     print(f"Workouts:     {len(plan.workouts)}")

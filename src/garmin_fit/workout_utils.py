@@ -126,31 +126,6 @@ REC = Intensity.RECOVERY
 # HR Zone Support
 # ============================================================================
 
-def load_hr_zones():
-    """
-    Load HR zones from user_profile.yaml.
-
-    Returns:
-        dict: HR zones configuration with keys like 'zone1', 'zone2', etc.
-              Each zone has 'low' and 'high' bpm values.
-
-    Raises:
-        FileNotFoundError: If user_profile.yaml doesn't exist
-    """
-    import yaml
-
-    from .config import USER_PROFILE
-
-    if not USER_PROFILE.exists():
-        raise FileNotFoundError(
-            f"User profile not found: {USER_PROFILE}\n"
-            "Create user_profile.yaml with your HR zones. See README for format."
-        )
-    with open(USER_PROFILE, 'r', encoding='utf-8') as f:
-        profile = yaml.safe_load(f)
-    return profile.get("hr_zones", {})
-
-
 def load_user_profile():
     """
     Load full user profile from user_profile.yaml.
@@ -406,8 +381,8 @@ def build_yaml_to_fit_index(steps) -> dict:
 	handles raw dicts (legacy template path) — keep both in sync when adding new
 	expandable step types.
 	"""
-	from .sbu_block import sbu_block as _sbu
 	from .plan_domain import drill_to_data
+	from .sbu_block import sbu_block as _sbu
 
 	mapping: dict[int, int] = {}
 	fit_idx = 0
@@ -421,7 +396,7 @@ def build_yaml_to_fit_index(steps) -> dict:
 	return mapping
 
 
-def save_workout(filepath, name, steps, serial_number=12345, time_created_ms=None):
+def save_workout(filepath, name, steps, serial_number=None, time_created_ms=None):
     """
     Build and save a FIT workout file.
 
@@ -429,7 +404,8 @@ def save_workout(filepath, name, steps, serial_number=12345, time_created_ms=Non
         filepath: Output path for .fit file
         name: Workout name (displayed on watch)
         steps: List of WorkoutStepMessage objects
-        serial_number: Device serial number for file_id (default: 12345)
+        serial_number: Device serial number for file_id. If omitted, allocate a
+            collision-safe serial number from the shared state manager.
         time_created_ms: Creation timestamp in milliseconds since epoch (default: current time)
 
     Returns:
@@ -444,6 +420,13 @@ def save_workout(filepath, name, steps, serial_number=12345, time_created_ms=Non
         save_workout("output.fit", "Easy 7km", steps, serial_number=900000001)
     """
     from datetime import datetime
+
+    if serial_number is None:
+        from .state_manager import fit_timestamp_to_unix_ms, get_next_serial_timestamp
+
+        serial_number, fit_timestamp = get_next_serial_timestamp(1)[0]
+        if time_created_ms is None:
+            time_created_ms = fit_timestamp_to_unix_ms(fit_timestamp)
 
     if time_created_ms is None:
         time_created_ms = int(datetime.now().timestamp() * 1000)

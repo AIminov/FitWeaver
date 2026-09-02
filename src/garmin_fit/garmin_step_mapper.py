@@ -23,7 +23,7 @@ import logging
 import re
 from typing import Any
 
-from .plan_domain import Workout, WorkoutStep
+from .plan_domain import PACE_CONSTANT_VALUES, Workout, WorkoutStep
 from .sbu_block import DEFAULT_DRILLS as SBU_DEFAULT_DRILLS
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,7 @@ _OPEN_STEP_FALLBACK_SECS = 60.0
 
 def _pace_to_mps(pace_str: str) -> float:
     """Convert "MM:SS" per km to metres per second."""
+    pace_str = PACE_CONSTANT_VALUES.get(pace_str, pace_str)
     m, s = pace_str.split(":")
     total = int(m) * 60 + int(s)
     return round(1000.0 / total, 4)
@@ -316,6 +317,7 @@ def _map_repeat(
     order: int,
     all_steps: list[WorkoutStep],
     current_idx: int,
+    base_idx: int = 0,
 ) -> dict[str, Any]:
     """
     repeat → RepeatGroupDTO.
@@ -323,7 +325,7 @@ def _map_repeat(
     back_to_offset is a YAML-level 0-based index.
     We wrap the steps from back_to_offset..current_idx-1.
     """
-    back_to = int(step.back_to_offset)
+    back_to = int(step.back_to_offset) - base_idx
     count = int(step.count)
 
     # Collect the steps that form the body of the repeat group.
@@ -332,7 +334,13 @@ def _map_repeat(
 
     child_steps: list[dict[str, Any]] = []
     for child_order, child in enumerate(body_steps_domain, start=1):
-        mapped = _map_single_step(child, child_order, body_steps_domain, child_order - 1)
+        mapped = _map_single_step(
+            child,
+            child_order,
+            body_steps_domain,
+            child_order - 1,
+            base_idx=base_idx + int(step.back_to_offset),
+        )
         if mapped is not None:
             # Flatten nested repeat groups into the child list
             if isinstance(mapped, list):
@@ -372,10 +380,11 @@ def _map_single_step(
     all_steps: list[WorkoutStep],
     current_idx: int,
     language: str = "ru",
+    base_idx: int = 0,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     stype = step.step_type
     if stype == "repeat":
-        return _map_repeat(step, order, all_steps, current_idx)
+        return _map_repeat(step, order, all_steps, current_idx, base_idx)
     if stype == "sbu_block":
         try:
             return _map_sbu_block(step, order, language)

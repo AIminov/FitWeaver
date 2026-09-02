@@ -6,9 +6,9 @@ Uses shared orchestrator logic.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
-from .config import OUTPUT_DIR, PLAN_DIR
+from .config import PLAN_DIR
 from .orchestrator import run_generation_pipeline
 
 
@@ -29,10 +29,3 @@ def save_yaml_to_plan_dir(yaml_content: str, filename: str) -> Path:
     file_path.write_text(yaml_content, encoding="utf-8")
     print(f"Saved YAML to {file_path}")
     return file_path
-
-
-def get_fit_files_from_output() -> List[Path]:
-    """Get all FIT files from Output_fit directory."""
-    if not OUTPUT_DIR.exists():
-        return []
-    return sorted(OUTPUT_DIR.glob("*.fit"))

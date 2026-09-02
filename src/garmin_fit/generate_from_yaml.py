@@ -76,6 +76,7 @@ def get_workout_steps():
 if __name__ == "__main__":
     from garmin_fit.workout_utils import save_workout
     from garmin_fit.config import OUTPUT_DIR
+    from garmin_fit.state_manager import fit_timestamp_to_unix_ms, get_next_serial_timestamp
 
     info = get_workout_info()
     steps = get_workout_steps()
@@ -84,7 +85,14 @@ if __name__ == "__main__":
     output_dir.mkdir(exist_ok=True)
 
     filepath = output_dir / "{safe_filename}.fit"
-    save_workout(str(filepath), info["name"], steps)
+    serial, timestamp = get_next_serial_timestamp(1)[0]
+    save_workout(
+        str(filepath),
+        info["name"],
+        steps,
+        serial_number=serial,
+        time_created_ms=fit_timestamp_to_unix_ms(timestamp),
+    )
     print(f"Generated: {{filepath}}")
 '''
 

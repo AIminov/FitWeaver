@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from datetime import datetime
@@ -14,8 +15,26 @@ except Exception:
     telegram_bot = None
 
 
+async def _to_thread_inline(func, *args, **kwargs):
+    # Python 3.10 stdlib bug: asyncio.to_thread + per-test event-loop teardown
+    # deadlocks the whole pytest process (reproducible with a 2-line to_thread
+    # test, no project code involved; pytest-asyncio hangs the same way).
+    # telegram_bot only uses to_thread to hop blocking calls off the loop
+    # thread; in tests those calls are instant mocks/fakes, so running them
+    # inline (no worker thread) is observationally identical and avoids the
+    # hang. Restored in tearDown.
+    return func(*args, **kwargs)
+
+
 @unittest.skipIf(telegram_bot is None, "telegram_bot dependencies are unavailable")
 class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self._orig_to_thread = asyncio.to_thread
+        asyncio.to_thread = _to_thread_inline
+
+    def tearDown(self):
+        asyncio.to_thread = self._orig_to_thread
+
     async def asyncSetUp(self):
         telegram_bot.USER_STATES.clear()
 

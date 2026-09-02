@@ -169,12 +169,6 @@ def load_strict_examples(
     return "\n\n".join(sections)
 
 
-def _render_list(title: str, values: list[str]) -> list[str]:
-    lines = [title]
-    lines.extend(f"- {value}" for value in values)
-    return lines
-
-
 def render_llm_contract(
     contract: dict[str, Any],
     *,

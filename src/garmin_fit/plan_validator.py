@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 import yaml
 
-from .plan_domain import ALLOWED_INTENSITY, KNOWN_PACE_CONSTANTS, STEP_REQUIRED_FIELDS
+from .plan_domain import ALLOWED_INTENSITY, PACE_CONSTANT_VALUES, STEP_REQUIRED_FIELDS
 from .plan_schema import _is_valid_pace, _pace_to_seconds
 
 # ---------------------------------------------------------------------------
@@ -241,6 +241,7 @@ def validate_plan_data_detailed(
             )
             continue
 
+        repeat_ranges: list[tuple[int, int]] = []
         for s_idx, step in enumerate(steps):
             s_prefix = f"{prefix}.steps[{s_idx}]"
             if not isinstance(step, dict):
@@ -355,8 +356,12 @@ def validate_plan_data_detailed(
                         severity="error",
                     )
                 if pf_valid and ps_valid:
-                    pf_sec = _pace_to_seconds(step["pace_fast"])
-                    ps_sec = _pace_to_seconds(step["pace_slow"])
+                    pf = step["pace_fast"]
+                    ps = step["pace_slow"]
+                    pf = PACE_CONSTANT_VALUES.get(pf, pf)
+                    ps = PACE_CONSTANT_VALUES.get(ps, ps)
+                    pf_sec = _pace_to_seconds(pf)
+                    ps_sec = _pace_to_seconds(ps)
                     if pf_sec >= ps_sec:
                         _issue(
                             errors,
@@ -394,6 +399,8 @@ def validate_plan_data_detailed(
                         category="repeat_semantics_error",
                         severity="error",
                     )
+                if isinstance(back_to_offset, int) and 0 <= back_to_offset < s_idx:
+                    repeat_ranges.append((back_to_offset, s_idx))
 
             if step_type == "sbu_block":
                 drills = step.get("drills")
@@ -453,6 +460,27 @@ def validate_plan_data_detailed(
                                     category="drill_configuration_issue",
                                     severity="error",
                                 )
+
+        # Nested ranges are supported by the REST mapper. Crossing ranges are
+        # different: their replay semantics are ambiguous and cannot be
+        # represented as a reliable tree of Garmin repeat groups.
+        for left_idx, (left_start, left_end) in enumerate(repeat_ranges):
+            for right_start, right_end in repeat_ranges[left_idx + 1:]:
+                crossing = (
+                    left_start < right_start < left_end < right_end
+                    or right_start < left_start < right_end < left_end
+                )
+                if crossing:
+                    _issue(
+                        errors,
+                        path=f"{prefix}.steps[{right_end}]",
+                        detail=(
+                            "repeat ranges overlap without containment: "
+                            f"[{left_start}, {left_end}) and [{right_start}, {right_end})"
+                        ),
+                        category="repeat_semantics_error",
+                        severity="error",
+                    )
 
     return errors, warnings
 

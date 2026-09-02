@@ -74,7 +74,7 @@ python fitweaver_gui.py
 
 **1.** Установите зависимости:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 **2.** Напишите план в свободной форме и сохраните в `Plan/`:
@@ -163,7 +163,7 @@ Plan/my_plan.yaml
 
 **3.** Установите зависимости:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 **3.** Опционально — провалидируйте план перед сборкой:
@@ -274,7 +274,7 @@ python -m garmin_fit.cli garmin-calendar-delete \
 
 **1.** Установите зависимости:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 **2.** Запустите десктопный GUI:

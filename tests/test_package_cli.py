@@ -5,7 +5,7 @@ class PackageCliTests(unittest.TestCase):
     def test_package_imports_from_src(self):
         import garmin_fit
 
-        self.assertEqual(garmin_fit.__version__, "0.1.0")
+        self.assertEqual(garmin_fit.__version__, "10.4.1")
 
     def test_primary_cli_parser_exposes_supported_subcommands(self):
         from garmin_fit.cli import build_parser

@@ -57,23 +57,6 @@ def _make_unique_archive_name(base_name):
     return candidate
 
 
-def _make_unique_file_destination(directory: Path, filename: str) -> Path:
-    """Return a non-colliding file path in directory."""
-    directory.mkdir(parents=True, exist_ok=True)
-    candidate = directory / filename
-    if not candidate.exists():
-        return candidate
-
-    stem = candidate.stem
-    suffix = candidate.suffix
-    version = 2
-    while True:
-        next_candidate = directory / f"{stem}_v{version}{suffix}"
-        if not next_candidate.exists():
-            return next_candidate
-        version += 1
-
-
 def _collect_plan_files(plan_paths=None):
     plan_files = []
     if plan_paths:

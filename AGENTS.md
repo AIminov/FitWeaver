@@ -18,6 +18,113 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-02 — проверка консистентности проекта
+Прогон по всему проекту после дневных правок: тесты (313 passed, 9 skipped, 1.5s), компиляция
+`src/` и GUI, импорт пакета и всех legacy-шимов `Scripts/`/`Scripts/llm/` после удаления дублей
+данных LLM. Функциональных расхождений нет. Исправлена документация: CLAUDE.md ссылался на
+«Журнал сессий», которого в нём больше нет (журнал переехал сюда), `Next tasks` в CLAUDE.md и
+AGENTS.md были устаревшими и продублированными — синхронизированы с TODO.md, счётчики тестов
+приведены к факту, в `docs/YAML_GUIDE.md` поправлены пути `Scripts/llm/*.yaml` →
+`src/garmin_fit/llm/*.yaml`, снят BOM с `docs/CHANGELOG.md`. Линт доведён до нуля на
+`src/`, `fitweaver_gui.py`, `Scripts/`, `garmin_fit/`, `tests/`: убран неиспользуемый
+`tempfile`, отсортированы импорты, удалена мёртвая переменная в `test_plan_store.py`;
+`E701` внесён в ignore — выровненные однострочные guard-clauses в GUI это осознанный стиль,
+переписывать их ради линта смысла нет. `ruff target-version` переведён с `py313` на `py310`,
+чтобы совпадать с `requires-python` и ловить синтаксис, недоступный на минимальной версии.
+Рабочие черновики `audit_done.md`, `gui_*.md` удалены по решению пользователя.
+
+### 2026-09-02 — первый UX-этап GUI по объединённому плану
+В `fitweaver_gui.py` сделан первый безопасный UX-этап: скрытый dry-run заменён на
+явный выбор «Предпросмотр / Применить» рядом с Garmin-действиями; названия кнопок,
+цветовой бейдж и результат операции теперь показывают режим. Для боевой загрузки и
+удаления добавлено подтверждение со сводкой плана, профиля и периода. Убраны
+дублирующие кнопки сборки/загрузки из вкладки LLM — сохранение теперь передаёт YAML
+в общий контекст. Статус YAML разделён на загрузку и валидацию: после чтения запускается
+автоматическая проверка, а сборка/загрузка блокируются до успешной валидации.
+Добавлен степпер «Профиль → План → Проверен → FIT → Garmin» и явная кнопка «Обновить»
+вместо символа `↺`. Добавлены состояния для FIT и реально применённого Garmin-действия.
+Проверено `py_compile` и 322 теста, 9 skip; GUI smoke-тест на Tkinter/exe отложен.
+
+### 2026-09-02 — второй UX-этап GUI: контекст и результат
+В верхнюю карточку добавлен текущий профиль Garmin и короткая причина следующего
+недоступного действия. Над подробным логом добавлен компактный блок результата,
+чтобы обычному пользователю не приходилось разбирать консольный вывод. Верхняя
+панель закреплена как каноническое место запуска Garmin-действий; вкладка Garmin
+Connect остаётся местом просмотра и управления списком. План `gui_total.md` обновлён
+с учётом фактически реализованных этапов. Повторно проверено 322 теста, 9 skip.
+
+### 2026-09-02 — третий UX-этап GUI: действия после результата
+В компактный блок результата добавлены контекстные действия: открыть папку
+`Output_fit`, перейти на вкладку Garmin Connect и после успешного предпросмотра
+переключиться в режим «Применить». После успешной сборки FIT результат прямо
+объясняет, где находятся файлы. После успешного live Garmin-действия результат
+показывает, что изменения применены. Проверено `py_compile`, `git diff --check` и
+322 теста, 9 skip.
+
+### 2026-09-02 — четвёртый UX-этап GUI: Simple mode и LLM
+В Simple mode подробный консольный лог теперь свёрнут по умолчанию, при этом
+краткий результат операции и контекстные кнопки остаются видимыми. В Expert mode
+лог раскрывается автоматически; пользователь может переключать подробности вручную.
+Режимы LLM переименованы в более понятные `Своя модель (локально)` и `Общий сервер
+(URL и токен)`. План `gui_total.md` обновлён. Проверки: `py_compile`, `git diff --check`,
+322 теста, 9 skip.
+
+### 2026-09-02 — пятый UX-этап GUI: контекстные подсказки
+В календаре добавлена видимая подсказка о переносе и копировании тренировок.
+Подписи полей периода уточняют, что даты фильтруют Garmin, а год используется
+для расстановки дат плана. В Конструкторе рядом с именем повторён ожидаемый
+формат имени. Проверено `py_compile`, `git diff --check` и 322 теста, 9 skip.
+
+### Next tasks
+- Провести headless/manual smoke-тест нового верхнего блока, переключения режима и
+  автоматической валидации YAML.
+- Согласовать единственное каноническое место Garmin-действий: верхняя панель запуска,
+  вкладка Garmin Connect — просмотр и управление списком без второй копии upload/delete.
+- Добавить ручной GUI/exe smoke-тест после проверки всех состояний Simple/Expert mode.
+- Доработать точные предусловия кнопок, контекстную карточку и отдельные улучшения
+  вкладок LLM/Конструктор/Календарь.
+- Повторить async-тесты на Python 3.11+ и решить официальную минимальную версию.
+- Добавить end-to-end проверку реального Calendar dry-run/upload payload.
+- Не удалять legacy compatibility shims `garmin_fit/` и `Scripts/` без отдельной
+  проверки packaged exe.
+
+### 2026-09-02 — аудит и устранение подтверждённых дефектов
+Сверены `audit_done.md`, аудит ChatGPT и аудит Qwen. Исправлены: обход валидации в
+Garmin Calendar workflow (включая корректный tuple-return repair), единый разбор
+pace-констант для валидатора и REST mapper, nested repeat с ненулевым началом,
+уникальные serial/time_created для standalone FIT, блокировка reset_state,
+NameError в benchmark и версия пакета. Удалены неиспользуемые функции и дубли
+данных `Scripts/llm/`; кэш/egg-info артефакты очищены. Проверено 293 теста,
+9 skip; полный `test_telegram_bot_cancel.py` зависает на Python 3.10 даже на
+минимальном `asyncio.to_thread`, поэтому это оставлено как runtime-задача.
+
+### Next tasks
+- Повторить async-тесты на Python 3.11+ и решить официальную минимальную версию.
+- Добавить end-to-end проверку реального Calendar dry-run/upload payload.
+- Не удалять legacy compatibility shims `garmin_fit/` и `Scripts/` без отдельной
+  проверки packaged exe.
+
+### 2026-09-02 — фикс test-сьюита на Python 3.10 и синхронизация доков
+Полный `pytest tests/` больше не зависает на Python 3.10 (ранее вешал на
+`test_telegram_bot_cancel.py`, exit 124). Корень — bug stdlib Python 3.10:
+`asyncio.to_thread` + teardown per-test event loop (воспроизводится на 2-строчном
+примере без кода проекта; pytest-asyncio виснет так же — дело не в
+`IsolatedAsyncioTestCase`). Фикс минимальный: в `test_telegram_bot_cancel.py`
+`asyncio.to_thread` нейтрализуется в `setUp`/`tearDown` (inline-вызов без
+worker-потока) — для мгновенных моков semantically идентично, hang уходит.
+Полный набор: 313 passed, 9 skipped (fastapi), ~1.5s, без `--ignore`.
+Синхронизированы доки: docstring `check_fit.py` («Timestamp is reasonable» →
+«Has a time_created field» — проверки разумности даты нет), `version.txt`
+(GUI-фаза v10.4.1, 2026-07-11) и `docs/CHANGELOG.md` (секция 2026-07-11 +
+post-audit фиксы). Live-проверки (реальный upload в Garmin, загрузка FIT на
+часы) требуют credentials/часов и не выполнялись; testable-прокси уже есть
+(dry-run calendar, nested-repeat mapper).
+
+### Next tasks
+- Закоммитить изменения (GitHub на этом ПК отсутствует — делает пользователь).
+- Live: `garmin-fit garmin-calendar --plan <yaml> --email ... --dry-run`, затем боевой upload.
+- Live: загрузить собранный `.fit` на часы; проверить отображение, HR-таргеты, repeat, SBU.
+
 ### 2026-07-11 — ручная smoke-проверка текущего exe
 Пользовательский запуск `dist/FitWeaver.exe` подтверждён: приложение открывается и базовый сценарий
 профиль → YAML → редактирование тренировки выглядит рабочим. Окно оставлено открытым для дальнейшей
@@ -409,10 +516,11 @@ smoke-тест (headless `App()`: 3 панели в PanedWindow, hint сраба
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed, start here):**
-1. Show current YAML validation status in the top context card and connect it to global action availability.
-2. Editing an already-committed workout's steps in the Конструктор tab (currently v1-scoped to building new workouts only — see 2026-07-06 session log for why this was deferred).
-3. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
-4. See `TODO.md` for the full backlog.
+1. Headless/manual smoke-test of the new Предпросмотр/Применить mode and the automatic YAML validation after load.
+2. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
+3. End-to-end Calendar dry-run/upload payload tests.
+4. Decide and document the minimum supported Python (`requires-python` says >=3.10, ruff/CI target 3.13).
+5. See `TODO.md` for the full backlog — it is the authoritative list.
 
 **Working style preferences:**
 - Communicate in Russian, code/commits in English
@@ -435,7 +543,7 @@ pip install -e ".[build]"        # add PyInstaller -- needed to package the desk
 ## Common Commands
 
 ```bash
-# Run all tests (309 passing as of the 2026-07-10 UX audit)
+# Run all tests (313 passed, 9 skipped without the api extra, as of 2026-09-02)
 python3 -m pytest tests/
 
 # Run a single test file

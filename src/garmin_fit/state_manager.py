@@ -25,7 +25,7 @@ LOCK_FILE = STATE_FILE.with_suffix(".lock")
 
 DEFAULT_STATE = {
     "last_serial_number": 900000000,
-    "last_timestamp": 1139302800,
+    "last_timestamp": None,  # initialized to current time on first load
     "generated_count": 0,
     "last_generation_date": None,
 }
@@ -35,7 +35,7 @@ def _validate_state(state):
     """Ensure state has required keys and correct primitive types."""
     required = {
         "last_serial_number": int,
-        "last_timestamp": int,
+        "last_timestamp": (int, type(None)),
         "generated_count": int,
         "last_generation_date": (str, type(None)),
     }
@@ -67,12 +67,9 @@ def _state_lock():
                 yield
             finally:
                 fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
-
-    # Clean up lock file after use
-    try:
-        LOCK_FILE.unlink(missing_ok=True)
-    except Exception:
-        pass  # Ignore cleanup errors
+        # Lock file is intentionally NOT deleted here: deleting after unlock creates a
+        # race where a waiting process holds the old inode while a new process creates
+        # a new inode and acquires it simultaneously, breaking mutual exclusion.
 
 
 def load_state():
@@ -87,13 +84,20 @@ def load_state():
             - last_generation_date: ISO format datetime of last generation
     """
     if not STATE_FILE.exists():
-        # Initialize with default state
-        return DEFAULT_STATE.copy()
+        state = DEFAULT_STATE.copy()
+        state["last_timestamp"] = int(
+            (datetime.now(timezone.utc) - FIT_EPOCH).total_seconds()
+        )
+        return state
 
     with open(STATE_FILE, 'r', encoding='utf-8') as f:
         state = json.load(f)
 
     _validate_state(state)
+    if state["last_timestamp"] is None:
+        state["last_timestamp"] = int(
+            (datetime.now(timezone.utc) - FIT_EPOCH).total_seconds()
+        )
     return state
 
 
@@ -207,7 +211,8 @@ def reset_state(start_serial=900000000, start_timestamp=None):
         "last_generation_date": None
     }
 
-    save_state(state)
+    with _state_lock():
+        save_state(state)
     print(f"State reset to serial={start_serial}, timestamp={start_timestamp}")
 
 

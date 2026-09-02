@@ -6,7 +6,7 @@ Validates FIT workout files and performs quality checks:
 - Has valid file_id message
 - Has valid workout message
 - Serial number is unique (not default 12345)
-- Timestamp is reasonable
+- Has a time_created field
 - Has workout steps
 - Steps have valid structure
 """

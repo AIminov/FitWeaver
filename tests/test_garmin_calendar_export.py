@@ -12,6 +12,17 @@ def _make_workout(filename="W01_01-06_Mon_Easy_5km"):
     )
 
 
+def _make_symbolic_pace_workout():
+    return Workout(
+        filename="W01_01-06_Mon_Easy_5km", name="W01_01-06_Mon_Easy_5km",
+        type_code="easy",
+        steps=[WorkoutStep(
+            step_type="dist_pace", km=5.0,
+            pace_fast="EASY_F", pace_slow="EASY_S", intensity="active",
+        )],
+    )
+
+
 class GarminCalendarExportNetworkErrorTests(unittest.TestCase):
     """TODO #10: error paths for garmin_calendar_export are untested."""
 
@@ -70,6 +81,16 @@ class GarminCalendarExportNetworkErrorTests(unittest.TestCase):
         self.assertTrue(result.dry_run)
         client.upload_workout.assert_not_called()
         client.schedule_workout.assert_not_called()
+
+    def test_dry_run_accepts_symbolic_pace_constants(self):
+        client = Mock()
+        exporter = GarminCalendarExporter(client, upload_delay=0)
+
+        result = exporter.upload_and_schedule(_make_symbolic_pace_workout(), dry_run=True)
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.dry_run)
+        client.upload_workout.assert_not_called()
 
 
 if __name__ == "__main__":

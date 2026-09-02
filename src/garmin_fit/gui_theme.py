@@ -58,6 +58,10 @@ def configure_ttk(style, palette: GuiPalette = PALETTE) -> None:
                     foreground=palette.text_muted, font=("Segoe UI", 9))
     style.configure("Status.TLabel", background=palette.background,
                     foreground=palette.text_muted, font=("Segoe UI", 9))
+    style.configure("Warning.TLabel", background=palette.background,
+                    foreground=palette.warning, font=("Segoe UI", 9, "bold"))
+    style.configure("Danger.TLabel", background=palette.background,
+                    foreground=palette.danger, font=("Segoe UI", 9, "bold"))
     style.configure("Error.TLabel", background=palette.background,
                     foreground=palette.danger, font=("Segoe UI", 8))
     style.configure("Invalid.TEntry", fieldbackground="#4a2430",

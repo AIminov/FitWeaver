@@ -679,6 +679,6 @@ Python: date.isocalendar()[1]
 
 ## Дополнительные ресурсы
 
-- `Scripts/llm/llm_contract.yaml` -- strict контракт генерации YAML
-- `Scripts/llm/strict_examples.yaml` -- набор компактных few-shot примеров
+- `src/garmin_fit/llm/llm_contract.yaml` -- strict контракт генерации YAML
+- `src/garmin_fit/llm/strict_examples.yaml` -- набор компактных few-shot примеров
 - `docs/LLM_CONNECTION_PROFILE.md` -- параметры подключения к локальной модели

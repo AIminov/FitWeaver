@@ -31,7 +31,6 @@ def resolve_runtime_root() -> Path:
 
 ROOT = PROJECT_ROOT
 RUNTIME_ROOT = resolve_runtime_root()
-SCRIPTS_DIR = PROJECT_ROOT / "Scripts"
 PLAN_DIR = RUNTIME_ROOT / "Plan"
 PLAN_DONE_DIR = PLAN_DIR / "plan_done"
 TEMPLATES_DIR = RUNTIME_ROOT / "Workout_templates"

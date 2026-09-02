@@ -93,26 +93,3 @@ def apply_custom_sbu_choice(
         repairs=repairs,
         attempts=1,
     )
-
-
-def format_plan_preview(result: GeneratedYamlResult, *, max_chars: int = 1500) -> str:
-    """Render a compact preview with repair, warning, and ambiguity context."""
-    parts: list[str] = []
-
-    if result.repairs:
-        repair_lines = "\n".join(f"- {line}" for line in result.repairs[:5])
-        parts.append(f"Auto-repair:\n{repair_lines}")
-
-    if result.ambiguities:
-        ambiguity_lines = "\n".join(f"- {line}" for line in result.ambiguities[:5])
-        parts.append(f"Ambiguities:\n{ambiguity_lines}")
-
-    if result.warnings:
-        warning_lines = "\n".join(f"- {line}" for line in result.warnings[:5])
-        parts.append(f"Warnings:\n{warning_lines}")
-
-    yaml_preview = result.yaml_text or ""
-    if len(yaml_preview) > max_chars:
-        yaml_preview = yaml_preview[:max_chars] + "..."
-    parts.append(f"Preview:\n{yaml_preview}")
-    return "\n\n".join(parts)

@@ -75,7 +75,7 @@ Fully local pipeline: plain-language plan → LLM converts to YAML → FIT files
 
 **1.** Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 **2.** Write your training plan in free form and save to `Plan/`:
@@ -164,7 +164,7 @@ Plan/my_plan.yaml
 
 **3.** Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 **4.** Optionally validate the plan before building:
@@ -276,7 +276,7 @@ Tokens are cached after first login — subsequent runs skip authentication.
 
 **1.** Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 **2.** Start the desktop GUI:

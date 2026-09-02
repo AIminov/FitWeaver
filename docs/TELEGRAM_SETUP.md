@@ -7,7 +7,7 @@ Telegram-бот принимает текстовый план трениров�
 ### 1. Установите зависимости
 
 ```powershell
-pip install -r requirements.txt
+pip install -e ".[garmin-calendar]"
 ```
 
 ### 2. Настройте LLM-сервер

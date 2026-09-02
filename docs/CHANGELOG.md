@@ -1,4 +1,43 @@
-﻿# Changelog
+# Changelog
+
+## 2026-07-11 - Desktop GUI completion (v10.4.1)
+
+### Added
+- Desktop GUI (`fitweaver_gui.py`): 4 tabs — Calendar, LLM Generator,
+  Constructor (visual builder), Garmin Connect.
+- Simple / Expert UI modes.
+- Per-email profile isolation (working plan, HR zones, Garmin session).
+- SQLite staging layer (`plan_store`) with write-through to canonical YAML,
+  and a visual workout builder with draft validation + safe repeat-step editing.
+- Dual standalone Windows builds: `FitWeaver.exe` + `garmin-fit-cli.exe`
+  (PyInstaller staging that avoids the root compatibility bridge package).
+- Always-visible log panel with friendly error hints; onboarding "next step"
+  card; in-header version display; non-blocking update check.
+- Garmin Connect tab: explicit connection check, MFA in a modal (not hidden
+  stdin), safe logout, per-profile operation history, diagnostics export.
+- Busy-state guards so conflicting GUI/CLI operations cannot be double-started.
+
+### Changed
+- Session log history moved to `version.txt`; detailed notes in git log.
+- README/README.ru synchronized to the 4 tabs and the two exe.
+
+### Fixed (post-audit, 2026-09-02)
+- GUI LLM error path no longer references a cleared exception variable
+  (previously could leave the UI locked after an unexpected LLM error).
+- `validate-yaml`/build no longer crash on symbolic pace constants
+  (`EASY_F`, ...): ordering check resolves them via `PACE_CONSTANT_VALUES`.
+- Garmin Calendar upload now runs repair+validation before upload (no more
+  silently-truncated workouts).
+- `state_manager`: fresh-state `time_created` uses current time (was a
+  hardcoded 2026-02-06); lock file no longer unlinked after unlock (race);
+  `reset_state` runs under the process lock.
+- `save_workout` allocates a collision-safe serial/timestamp when none given
+  (no more default `12345`).
+- `llm/benchmark` `ROOT` -> `PROJECT_ROOT` (was a `NameError` on first run).
+- REST mapper nested-repeat offset fixed; validator rejects crossing repeat
+  ranges (fully-nested repeats remain allowed).
+- `test_telegram_bot_cancel` no longer hangs the suite on Python 3.10
+  (`asyncio.to_thread` neutralized in the tests).
 
 ## 2026-06-28 - GUI-first cleanup
 

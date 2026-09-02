@@ -303,7 +303,6 @@ class PlanStoreTests(unittest.TestCase):
     def test_move_step_succeeds_when_no_repeat_step_present(self):
         store = self._open_store()
         store.load_from_yaml(self.yaml_path)
-        workout_id = self._workout_ids(store)[1]  # SBU workout, no repeat step
         store.add_workout(filename="W16_solo", name="W16_solo",
                            steps=[WorkoutStep(step_type="dist_open", km=1.0, intensity="active"),
                                   WorkoutStep(step_type="dist_open", km=2.0, intensity="active")])
