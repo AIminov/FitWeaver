@@ -26,7 +26,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 **This file is the primary context source across machines.** The user (Amir / GitHub: AIminov) works on multiple PCs. Always read this file and `TODO.md` at the start of a session.
 
-**Current version:** v10.4.1 (2026-04-23) + Desktop GUI (2026-07-07)  
+**Current version:** v10.5.0 (2026-09-02)  
 **Repo:** https://github.com/AIminov/FitWeaver.git  
 **Git identity:** `git config --global user.email "iminov@gmail.com" && git config --global user.name "AIminov"`  
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.

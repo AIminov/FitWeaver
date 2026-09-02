@@ -1,5 +1,5 @@
 FitWeaver
-v10.4.1 - 2026-04-23
+v10.5.0 - 2026-09-02
 
 History:
   Garmin          - v1: initial FIT generator, hardcoded templates
@@ -24,3 +24,6 @@ History:
   FitWeaver/v10.4.1 - v10.4.1 (2026-07-11): Desktop GUI complete (4 tabs, simple/expert, per-email
     profiles, SQLite staging + visual builder, dual FitWeaver/garmin-fit-cli exes, log panel +
     error hints, onboarding, update check) + post-audit fixes (2026-09-02)
+  FitWeaver/v10.5.0 - v10.5.0 (2026-09-02): consistency pass — docs/journal split between
+    CLAUDE.md and AGENTS.md, clean ruff across src/GUI/Scripts/tests, ruff target py310 to match
+    requires-python; project folder renamed Garmin8.8 -> FitWeaver10.5

@@ -29,7 +29,7 @@ else:
     PROJECT_ROOT = Path(__file__).resolve().parent
 PYTHON = sys.executable
 SESSION_FILE = PROJECT_ROOT / ".gui_session.json"
-APP_VERSION = "10.4.1"
+APP_VERSION = "10.5.0"
 LATEST_RELEASE_URL = "https://api.github.com/repos/AIminov/FitWeaver/releases/latest"
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))

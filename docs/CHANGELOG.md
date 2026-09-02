@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-02 - Consistency pass (v10.5.0)
+
+### Changed
+- Version bumped to 10.5.0 across `pyproject.toml`, `src/garmin_fit/__init__.py`,
+  `fitweaver_gui.py` and `version.txt`.
+- Project folder renamed from `Garmin8.8` to `FitWeaver10.5` (the old name tracked
+  a version scheme retired at v9.0).
+- Session journal now lives only in `AGENTS.md`; CLAUDE.md keeps the working rules
+  and points at it. Stale "Next tasks" lists synced with `TODO.md`.
+- `ruff` `target-version` lowered to `py310` to match `requires-python`.
+
+### Fixed
+- `docs/YAML_GUIDE.md` pointed at the removed `Scripts/llm/*.yaml` duplicates
+  instead of the canonical files under `src/garmin_fit/llm/`.
+- Test counts claimed in CLAUDE.md and AGENTS.md corrected to the actual suite.
+- Removed a BOM from this file, an unused `tempfile` import in the GUI, and a
+  dead variable in `tests/test_plan_store.py`; import blocks sorted.
+
 ## 2026-07-11 - Desktop GUI completion (v10.4.1)
 
 ### Added
