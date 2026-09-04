@@ -819,9 +819,12 @@ class App(_AppBase):
             if str(w.cget("state")) == "disabled":
                 return "break"
             try:
-                if w.tag_ranges("sel"):
-                    w.delete("sel.first", "sel.last")
-                w.insert(tk.INSERT, self.clipboard_get())
+                # Let Tk's native Text binding handle the clipboard.  It is
+                # Unicode-safe on Windows and also preserves the widget's
+                # undo/selection semantics.  The explicit KeyPress binding
+                # below is needed for frozen builds where the class binding
+                # can differ between Tk versions.
+                w.event_generate("<<Paste>>")
             except tk.TclError:
                 pass
             return "break"
@@ -857,7 +860,7 @@ class App(_AppBase):
 
         text_widgets = (self._plan_text, self._yaml_out, self._log_w)
         for w in text_widgets:
-            for seq in ("<Control-v>", "<Control-V>", "<<Paste>>"):
+            for seq in ("<Control-v>", "<Control-V>", "<Control-KeyPress-v>", "<Control-KeyPress-V>"):
                 w.bind(seq, _paste)
             for seq in ("<Control-c>", "<Control-C>", "<<Copy>>"):
                 w.bind(seq, _copy)
