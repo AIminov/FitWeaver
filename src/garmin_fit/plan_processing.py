@@ -191,7 +191,12 @@ AMBIGUITY_PATTERNS = (
 )
 
 SOURCE_WORKOUT_HEADER_RE = re.compile(
-    r"^\s*(?P<header>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?(?:\s*\([^)]{1,12}\))?)\s*$",
+    # Accept the common one-line forms used in the GUI example and in real
+    # plans: `01.05.2026 (Чт) — Интервалы` and
+    # `24.08.2026 Понедельник`.  The complete line remains the block header;
+    # date parsing later extracts the date/weekday from it.
+    r"^\s*(?P<header>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"
+    r"(?:\s*\([^)]{1,24}\))?(?:\s+[^\n]+)?)\s*$",
     re.IGNORECASE,
 )
 # Also detect "Тренировка N" / "Workout N" / "Тренировка N — ..." headers

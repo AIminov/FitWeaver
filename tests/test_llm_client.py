@@ -85,6 +85,18 @@ class TestUnifiedLLMClient(unittest.TestCase):
         self.assertIn("W01_08-24_Mon_Easy_6_3km", sanitized)
         self.assertNotIn("I need to parse", sanitized)
 
+    def test_sanitize_yaml_candidate_cuts_think_suffix(self):
+        sanitized = UnifiedLLMClient._sanitize_yaml_candidate(
+            "workouts:\n"
+            "  - filename: W01_05-01_Fri_Long_20km\n"
+            "    name: Long run\n"
+            "    steps: []\n"
+            "\n<think>\nThe model started reasoning after YAML."
+        )
+
+        self.assertIn("W01_05-01_Fri_Long_20km", sanitized)
+        self.assertNotIn("<think>", sanitized)
+
     def test_sanitize_yaml_candidate_fixes_common_completions_artifacts(self):
         candidate = (
             "- filename: W01_03-04_Wed_Intervals_Hills\n"

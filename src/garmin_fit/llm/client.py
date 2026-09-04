@@ -390,6 +390,8 @@ class UnifiedLLMClient:
                 "\n\nUSER:\n",
                 "\n\nASSISTANT:\n",
                 "\n\nworkouts:\n",
+                "\n<think>",
+                "<think>",
             ],
         }
 
@@ -489,6 +491,7 @@ class UnifiedLLMClient:
                 "\nREAD THIS SCHEMA CAREFULLY AND FOLLOW IT EXACTLY:",
                 "\nI need to parse the user's input",
                 "\nThe user input is:",
+                "\n<think>",
             )
             if (pos := candidate.find(marker)) > 0
         ]

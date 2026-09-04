@@ -35,6 +35,25 @@ class PlanProcessingTests(unittest.TestCase):
         self.assertEqual(analysis.expected_workouts, 2)
         self.assertEqual(analysis.workout_headers, ["10.03 (Tue)", "12.03 (Thu)"])
 
+    def test_normalize_source_text_detects_one_line_dated_headers(self):
+        analysis = normalize_source_text(
+            "01.05.2026 (\u0427\u0442) \u2014 \u0414\u043b\u0438\u043d\u043d\u044b\u0439 \u0431\u0435\u0433\n20 \u043a\u043c, \u043f\u0443\u043b\u044c\u0441 125\u2013140\n\n"
+            "03.05.2026 (\u0421\u0431) \u2014 \u0418\u043d\u0442\u0435\u0440\u0432\u0430\u043b\u044b\n6x800 \u043c\n\n"
+            "05.05.2026 (\u041f\u043d) \u2014 \u0422\u0435\u043c\u043f\u043e\u0432\u044b\u0439 \u0431\u0435\u0433\n5 \u043a\u043c\n"
+        )
+
+        self.assertEqual(analysis.expected_workouts, 3)
+        self.assertEqual(len(analysis.workout_blocks), 3)
+
+    def test_normalize_source_text_detects_date_and_weekday_on_same_line(self):
+        analysis = normalize_source_text(
+            "24.08.2026 \u041f\u043e\u043d\u0435\u0434\u0435\u043b\u044c\u043d\u0438\u043a\n\u041b\u0435\u0433\u043a\u0438\u0439 \u0431\u0435\u0433 6.3 \u043a\u043c\n\n"
+            "25.08.2026 \u0412\u0442\u043e\u0440\u043d\u0438\u043a\n\u0420\u0430\u0437\u043c\u0438\u043d\u043a\u0430 15 \u043c\u0438\u043d\u0443\u0442\n"
+        )
+
+        self.assertEqual(analysis.expected_workouts, 2)
+        self.assertEqual(len(analysis.workout_blocks), 2)
+
     def test_repair_plan_data_aligns_names_and_defaults(self):
         data = {
             "workouts": [
