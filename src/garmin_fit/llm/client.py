@@ -917,6 +917,7 @@ class UnifiedLLMClient:
                     weekday=fact.weekday,
                 )
 
+            self._repair_missing_source_repeat(workout, fact)
             suspicious = self._detect_suspicious_workout_against_fact(workout, fact)
             if not suspicious:
                 return workout, None
@@ -928,6 +929,35 @@ class UnifiedLLMClient:
             prompt_text = self._build_segment_fact_retry_input(block_text, fact, suspicious)
 
         return None, last_error or f"segment {segment_index}: suspicious output"
+
+    @staticmethod
+    def _repair_missing_source_repeat(
+        workout: dict[str, Any], fact: SourceWorkoutFact | None
+    ) -> None:
+        """Restore an explicit repeat when the model emitted its content steps."""
+        if fact is None or not fact.interval_count or not fact.interval_rep_km:
+            return
+        steps = workout.get("steps")
+        if not isinstance(steps, list):
+            return
+        if any(
+            isinstance(step, dict) and step.get("type") == "repeat"
+            for step in steps
+        ):
+            return
+        for index, step in enumerate(steps):
+            if not isinstance(step, dict) or not str(step.get("type", "")).startswith("dist_"):
+                continue
+            km = step.get("km")
+            if isinstance(km, (int, float)) and abs(float(km) - fact.interval_rep_km) <= 0.08:
+                steps.append(
+                    {
+                        "type": "repeat",
+                        "count": fact.interval_count,
+                        "back_to_offset": index,
+                    }
+                )
+                return
 
     @staticmethod
     def _build_segment_fact_retry_input(

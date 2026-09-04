@@ -27,7 +27,7 @@ port: 8008
 # The LLM this API proxies to (same shape as bot_config.yaml's llm_* keys)
 # -----------------------------------------------------------------------
 llm_url: "http://192.168.1.107:8080/v1"
-llm_model: "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf"
+llm_model: "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf"
 llm_api_type: "openai"
 llm_timeout_sec: 900
 

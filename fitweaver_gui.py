@@ -169,7 +169,7 @@ class App(_AppBase):
 
         # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://192.168.1.107:8080")
-        self.llm_model   = tk.StringVar(value="/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf")
+        self.llm_model   = tk.StringVar(value="/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
         self.llm_type    = tk.StringVar(value="openai")
         self.llm_timeout = tk.IntVar(value=900)
 

@@ -8,7 +8,7 @@
 
 - Provider: `LM Studio` (OpenAI-compatible API)
 - URL: `http://192.168.1.107:8080/v1`
-- Model: `/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf`
+- Model: `/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf`
 - API type: `openai`
 - OpenAI mode: `completions`
 - LLM timeout: `1800` секунд (30 минут, важно для CPU-ноутбуков)

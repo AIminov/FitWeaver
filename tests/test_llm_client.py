@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from garmin_fit.llm.client import GeneratedYamlResult, UnifiedLLMClient
+from garmin_fit.llm.client import GeneratedYamlResult, SourceWorkoutFact, UnifiedLLMClient
 
 
 class TestUnifiedLLMClient(unittest.TestCase):
@@ -281,6 +281,31 @@ class TestUnifiedLLMClient(unittest.TestCase):
         self.assertFalse(result.validation_errors)
         self.assertEqual(len(result.data["workouts"]), 2)
         self.assertEqual(result.attempts, 2)
+
+    def test_repair_missing_source_repeat_uses_matching_interval_step(self):
+        workout = {
+            "steps": [
+                {"type": "dist_open", "km": 0.8, "intensity": "active"},
+                {"type": "dist_open", "km": 0.4, "intensity": "recovery"},
+            ]
+        }
+        fact = SourceWorkoutFact(
+            month=5,
+            day=3,
+            week=18,
+            weekday="Sat",
+            header="03.05.2026 (Сб) — Интервалы",
+            interval_count=6,
+            interval_rep_km=0.8,
+        )
+
+        UnifiedLLMClient._repair_missing_source_repeat(workout, fact)
+
+        self.assertEqual(workout["steps"][-1], {
+            "type": "repeat",
+            "count": 6,
+            "back_to_offset": 0,
+        })
 
     def test_extract_segment_header_info_parses_date_and_weekday(self):
         info = UnifiedLLMClient._extract_segment_header_info("12.03 (Thu)\nIntervals\n")

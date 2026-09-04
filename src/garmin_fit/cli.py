@@ -119,7 +119,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if command == "doctor":
         doctor_url = args.url or ("http://localhost:11434" if args.api == "ollama" else "http://192.168.1.107:8080/v1")
-        doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf")
+        doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
         return workflow_module.workflow_doctor(
             llm_check=args.llm,
             llm_api=args.api,

@@ -252,7 +252,7 @@ def main() -> int:
     parser.add_argument("--mode", choices=["existing", "generate"], default="existing")
     parser.add_argument("--api", choices=["ollama", "openai"], default="openai")
     parser.add_argument("--url", type=str, default="http://192.168.1.107:8080/v1")
-    parser.add_argument("--model", type=str, default="/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf")
+    parser.add_argument("--model", type=str, default="/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
     parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="completions")
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--timeout-sec", type=int, default=1800)

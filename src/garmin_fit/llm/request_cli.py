@@ -109,7 +109,7 @@ def main():
     if args.model is None:
         args.model = (
             "gemma2:2b" if args.api == "ollama"
-            else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf"
+            else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf"
         )
 
     logger.info("=" * 70)
