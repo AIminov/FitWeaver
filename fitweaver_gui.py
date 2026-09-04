@@ -1967,6 +1967,7 @@ class App(_AppBase):
                 yaml_text = result.yaml_text or ""
                 warnings  = result.warnings or []
                 repairs   = result.repairs or []
+                errors = result.validation_errors or []
 
                 # Count workouts from yaml_text
                 try:
@@ -1975,6 +1976,18 @@ class App(_AppBase):
                     n = 0
 
                 def finish():
+                    if errors:
+                        self._yaml_out.config(state="normal")
+                        self._yaml_out.delete("1.0", "end")
+                        self._yaml_out.config(state="disabled")
+                        self._set_progress(f"❌ YAML не создан: {errors[0]}", RED)
+                        self._gen_btn.config(state="normal")
+                        self._end_operation(False)
+                        self._log("\n[Ошибки генерации]")
+                        for error in errors:
+                            self._log(f"  {error}")
+                        return
+
                     self._yaml_out.config(state="normal")
                     self._yaml_out.delete("1.0", "end")
                     self._yaml_out.insert("end", yaml_text)

@@ -445,6 +445,27 @@ def normalize_step_type(value: Any) -> Any:
     return STEP_TYPE_ALIASES.get(key, key)
 
 
+def infer_missing_step_type(step: dict[str, Any]) -> str | None:
+    """Infer a missing step discriminator from its payload fields."""
+    if step.get("type") is not None:
+        return None
+    if "count" in step and "back_to_offset" in step:
+        return "repeat"
+    if "km" in step:
+        if "hr_low" in step or "hr_high" in step:
+            return "dist_hr"
+        if "pace_fast" in step or "pace_slow" in step:
+            return "dist_pace"
+        return "dist_open"
+    if "seconds" in step:
+        if "hr_low" in step or "hr_high" in step:
+            return "time_hr"
+        if "pace_fast" in step or "pace_slow" in step:
+            return "time_pace"
+        return "time_step"
+    return None
+
+
 def normalize_intensity(value: Any) -> Any:
     if not isinstance(value, str):
         return value
@@ -531,6 +552,10 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                 continue
 
             original_type = step.get("type")
+            inferred_type = infer_missing_step_type(step)
+            if inferred_type is not None:
+                step["type"] = inferred_type
+                notes.append(f"{s_prefix}: inferred missing step type '{inferred_type}'")
             normalized_type = normalize_step_type(original_type)
             if normalized_type != original_type:
                 step["type"] = normalized_type

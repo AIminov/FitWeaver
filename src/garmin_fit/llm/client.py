@@ -17,7 +17,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 1          # single retry is enough; extra retries trigger thinking mode
-SUSPICIOUS_SEGMENT_RETRIES = 0  # skip segment-level retries — they also trigger thinking
+SUSPICIOUS_SEGMENT_RETRIES = 1  # one focused retry for missing source facts
 SEGMENT_HEADER_DATE_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
     r"(?:\s*\((?P<weekday>[^)]{1,24})\))?(?:\s*,?\s+(?P<title>[^\n]+))?\s*$",
@@ -888,7 +888,14 @@ class UnifiedLLMClient:
             segment_result = self.generate_yaml_draft(prompt_text, max_retries=max_retries)
             if segment_result.validation_errors or not isinstance(segment_result.data, dict):
                 details = "; ".join(segment_result.validation_errors[:3]) or "empty result"
-                return None, f"segment {segment_index}: {details}"
+                last_error = f"segment {segment_index}: {details}"
+                if retry_idx >= SUSPICIOUS_SEGMENT_RETRIES:
+                    return None, last_error
+                logger.warning(last_error)
+                prompt_text = self._build_segment_fact_retry_input(
+                    block_text, fact, [details]
+                )
+                continue
 
             segment_workouts = segment_result.data.get("workouts")
             if not isinstance(segment_workouts, list) or len(segment_workouts) != 1:
@@ -940,6 +947,11 @@ class UnifiedLLMClient:
                 lines.append(f"- distance_km: {fact.steady_distance_km:.3g}")
             if fact.hr_cap:
                 lines.append(f"- hr cap: {fact.hr_cap}")
+            if fact.interval_count and fact.interval_rep_km:
+                lines.append(
+                    "- interval output must contain a repeat step with "
+                    f"count: {fact.interval_count} and back_to_offset pointing to the active step"
+                )
         lines.append("Issues to fix:")
         lines.extend(f"- {item}" for item in suspicious[:5])
         return block_text + "\n" + "\n".join(lines)
