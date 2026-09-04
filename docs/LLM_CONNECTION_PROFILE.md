@@ -7,8 +7,8 @@
 ## Пример рабочего профиля
 
 - Provider: `LM Studio` (OpenAI-compatible API)
-- URL: `http://127.0.0.1:1234/v1`
-- Model: `qwen/qwen3.5-9b`
+- URL: `http://192.168.1.107:8080/v1`
+- Model: `/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf`
 - API type: `openai`
 - OpenAI mode: `completions`
 - LLM timeout: `1800` секунд (30 минут, важно для CPU-ноутбуков)
@@ -51,7 +51,7 @@ python -m garmin_fit.llm.benchmark \
 - `src/garmin_fit/llm/benchmark.py`:
   - default `--api`: `openai`
   - default URL: `http://127.0.0.1:1234/v1`
-  - default model: `qwen/qwen3.5-9b`
+  - default model: `qwen3.8-27b`
   - default `--openai-mode`: `completions`
   - default `--timeout-sec`: `1800`
 - `src/garmin_fit/telegram_bot.py` использует `bot_config.yaml` и сейчас работает только в Ollama-режиме (`ollama_model`, `ollama_url`).
@@ -89,9 +89,9 @@ Checks:
 Preferred commands:
 
 ```bash
-python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800 --retries 3
-python -m garmin_fit.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml --mode generate --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800
-python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 120
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b --openai-mode completions --timeout-sec 1800 --retries 3
+python -m garmin_fit.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml --mode generate --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b --openai-mode completions --timeout-sec 1800
+python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b --openai-mode completions --timeout-sec 120
 ```
 
 Legacy source-checkout commands are documented in `docs/LEGACY_COMPAT.md`.

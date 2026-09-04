@@ -21,8 +21,8 @@ class ApiSettings:
     api_token: str
     host: str = "0.0.0.0"
     port: int = 8008
-    llm_url: str = "http://127.0.0.1:1234/v1"
-    llm_model: str = "local-model"
+    llm_url: str = "http://192.168.1.107:8080/v1"
+    llm_model: str = "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf"
     llm_api_type: str = "openai"
     llm_timeout_sec: int = 900
     rate_limit_per_minute: float = 6.0
@@ -50,8 +50,8 @@ def load_api_settings() -> ApiSettings:
         api_token=str(api_token),
         host=str(raw.get("host", "0.0.0.0")),
         port=int(raw.get("port", 8008)),
-        llm_url=str(raw.get("llm_url", "http://127.0.0.1:1234/v1")),
-        llm_model=str(raw.get("llm_model", "local-model")),
+        llm_url=str(raw.get("llm_url", "http://192.168.1.107:8080/v1")),
+        llm_model=str(raw.get("llm_model", "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf")),
         llm_api_type=str(raw.get("llm_api_type", "openai")),
         llm_timeout_sec=int(raw.get("llm_timeout_sec", 900)),
         rate_limit_per_minute=float(raw.get("rate_limit_per_minute", 6.0)),

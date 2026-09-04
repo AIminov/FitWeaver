@@ -72,6 +72,19 @@ class TestUnifiedLLMClient(unittest.TestCase):
         self.assertIn("W10_03-03_Tue_Easy_8km", sanitized)
         self.assertNotIn("Analyze the Request", sanitized)
 
+    def test_sanitize_yaml_candidate_cuts_qwen_reasoning_suffix(self):
+        sanitized = UnifiedLLMClient._sanitize_yaml_candidate(
+            "workouts:\n"
+            "  - filename: W01_08-24_Mon_Easy_6_3km\n"
+            "    name: Easy run\n"
+            "    steps: []\n"
+            "\nI need to parse the user's input ...\n"
+            "The user input is:\n"
+        )
+
+        self.assertIn("W01_08-24_Mon_Easy_6_3km", sanitized)
+        self.assertNotIn("I need to parse", sanitized)
+
     def test_sanitize_yaml_candidate_fixes_common_completions_artifacts(self):
         candidate = (
             "- filename: W01_03-04_Wed_Intervals_Hills\n"

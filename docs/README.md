@@ -57,7 +57,7 @@ python -m garmin_fit.llm.request_cli
 Рекомендованный профиль для LM Studio:
 
 ```bash
-python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800 --retries 3
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b --openai-mode completions --timeout-sec 1800 --retries 3
 ```
 
 Если план фазовый или свободной структуры — укажи число тренировок явно:
@@ -99,7 +99,7 @@ python -m garmin_fit.check_fit --strict --no-sdk-python-check Output_fit
 
 ```bash
 python -m garmin_fit.cli doctor
-python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 120
+python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b --openai-mode completions --timeout-sec 120
 ```
 
 ### 6. Compare direct vs legacy build
@@ -115,7 +115,7 @@ python -m garmin_fit.legacy_cli compare
 ### 7. LLM benchmark / regression
 
 ```bash
-python -m garmin_fit.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml --mode generate --api openai --url http://127.0.0.1:1234/v1 --model qwen/qwen3.5-9b --openai-mode completions --timeout-sec 1800
+python -m garmin_fit.llm.benchmark --suite tests/fixtures/llm_benchmark/plan_week_2026_03_02.yaml --mode generate --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b --openai-mode completions --timeout-sec 1800
 ```
 
 Отчет сохраняется в `Build_artifacts/*.llm_benchmark_report.json`.

@@ -1,6 +1,25 @@
 # TODO — FitWeaver
 
-_Обновлено: 2026-09-02 (проверка консистентности: доки, линт, шимы)_
+_Обновлено: 2026-09-04 (LAN Qwen, IQ3_XXS, пересборка exe)_
+
+## ✅ Закрыто 2026-09-03 — сборка exe и локальная Qwen
+
+- ✅ Обнаружен и проверен LAN OpenAI-compatible сервер `192.168.1.107:8080/v1` с моделью
+  `Qwen3.8-27B-UD-IQ3_XXS.gguf`; Ollama не используется.
+- ✅ Defaults GUI/CLI/doctor/API/benchmark и сохранённый GUI-профиль переключены на LAN Qwen.
+- ✅ GUI использует `openai_mode=completions` для этого сервера; короткий completions smoke
+  успешен, chat endpoint возвращает пустой ответ.
+- ✅ Добавлено отсечение reasoning-suffix Qwen и regression-тест.
+- ✅ Собраны `dist/FitWeaver.exe` и `dist/garmin-fit-cli.exe`; GUI жив после 8 секунд.
+- ✅ Полный regression suite: 323 passed; compileall и Ruff чистые.
+- ⚠️ Полный план дошёл до Qwen, но IQ3_XXS вернула повреждённый YAML (`hrдo`); встроенная
+  валидация корректно отклонила результат.
+- ⚠️ Визуальный Computer Use smoke невозможен из-за отсутствующего native pipe helper.
+
+## Next tasks после сборки
+
+- Повторить генерацию после выбора ещё более качественной модели или настройки LM Studio.
+- Повторить визуальный GUI/exe smoke при доступном Computer Use helper.
 
 ## ✅ Закрыто 2026-09-02 — проверка консистентности проекта
 

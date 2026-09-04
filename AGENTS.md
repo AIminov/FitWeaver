@@ -18,6 +18,23 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-04 — подключение LAN Qwen и финальная пересборка
+Проверен LAN OpenAI-compatible endpoint `http://192.168.1.107:8080/v1`; модель
+`/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf`
+подтверждена через `/v1/models`. Defaults GUI/CLI/doctor/API/benchmark и сохранённый GUI
+профиль переключены на этот endpoint; GUI использует `openai_mode=completions`.
+Добавлено отсечение типичного Qwen reasoning-suffix после YAML и regression-тест.
+Собраны `dist/FitWeaver.exe` и `dist/garmin-fit-cli.exe`; новый GUI жив после 8 секунд,
+полный набор — `323 passed`, compileall/Ruff чистые. Реальный полный план дошёл до модели,
+но IQ3_XXS вернула повреждённый YAML (`hrдo`), поэтому встроенная валидация корректно
+отклонила результат. Визуальный Computer Use smoke невозможен: native pipe helper недоступен.
+
+### Next tasks
+- Повторить генерацию после выбора ещё более качественной модели/настройки LM Studio;
+  текущий IQ3_XXS endpoint доступен, но YAML-генерация нестабильна.
+- Повторить визуальный GUI/exe smoke через Computer Use при доступном native pipe.
+- Передать пользователю пару exe из `dist/` вместе с инструкцией запуска локального сервера.
+
 ### 2026-09-02 — проверка консистентности проекта
 Прогон по всему проекту после дневных правок: тесты (313 passed, 9 skipped, 1.5s), компиляция
 `src/` и GUI, импорт пакета и всех legacy-шимов `Scripts/`/`Scripts/llm/` после удаления дублей

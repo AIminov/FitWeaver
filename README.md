@@ -447,7 +447,7 @@ python -m garmin_fit.llm.request_cli \
 
 | Model | Notes |
 |-------|-------|
-| `qwen/qwen3.5-9b` | ✅ Recommended — best quality, natively supports `enable_thinking: false` |
+| `qwen3.8-27b` | ✅ Recommended local model — use the exact ID returned by `/v1/models` |
 | `qwen/qwen3.5-4b` | ✅ Good — faster, smaller VRAM |
 | `google/gemma-4-*` | ⚠️ **Avoid** — ignores `enable_thinking: false`; on retry enters a reasoning loop that hangs for 3000+ seconds |
 

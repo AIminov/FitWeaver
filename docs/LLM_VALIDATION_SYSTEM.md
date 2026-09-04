@@ -385,7 +385,7 @@ The validation happens at **two levels**:
 python -m garmin_fit.llm.request_cli \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
-  --model qwen/qwen3.5-9b
+  --model qwen3.8-27b
 ```
 
 If validation fails, error categories are returned.

@@ -487,6 +487,8 @@ class UnifiedLLMClient:
                 "\n**Analyze the Request:**",
                 "\nYou are an expert Russian-speaking running coach AI",
                 "\nREAD THIS SCHEMA CAREFULLY AND FOLLOW IT EXACTLY:",
+                "\nI need to parse the user's input",
+                "\nThe user input is:",
             )
             if (pos := candidate.find(marker)) > 0
         ]

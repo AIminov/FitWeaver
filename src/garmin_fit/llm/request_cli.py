@@ -66,7 +66,7 @@ def main():
     )
     parser.add_argument(
         "--model", type=str, default=None,
-        help="Model name (default: gemma2:2b for ollama, local-model for openai)"
+        help="Model name (default: gemma2:2b for ollama, qwen3.8-27b for openai)"
     )
     parser.add_argument(
         "--retries", type=int, default=3,
@@ -104,12 +104,12 @@ def main():
     if args.url is None:
         args.url = (
             "http://localhost:11434" if args.api == "ollama"
-            else "http://localhost:1234/v1"
+            else "http://192.168.1.107:8080/v1"
         )
     if args.model is None:
         args.model = (
             "gemma2:2b" if args.api == "ollama"
-            else "local-model"
+            else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_XXS.gguf"
         )
 
     logger.info("=" * 70)
