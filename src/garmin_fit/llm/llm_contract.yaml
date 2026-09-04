@@ -19,6 +19,7 @@ allowed_type_codes:
   - marathon_pace
   - race
   - mixed
+  - easy_drills
 
 allowed_intensity:
   - active

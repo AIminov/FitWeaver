@@ -11,6 +11,7 @@ class TestLlmPrompt(unittest.TestCase):
         self.assertIn("cooldown", contract["allowed_intensity"])
         self.assertIn("dist_hr", contract["step_types"])
         self.assertIn("repeat", contract["step_types"])
+        self.assertIn("easy_drills", contract["allowed_type_codes"])
 
     def test_create_system_prompt_uses_strict_contract_language(self):
         prompt = create_system_prompt(
@@ -21,6 +22,9 @@ class TestLlmPrompt(unittest.TestCase):
         self.assertIn("workout_keys=filename,name,desc,type_code,distance_km,estimated_duration_min,steps", prompt)
         self.assertIn("forbid_extra_workout_keys=plan,mapped_to,date,notes", prompt)
         self.assertIn("repeat: back_to_offset=index of FIRST step in repeating group", prompt)
+        self.assertIn("output exactly the expected count", prompt)
+        self.assertIn("Rest/off days produce no workout", prompt)
+        self.assertIn("5x200m/200m jog is one repeat group", prompt)
         self.assertIn('single upper HR cap only (e.g. "до 130", "HR <= 130")->use hr_low=80 and hr_high=cap', prompt)
         self.assertIn("EXAMPLE hills_series", prompt)
         self.assertIn("W09_03-04_Wed_Intervals_Hills_2x5x40m", prompt)

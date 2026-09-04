@@ -333,6 +333,14 @@ def create_system_prompt(
         "\n".join(
             [
                 "FINAL RULES",
+                "SOURCE INTERPRETATION",
+                "- First split the input by every date header; output one workout per non-rest training block.",
+                "- Markdown prefixes (#) and leading spaces before a date header are formatting only; still treat the date as a workout boundary.",
+                "- Count the blocks before writing YAML; output exactly the expected count, never only the first block.",
+                "- Rest/off days produce no workout. Strength, sauna, stretching, plank, and other non-running notes are not separate workouts unless explicit running drills are given.",
+                "- Preserve every explicit source fact (date, distance, duration, HR, pace, repetitions); never invent missing values.",
+                "- A notation like 5x(200m + 200m jog) or 5x200m/200m jog is one repeat group: active 200m plus recovery 200m, then repeat count 5.",
+                "- Warmup, main work, recovery, and cooldown are separate steps when the source distinguishes them.",
                 "- only listed keys/enums; no invented fields or second documents",
                 "- pace(explicit)->dist_pace/time_pace; HR(explicit)->dist_hr/time_hr",
                 "- single upper HR cap only (e.g. \"до 130\", \"HR <= 130\")->use hr_low=80 and hr_high=cap",

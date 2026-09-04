@@ -97,6 +97,23 @@ class TestUnifiedLLMClient(unittest.TestCase):
         self.assertIn("W01_05-01_Fri_Long_20km", sanitized)
         self.assertNotIn("<think>", sanitized)
 
+    def test_segment_header_info_accepts_weekday_and_title(self):
+        info = UnifiedLLMClient._extract_segment_header_info(
+            "01.05.2026 (\u0427\u0442) \u2014 \u0414\u043b\u0438\u043d\u043d\u044b\u0439 \u0431\u0435\u0433\n20 \u043a\u043c"
+        )
+        self.assertEqual(info["weekday"], "Thu")
+        self.assertEqual((info["day"], info["month"]), (1, 5))
+
+        info = UnifiedLLMClient._extract_segment_header_info(
+            "24.08.2026 \u041f\u043e\u043d\u0435\u0434\u0435\u043b\u044c\u043d\u0438\u043a\n6 \u043a\u043c"
+        )
+        self.assertEqual(info["weekday"], "Mon")
+
+        info = UnifiedLLMClient._extract_segment_header_info(
+            "  ### 01.09.2026, \u0432торник \u2014 \u043b\u0451\u0433\u043a\u0438\u0439 \u0431\u0435\u0433\n5 \u043a\u043c"
+        )
+        self.assertEqual(info["weekday"], "Tue")
+
     def test_sanitize_yaml_candidate_fixes_common_completions_artifacts(self):
         candidate = (
             "- filename: W01_03-04_Wed_Intervals_Hills\n"

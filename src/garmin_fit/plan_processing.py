@@ -195,8 +195,8 @@ SOURCE_WORKOUT_HEADER_RE = re.compile(
     # plans: `01.05.2026 (Чт) — Интервалы` and
     # `24.08.2026 Понедельник`.  The complete line remains the block header;
     # date parsing later extracts the date/weekday from it.
-    r"^\s*(?P<header>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"
-    r"(?:\s*\([^)]{1,24}\))?(?:\s+[^\n]+)?)\s*$",
+    r"^\s*(?:#{1,6}\s*)?(?P<header>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"
+    r"(?:\s*\([^)]{1,24}\))?(?:\s*,?\s+[^\n]+)?)\s*$",
     re.IGNORECASE,
 )
 # Also detect "Тренировка N" / "Workout N" / "Тренировка N — ..." headers
@@ -231,6 +231,19 @@ REST_DAY_ONLY_RE = re.compile(
     r"|rest(?:\s+day)?"
     r"|off(?:\s*day)?"
     r")\s*[.!?]?\s*$",
+    re.IGNORECASE,
+)
+NON_RUNNING_DAY_ONLY_RE = re.compile(
+    r"^\s*(?:"
+    r"\u0432\u044b\u0445\u043e\u0434\w*(?:\s+\u043e\u0442\s+\u0431\u0435\u0433\u0430)?"
+    r"|\u0441\u0438\u043b\u043e\u0432\w*"
+    r"|\u0441\u0430\u0443\u043d\w*"
+    r"|\u0440\u0430\u0441\u0442\u044f\u0436\w*"
+    r"|\u0433\u0438\u0431\u043a\u043e\u0441\u0442\u044c?"
+    r"|\u0441\u0442\u0430\u0442\u0438\u043a\w*"
+    r"|\u041e\u0424\u041f"
+    r"|\u043f\u043b\u0430\u043d\u043a\w*"
+    r")\b.*$",
     re.IGNORECASE,
 )
 
@@ -401,6 +414,8 @@ def _looks_like_rest_day_block(lines: list[str]) -> bool:
 
     # Any explicit workout markers mean this is a training day, not rest.
     for line in content_lines:
+        if NON_RUNNING_DAY_ONLY_RE.match(line):
+            continue
         lowered = line.lower()
         if (
             re.search(r"\d+\s*(?:км|km|м|min|мин)\b", lowered)
@@ -414,8 +429,13 @@ def _looks_like_rest_day_block(lines: list[str]) -> bool:
         ):
             return False
 
-    # Rest day if all content lines are short rest/off statements.
-    return all(REST_DAY_ONLY_RE.match(line) for line in content_lines)
+    # Rest/non-running day if all content lines are rest or auxiliary-only
+    # activities. Auxiliary work remains part of a workout when a running
+    # marker was found above (for example, easy run + strength).
+    return all(
+        REST_DAY_ONLY_RE.match(line) or NON_RUNNING_DAY_ONLY_RE.match(line)
+        for line in content_lines
+    )
 
 
 def normalize_step_type(value: Any) -> Any:

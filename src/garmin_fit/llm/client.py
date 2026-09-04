@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 1          # single retry is enough; extra retries trigger thinking mode
 SUSPICIOUS_SEGMENT_RETRIES = 0  # skip segment-level retries — they also trigger thinking
 SEGMENT_HEADER_DATE_RE = re.compile(
-    r"^\s*(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?(?:\s*\((?P<weekday>[^)]{1,12})\))?\s*$",
+    r"^\s*(?:#{1,6}\s*)?(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
+    r"(?:\s*\((?P<weekday>[^)]{1,24})\))?(?:\s*,?\s+(?P<title>[^\n]+))?\s*$",
     re.IGNORECASE,
 )
 IDENTIFIER_PREFIX_RE = re.compile(
@@ -969,6 +970,9 @@ class UnifiedLLMClient:
             return None
 
         weekday = UnifiedLLMClient._normalize_weekday_token(match.group("weekday"))
+        if weekday is None:
+            title_prefix = re.split(r"\s*[—–-]\s*", match.group("title") or "", maxsplit=1)[0]
+            weekday = UnifiedLLMClient._normalize_weekday_token(title_prefix)
         if weekday is None:
             weekday = parsed_date.strftime("%a")
 

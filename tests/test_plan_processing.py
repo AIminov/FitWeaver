@@ -54,6 +54,27 @@ class PlanProcessingTests(unittest.TestCase):
         self.assertEqual(analysis.expected_workouts, 2)
         self.assertEqual(len(analysis.workout_blocks), 2)
 
+    def test_normalize_source_text_accepts_markdown_heading_and_indentation(self):
+        analysis = normalize_source_text(
+            "  ### 31.08.2026, \u043f\u043e\u043d\u0435\u0434\u0435\u043b\u044c\u043d\u0438\u043a \u2014 \u0432ыходной\n"
+            "  \u041e\u0442\u0434ы\u0445.\n\n"
+            "  ### 01.09.2026, \u0432\u0442\u043eр\u043d\u0438к \u2014 \u043b\u0451\u0433кий \u0431\u0435\u0433\n"
+            "  5 \u043a\u043c, \u043f\u0443\u043bьс \u0434о 150\n"
+        )
+
+        self.assertEqual(analysis.expected_workouts, 1)
+        self.assertEqual(len(analysis.workout_blocks), 1)
+
+    def test_normalize_source_text_skips_strength_only_day(self):
+        analysis = normalize_source_text(
+            "05.09.2026, суббота — отдых, силовая, сауна\n"
+            "Выходной от бега.\nСиловая тренировка.\nСауна.\n\n"
+            "06.09.2026, воскресенье — кросс\n8 км спокойно\n"
+        )
+
+        self.assertEqual(analysis.expected_workouts, 1)
+        self.assertEqual(len(analysis.workout_blocks), 1)
+
     def test_repair_plan_data_aligns_names_and_defaults(self):
         data = {
             "workouts": [
