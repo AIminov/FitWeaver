@@ -6,3 +6,5 @@ pyyaml
 # New - Telegram bot + LLM client
 python-telegram-bot>=20.0
 requests
+pydantic>=2.0
+openai>=1.0

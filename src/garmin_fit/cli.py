@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--api", choices=["ollama", "openai"], default="openai")
     doctor_parser.add_argument("--url")
     doctor_parser.add_argument("--model")
-    doctor_parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="completions")
+    doctor_parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="auto")
     doctor_parser.add_argument("--timeout-sec", type=int, default=120)
 
     subparsers.add_parser("archive", help="Archive the current runtime artifacts")

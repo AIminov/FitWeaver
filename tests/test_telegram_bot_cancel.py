@@ -342,7 +342,7 @@ class TelegramBotCancelTests(unittest.IsolatedAsyncioTestCase):
             application=SimpleNamespace(),
         )
 
-        with patch("garmin_fit.telegram_bot.user_is_allowed", return_value=True), patch.object(
+        with patch("garmin_fit.telegram_bot._garmin_auth_available", return_value=True), patch("garmin_fit.telegram_bot.user_is_allowed", return_value=True), patch.object(
             Path,
             "exists",
             return_value=True,

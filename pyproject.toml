@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.0",
     "python-telegram-bot>=20.0",
     "requests",
+    "openai>=1.0",
 ]
 
 [project.optional-dependencies]

@@ -6,6 +6,7 @@ output:
 
 naming:
   known_date_pattern: "W{calendar_week}_{MM-DD}_{DayName}_{Type}_{Details}"
+  calendar_week_rule: "ISO 8601 week number for the source year; if absent use the current year"
 
 allowed_type_codes:
   - easy
@@ -35,7 +36,6 @@ validation_rules:
 
   distances:
     - All km values must be positive and greater than zero
-    - Minimum distance 0.5 km
 
   durations:
     - All seconds must be positive and greater than zero
@@ -43,7 +43,7 @@ validation_rules:
   heart_rate:
     - hr_low must be less than hr_high
     - HR range 30 to 240 bpm
-    - Recovery 110-135, aerobic 135-150, threshold 168-172, intervals 165-180
+    - Preserve explicit source HR targets; upper-only cap uses hr_low 80
 
   pace_format:
     - Pace values quoted strings MM:SS format

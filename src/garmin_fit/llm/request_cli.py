@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from ..config import PLAN_DIR
-from .client import UnifiedLLMClient
+from .client import MAX_RETRIES, UnifiedLLMClient
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -69,8 +69,8 @@ def main():
         help="Model name (default: gemma2:2b for ollama, qwen3.8-27b for openai)"
     )
     parser.add_argument(
-        "--retries", type=int, default=3,
-        help="Max retry attempts for validation"
+        "--retries", type=int, default=MAX_RETRIES,
+        help="Maximum total attempts per workout, including the initial request (default: 2)"
     )
     parser.add_argument(
         "--openai-mode",

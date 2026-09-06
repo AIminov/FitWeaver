@@ -419,8 +419,8 @@ Any OpenAI-compatible server works. Set **Type = openai** and point the URL to t
 ### Running with llama-server (llama.cpp)
 
 ```powershell
-# Download and run a model directly from Hugging Face
-llama-server -hf ggml-org/gemma-4-12B-it-GGUF:Q4_K_M `
+# Run your downloaded GGUF model (replace the path)
+llama-server -m C:\Models\your-model.gguf `
   --host 127.0.0.1 `
   --port 8080 `
   -c 32768 `

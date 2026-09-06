@@ -16,8 +16,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 1          # single retry is enough; extra retries trigger thinking mode
-SUSPICIOUS_SEGMENT_RETRIES = 1  # one focused retry for missing source facts
+MAX_RETRIES = 2          # Total attempts: initial generation plus one correction.
 SEGMENT_HEADER_DATE_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
     r"(?:\s*\((?P<weekday>[^)]{1,24})\))?(?:\s*,?\s+(?P<title>[^\n]+))?\s*$",
@@ -100,6 +99,8 @@ class SourceWorkoutFact:
     interval_rep_km: float | None = None
     steady_distance_km: float | None = None
     hr_cap: int | None = None
+    durations_sec: list[float] = field(default_factory=list)
+    pace_ranges: list[tuple[str, str]] = field(default_factory=list)
 
 
 class UnifiedLLMClient:
@@ -118,6 +119,7 @@ class UnifiedLLMClient:
         api_type: str = "ollama",
         openai_mode: str = "auto",
         request_timeout_sec: int = 300,
+        max_output_tokens: int = 16384,
     ):
         self.model = model
         self.api_type = api_type
@@ -136,6 +138,9 @@ class UnifiedLLMClient:
         if request_timeout_sec <= 0:
             raise ValueError("request_timeout_sec must be positive")
         self.request_timeout_sec = request_timeout_sec
+        if max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
+        self.max_output_tokens = max_output_tokens
 
     def check_connection(self) -> bool:
         """Check if LLM server is running and model is available."""
@@ -167,8 +172,8 @@ class UnifiedLLMClient:
         Args:
             plan_text: Raw training plan text.
             max_retries: Maximum LLM retry attempts.
-            workouts_hint: Override for expected workout count when auto-detection
-                returns 0. Has no effect if the plan text already yields a count.
+            workouts_hint: Explicit user-supplied workout count. Automatic header
+                detection is advisory and never constrains free-form input.
         """
         from ..plan_processing import normalize_source_text, repair_plan_data
         from ..plan_validator import (
@@ -178,25 +183,17 @@ class UnifiedLLMClient:
         from .prompt import get_system_prompt
 
         analysis = normalize_source_text(plan_text)
-        if workouts_hint > 0 and analysis.expected_workouts == 0:
-            analysis.expected_workouts = workouts_hint
-
-        if 1 < analysis.expected_workouts <= 10 and analysis.workout_blocks:
-            return self._generate_segmented_yaml_draft(
-                analysis=analysis,
-                max_retries=max_retries,
-                repair_plan_data=repair_plan_data,
-                validate_plan_data_detailed=validate_plan_data_detailed,
-                group_issues_by_category=group_issues_by_category,
-            )
-
+        if max_retries < 1:
+            raise ValueError("max_retries must be at least 1 (total attempts)")
         system_prompt = get_system_prompt(
             include_text_variations=False,
             source_text=analysis.text,
         )
-        original_plan = analysis.text
+        original_plan = plan_text
         source_facts = self._extract_workout_facts_from_source_text(original_plan)
         user_message = self._build_source_expectations_prompt(analysis) + original_plan
+        if workouts_hint > 0:
+            user_message = f"User-specified workout count: {workouts_hint}\n\n" + user_message
         last_errors: list[str] = []
         last_categories: dict[str, list[str]] = {}
 
@@ -215,13 +212,20 @@ class UnifiedLLMClient:
                 yaml_text,
                 analysis_repairs=analysis.changes,
                 analysis_ambiguities=analysis.ambiguities,
-                expected_workout_count=analysis.expected_workouts,
+                expected_workout_count=max(0, workouts_hint),
                 repair_plan_data=repair_plan_data,
                 validate_plan_data_detailed=validate_plan_data_detailed,
                 group_issues_by_category=group_issues_by_category,
             )
-            self._apply_source_fact_consistency_checks(prepared, source_facts)
-            self._demote_source_fact_mismatch(prepared)
+            # Regex extraction cannot fully interpret human prose, alternatives,
+            # references or equivalent expanded intervals. Keep it diagnostic;
+            # only schema/repeat validity and explicit user hints block output.
+            fact_check = GeneratedYamlResult(data=prepared.data)
+            self._apply_source_fact_consistency_checks(fact_check, source_facts)
+            prepared.warnings.extend(
+                f"Source comparison needs review (heuristic): {message}"
+                for message in fact_check.validation_errors
+            )
             prepared.attempts = attempt
 
             for warning in prepared.warnings:
@@ -243,8 +247,11 @@ class UnifiedLLMClient:
                 original_plan=original_plan,
                 issues=_issues_from_categories(last_categories),
                 source_facts_text=self._format_source_facts_for_retry_prompt(source_facts),
+                previous_yaml=yaml_text,
             )
             user_message = self._build_source_expectations_prompt(analysis) + user_message
+            if workouts_hint > 0:
+                user_message = f"User-specified workout count: {workouts_hint}\n\n" + user_message
 
         logger.error(f"Failed to generate valid YAML after {max_retries} attempts")
         return GeneratedYamlResult(
@@ -353,11 +360,13 @@ class UnifiedLLMClient:
                 base_url=self.base_url,
                 api_key="not-needed",
                 timeout=float(timeout),
+                max_retries=0,  # Generation owns the retry budget.
             )
 
             response = client.chat.completions.create(
                 model=self.model,
                 temperature=0.0,
+                max_tokens=self.max_output_tokens,
                 messages=messages,
                 # Disable reasoning/thinking mode for Gemma-4, Qwen3, and similar
                 # local models that auto-activate "thinking" on complex prompts.
@@ -368,6 +377,9 @@ class UnifiedLLMClient:
                 },
             )
             content = response.choices[0].message.content
+            if response.choices[0].finish_reason == "length":
+                logger.error("Chat output truncated by token limit")
+                return None
             return content if content else None
 
         except ImportError:
@@ -385,7 +397,7 @@ class UnifiedLLMClient:
             "model": self.model,
             "prompt": prompt,
             "temperature": 0.0,
-            "max_tokens": 4000,
+            "max_tokens": self.max_output_tokens,
             "stop": [
                 "\n\nSYSTEM:\n",
                 "\n\nUSER:\n",
@@ -420,6 +432,9 @@ class UnifiedLLMClient:
                 return None
 
             content = choices[0].get("text", "")
+            if choices[0].get("finish_reason") == "length":
+                logger.error(f"Completions output truncated by token limit ({self.max_output_tokens})")
+                return None
             content = content.lstrip()
             if content.startswith("- filename:"):
                 content = "workouts:\n" + "\n".join(
@@ -475,6 +490,13 @@ class UnifiedLLMClient:
     @staticmethod
     def _sanitize_yaml_candidate(text: str) -> str:
         candidate = text.strip()
+        # Strip only complete leading reasoning blocks; never treat an unfinished
+        # reasoning response as a completed plan.
+        while candidate.startswith("<think>"):
+            end = candidate.find("</think>")
+            if end < 0:
+                return ""
+            candidate = candidate[end + len("</think>"):].strip()
         if not candidate:
             return candidate
 
@@ -520,6 +542,15 @@ class UnifiedLLMClient:
         root_matches = list(re.finditer(r"(?m)^workouts:\s*$", candidate))
         if len(root_matches) > 1:
             candidate = candidate[:root_matches[1].start()].rstrip()
+
+        # YAML permits arbitrary key order and indentless sequences. Reformatting
+        # an already parseable document by line heuristics can corrupt its steps.
+        try:
+            parsed = yaml.safe_load(candidate)
+            if isinstance(parsed, dict) and isinstance(parsed.get("workouts"), list):
+                return candidate
+        except yaml.YAMLError:
+            pass
 
         if candidate.startswith("workouts:"):
             candidate = UnifiedLLMClient._normalize_workout_yaml_indentation(candidate)
@@ -605,14 +636,17 @@ class UnifiedLLMClient:
         if not stripped:
             return True
 
-        lowered = stripped.lower()
-        if "```yaml" in lowered or "workouts:" in lowered:
-            return False
-
-        return (
-            lowered.startswith("thinking process:")
-            or lowered.startswith("<think>")
-            or lowered.startswith("analysis:")
+        candidate = UnifiedLLMClient._extract_yaml(stripped)
+        try:
+            data = yaml.safe_load(candidate)
+        except yaml.YAMLError:
+            return True
+        return not (
+            isinstance(data, dict)
+            and isinstance(data.get("workouts"), list)
+            and data["workouts"]
+            and all(isinstance(w, dict) and isinstance(w.get("steps"), list)
+                    and w["steps"] for w in data["workouts"])
         )
 
     @classmethod
@@ -703,6 +737,7 @@ class UnifiedLLMClient:
         original_plan: str,
         issues: list[tuple[str, str]],
         source_facts_text: str = "",
+        previous_yaml: str = "",
     ) -> str:
         grouped: dict[str, list[str]] = {}
         for category, message in issues:
@@ -723,6 +758,7 @@ class UnifiedLLMClient:
             "Fix the listed problems only, keep already-correct structure, and regenerate the full YAML.\n\n"
             f"{facts_section}"
             f"Validation feedback by category:\n{feedback}\n\n"
+            f"Previous output to correct:\n{previous_yaml}\n\n"
             "Requirements:\n"
             "- filename and name must stay identical\n"
             "- keep repeat semantics valid\n"
@@ -730,97 +766,18 @@ class UnifiedLLMClient:
             f"Original training plan:\n\n{original_plan}"
         )
 
-    def _generate_segmented_yaml_draft(
-        self,
-        *,
-        analysis,
-        max_retries: int,
-        repair_plan_data,
-        validate_plan_data_detailed,
-        group_issues_by_category,
-    ) -> GeneratedYamlResult:
-        merged_workouts: list[dict[str, Any]] = []
-        warnings: list[str] = []
-        repairs: list[str] = list(analysis.changes)
-        ambiguities: list[str] = list(analysis.ambiguities)
-        attempts = 0
-
-        for index, block_text in enumerate(analysis.workout_blocks, start=1):
-            logger.info(
-                f"Segmented LLM generation for workout {index}/{analysis.expected_workouts}..."
-            )
-            segment_fact = self._extract_single_workout_fact(block_text)
-            segment_workout, segment_error = self._generate_and_validate_segment_workout(
-                block_text=block_text,
-                fact=segment_fact,
-                max_retries=max_retries,
-                segment_index=index,
-            )
-            if segment_error:
-                return GeneratedYamlResult(
-                    warnings=warnings,
-                    repairs=repairs,
-                    ambiguities=ambiguities,
-                    validation_errors=[segment_error],
-                    error_categories={"segmented_generation_error": [segment_error]},
-                    attempts=attempts,
-                )
-            if segment_workout is None:
-                return GeneratedYamlResult(
-                    warnings=warnings,
-                    repairs=repairs,
-                    ambiguities=ambiguities,
-                    validation_errors=[f"segment {index}: empty result"],
-                    error_categories={"segmented_generation_error": [f"segment {index}: empty result"]},
-                    attempts=attempts,
-                )
-            attempts += max_retries  # Upper bound approximation for nested generation.
-            merged_workouts.append(segment_workout)
-
-        merged_yaml = yaml.safe_dump(
-            {"workouts": merged_workouts},
-            allow_unicode=True,
-            default_flow_style=False,
-            sort_keys=False,
-        )
-        merged_result = self._prepare_yaml_candidate(
-            merged_yaml,
-            analysis_repairs=repairs,
-            analysis_ambiguities=ambiguities,
-            expected_workout_count=analysis.expected_workouts,
-            repair_plan_data=repair_plan_data,
-            validate_plan_data_detailed=validate_plan_data_detailed,
-            group_issues_by_category=group_issues_by_category,
-        )
-        merged_result.warnings = warnings + merged_result.warnings
-        merged_result.attempts = attempts
-        return merged_result
-
     @staticmethod
     def _build_source_expectations_prompt(analysis) -> str:
-        expected = getattr(analysis, "expected_workouts", 0)
-        if not expected:
-            return ""
-
-        phase_weeks = getattr(analysis, "phase_weeks", 0)
-        days_per_week = getattr(analysis, "days_per_week", 0)
-        headers = ", ".join(getattr(analysis, "workout_headers", [])[:12])
-
-        lines = [f"Expected workout items: {expected}"]
-        if phase_weeks and days_per_week:
-            lines.append(
-                f"Plan structure: {phase_weeks} weeks x {days_per_week} training days/week = {expected} total workouts."
-            )
-            lines.append(
-                "Generate ALL workouts for ALL weeks — do not stop early or produce only one example per phase."
-            )
-            lines.append(
-                "Each week in each phase must produce exactly one workout entry per training day."
-            )
-        elif headers:
-            lines.append(f"Detected workout headers: {headers}")
-        lines.append("Skip rest/off days and output exactly that many workout items.")
-        return "\n".join(lines) + "\n\n"
+        headers = getattr(analysis, "workout_headers", [])
+        if not headers:
+            return "Interpret the entire free-form plan, including shared instructions and references.\n\n"
+        return (
+            "Some possible date/workout headings were detected (non-exhaustive): "
+            + "; ".join(headers[:12])
+            + "\nThese are hints, not a required count or input format. "
+            "Interpret ALL of the source, including unheaded workouts, shared rules, "
+            "references to other days and rest days. Do not assume one workout per heading.\n\n"
+        )
 
     @staticmethod
     def _apply_expected_workout_count_check(
@@ -862,131 +819,6 @@ class UnifiedLLMClient:
             result.error_categories.setdefault("source_fact_mismatch", []).append(message)
 
     @staticmethod
-    def _demote_source_fact_mismatch(result: GeneratedYamlResult) -> None:
-        """Keep source fact heuristics visible without triggering LLM retries."""
-        msgs = result.error_categories.pop("source_fact_mismatch", [])
-        if not msgs:
-            return
-
-        result.warnings.extend(msgs)
-        result.validation_errors = [
-            error for error in result.validation_errors if error not in msgs
-        ]
-
-    def _generate_and_validate_segment_workout(
-        self,
-        *,
-        block_text: str,
-        fact: SourceWorkoutFact | None,
-        max_retries: int,
-        segment_index: int,
-    ) -> tuple[dict[str, Any] | None, str | None]:
-        prompt_text = block_text
-        last_error: str | None = None
-
-        for retry_idx in range(SUSPICIOUS_SEGMENT_RETRIES + 1):
-            segment_result = self.generate_yaml_draft(prompt_text, max_retries=max_retries)
-            if segment_result.validation_errors or not isinstance(segment_result.data, dict):
-                details = "; ".join(segment_result.validation_errors[:3]) or "empty result"
-                last_error = f"segment {segment_index}: {details}"
-                if retry_idx >= SUSPICIOUS_SEGMENT_RETRIES:
-                    return None, last_error
-                logger.warning(last_error)
-                prompt_text = self._build_segment_fact_retry_input(
-                    block_text, fact, [details]
-                )
-                continue
-
-            segment_workouts = segment_result.data.get("workouts")
-            if not isinstance(segment_workouts, list) or len(segment_workouts) != 1:
-                count = len(segment_workouts) if isinstance(segment_workouts, list) else 0
-                return None, (
-                    f"segment {segment_index}: expected exactly 1 workout item, got {count}"
-                )
-
-            workout = segment_workouts[0]
-            if not isinstance(workout, dict):
-                return None, f"segment {segment_index}: workout payload is not a mapping"
-
-            if fact and fact.week and fact.month and fact.day and fact.weekday:
-                self._align_workout_identifier_with_source_header(
-                    workout,
-                    month=fact.month,
-                    day=fact.day,
-                    week=fact.week,
-                    weekday=fact.weekday,
-                )
-
-            self._repair_missing_source_repeat(workout, fact)
-            suspicious = self._detect_suspicious_workout_against_fact(workout, fact)
-            if not suspicious:
-                return workout, None
-
-            last_error = f"segment {segment_index}: suspicious output ({'; '.join(suspicious[:3])})"
-            if retry_idx >= SUSPICIOUS_SEGMENT_RETRIES:
-                break
-            logger.warning(last_error)
-            prompt_text = self._build_segment_fact_retry_input(block_text, fact, suspicious)
-
-        return None, last_error or f"segment {segment_index}: suspicious output"
-
-    @staticmethod
-    def _repair_missing_source_repeat(
-        workout: dict[str, Any], fact: SourceWorkoutFact | None
-    ) -> None:
-        """Restore an explicit repeat when the model emitted its content steps."""
-        if fact is None or not fact.interval_count or not fact.interval_rep_km:
-            return
-        steps = workout.get("steps")
-        if not isinstance(steps, list):
-            return
-        if any(
-            isinstance(step, dict) and step.get("type") == "repeat"
-            for step in steps
-        ):
-            return
-        for index, step in enumerate(steps):
-            if not isinstance(step, dict) or not str(step.get("type", "")).startswith("dist_"):
-                continue
-            km = step.get("km")
-            if isinstance(km, (int, float)) and abs(float(km) - fact.interval_rep_km) <= 0.08:
-                steps.append(
-                    {
-                        "type": "repeat",
-                        "count": fact.interval_count,
-                        "back_to_offset": index,
-                    }
-                )
-                return
-
-    @staticmethod
-    def _build_segment_fact_retry_input(
-        block_text: str,
-        fact: SourceWorkoutFact | None,
-        suspicious: list[str],
-    ) -> str:
-        lines = ["\nMandatory facts:"]
-        if fact:
-            if fact.month and fact.day and fact.weekday:
-                lines.append(f"- date: {fact.day:02d}.{fact.month:02d} ({fact.weekday})")
-            if fact.interval_count and fact.interval_rep_km:
-                lines.append(
-                    f"- intervals: {fact.interval_count} x {fact.interval_rep_km:.3g} km"
-                )
-            if fact.steady_distance_km:
-                lines.append(f"- distance_km: {fact.steady_distance_km:.3g}")
-            if fact.hr_cap:
-                lines.append(f"- hr cap: {fact.hr_cap}")
-            if fact.interval_count and fact.interval_rep_km:
-                lines.append(
-                    "- interval output must contain a repeat step with "
-                    f"count: {fact.interval_count} and back_to_offset pointing to the active step"
-                )
-        lines.append("Issues to fix:")
-        lines.extend(f"- {item}" for item in suspicious[:5])
-        return block_text + "\n" + "\n".join(lines)
-
-    @staticmethod
     def _extract_segment_header_info(block_text: str) -> dict[str, Any] | None:
         lines = [line.strip() for line in str(block_text or "").splitlines() if line.strip()]
         if not lines:
@@ -1000,7 +832,7 @@ class UnifiedLLMClient:
         if not (1 <= day <= 31 and 1 <= month <= 12):
             return None
 
-        year = 2025
+        year = date.today().year
         raw_year = match.group("year")
         if raw_year:
             year = int(raw_year)
@@ -1033,11 +865,15 @@ class UnifiedLLMClient:
         return [
             fact
             for block in analysis.workout_blocks
-            if (fact := UnifiedLLMClient._extract_single_workout_fact(block)) is not None
+            if (fact := UnifiedLLMClient._extract_single_workout_fact(
+                block + "\n" + analysis.shared_context
+            )) is not None
         ]
 
     @staticmethod
     def _extract_single_workout_fact(block_text: str) -> SourceWorkoutFact | None:
+        from ..plan_processing import NON_RUNNING_DAY_ONLY_RE
+
         lines = [line.strip() for line in str(block_text or "").splitlines() if line.strip()]
         if not lines:
             return None
@@ -1046,7 +882,12 @@ class UnifiedLLMClient:
         if info is None:
             return None
 
-        lowered = "\n".join(lines[1:]).lower()
+        title = SEGMENT_HEADER_DATE_RE.match(header)
+        source_body = [title.group("title") or ""] if title else []
+        fact_lines = [line for line in source_body + lines[1:]
+                      if not NON_RUNNING_DAY_ONLY_RE.match(line)
+                      and not re.match(r"\s*(?:итого|всего|total|estimated)\b", line, re.IGNORECASE)]
+        lowered = "\n".join(fact_lines).lower()
         interval_match = INTERVAL_SOURCE_RE.search(lowered)
         interval_count: int | None = None
         interval_rep_km: float | None = None
@@ -1070,6 +911,15 @@ class UnifiedLLMClient:
         if hr_match:
             hr_cap = int(hr_match.group("hr"))
 
+        durations_sec = [
+            float(m.group(1).replace(",", ".")) * (60 if m.group(2).startswith(("мин", "min")) else 1)
+            for m in re.finditer(r"(?<![\d:])(\d+(?:[.,]\d+)?)\s*(мин\w*|min\w*|сек\w*|sec\w*)\b", lowered)
+        ]
+        pace_ranges = [
+            (m.group(1), m.group(2))
+            for m in re.finditer(r"(?<!\d)(\d{1,2}:[0-5]\d)\s*[-–—]\s*(\d{1,2}:[0-5]\d)(?!\d)", lowered)
+        ]
+
         return SourceWorkoutFact(
             month=info["month"],
             day=info["day"],
@@ -1080,6 +930,8 @@ class UnifiedLLMClient:
             interval_rep_km=interval_rep_km,
             steady_distance_km=steady_distance_km,
             hr_cap=hr_cap,
+            durations_sec=durations_sec,
+            pace_ranges=pace_ranges,
         )
 
     @staticmethod
@@ -1131,6 +983,21 @@ class UnifiedLLMClient:
             if not any(abs(value - fact.interval_rep_km) <= 0.08 for value in rep_distances):
                 issues.append(f"missing interval distance {fact.interval_rep_km:.3g}km")
 
+            matching_groups = []
+            for index, step in enumerate(steps):
+                if not isinstance(step, dict) or step.get("type") != "repeat" or step.get("count") != fact.interval_count:
+                    continue
+                start = step.get("back_to_offset")
+                if not isinstance(start, int) or not 0 <= start < index:
+                    continue
+                group = steps[start:index]
+                if (any(isinstance(s, dict) and isinstance(s.get("km"), (int, float))
+                        and abs(s["km"] - fact.interval_rep_km) <= 0.001 for s in group)
+                        and not any(isinstance(s, dict) and s.get("intensity") in {"warmup", "cooldown"} for s in group)):
+                    matching_groups.append(group)
+            if not matching_groups:
+                issues.append("repeat group must contain the active interval and exclude warmup/cooldown")
+
             type_code = str(workout.get("type_code", "")).lower()
             if type_code and type_code not in {"intervals", "threshold", "tempo", "fartlek"}:
                 issues.append("unexpected workout type for interval source block")
@@ -1150,8 +1017,19 @@ class UnifiedLLMClient:
                 for step in steps
                 if isinstance(step, dict) and isinstance(step.get("hr_high"), (int, float))
             ]
-            if hr_high_values and not any(abs(value - fact.hr_cap) <= 3 for value in hr_high_values):
+            if not hr_high_values:
+                issues.append(f"missing hr cap {fact.hr_cap}")
+            elif not any(abs(value - fact.hr_cap) <= 3 for value in hr_high_values):
                 issues.append(f"hr cap mismatch (expected ~{fact.hr_cap})")
+
+        for seconds in fact.durations_sec:
+            if not any(isinstance(s, dict) and isinstance(s.get("seconds"), (int, float))
+                       and abs(s["seconds"] - seconds) < 0.01 for s in steps):
+                issues.append(f"missing source duration {seconds:g} seconds")
+        for fast, slow in fact.pace_ranges:
+            if not any(isinstance(s, dict) and s.get("pace_fast") == fast
+                       and s.get("pace_slow") == slow for s in steps):
+                issues.append(f"missing source pace range {fast}-{slow}")
 
         return issues
 

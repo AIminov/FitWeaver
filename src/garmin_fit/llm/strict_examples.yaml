@@ -14,14 +14,14 @@ examples:
       Разминка: 2 км (5:45-6:00)
       6x800м по 4:20-4:30, восстановление 400 м трусцой (5:30-6:00)
       Заминка: 1 км (5:45-6:00)
-      Итого: ~10.4 км, 55 мин
+      Итого: ~10.2 км, 55 мин
     output: |
       workouts:
-        - filename: W15_04-14_Tue_Intervals_6x800m
-          name: W15_04-14_Tue_Intervals_6x800m
+        - filename: W16_04-14_Tue_Intervals_6x800m
+          name: W16_04-14_Tue_Intervals_6x800m
           desc: "Classic intervals: 6x800m at tempo pace with jogging recovery"
           type_code: intervals
-          distance_km: 10.4
+          distance_km: 10.2
           estimated_duration_min: 55
           steps:
             - type: dist_pace
@@ -34,8 +34,10 @@ examples:
               pace_fast: "4:20"
               pace_slow: "4:30"
               intensity: active
-            - type: dist_open
+            - type: dist_pace
               km: 0.4
+              pace_fast: "5:30"
+              pace_slow: "6:00"
               intensity: recovery
             - type: repeat
               back_to_offset: 1
@@ -62,8 +64,8 @@ examples:
       Итого: 8 км, 45 мин
     output: |
       workouts:
-        - filename: W15_04-15_Wed_Tempo_5km
-          name: W15_04-15_Wed_Tempo_5km
+        - filename: W16_04-15_Wed_Tempo_5km
+          name: W16_04-15_Wed_Tempo_5km
           desc: "Tempo run: 5km at threshold pace with warmup and cooldown"
           type_code: tempo
           distance_km: 8.0
@@ -93,22 +95,20 @@ examples:
       - easy
       - hr
     input: |
-      3.03 (вт)
-      Кросс спокойно
-      Пульс до 140
-      8 км
+      Во вторник, 3 марта 2026 года, пробеги спокойно восемь километров.
+      Пульс держи не выше 140. Темп выбирай по самочувствию.
     output: |
       workouts:
-        - filename: W09_03-03_Tue_Easy_8km
-          name: W09_03-03_Tue_Easy_8km
+        - filename: W10_03-03_Tue_Easy_8km
+          name: W10_03-03_Tue_Easy_8km
           desc: "Easy run with heart rate capped at 140 bpm"
           type_code: easy
           distance_km: 8.0
-          estimated_duration_min: 52
+          estimated_duration_min: null
           steps:
             - type: dist_hr
               km: 8.0
-              hr_low: 125
+              hr_low: 80
               hr_high: 140
               intensity: recovery
   - id: fartlek_time
@@ -123,10 +123,10 @@ examples:
     input: |
       16.04.2026 (чт)
       Фартлек
-      10 мин разминка лёгко (5:45)
-      5 циклов: 2 мин быстро (4:40) + 3 мин легко (6:00)
-      10 мин заминка (5:45)
-      Примерно 8 км, 45 мин
+      10 мин разминка лёгко (5:30-6:00)
+      5 циклов: 2 мин быстро (4:30-4:50) + 3 мин легко (5:45-6:00)
+      10 мин заминка (5:30-6:00)
+      Итого: примерно 8 км, 45 мин
     output: |
       workouts:
         - filename: W16_04-16_Thu_Fartlek
@@ -167,7 +167,7 @@ examples:
       - гору
       - hills
     input: |
-      4.03 (ср)
+      4.03.2026 (ср)
       Разминка
       2 км спокойно (пульс до 140)
       Спринтерская работа
@@ -183,16 +183,16 @@ examples:
       1 км спокойно
     output: |
       workouts:
-        - filename: W09_03-04_Wed_Intervals_Hills_2x5x40m
-          name: W09_03-04_Wed_Intervals_Hills_2x5x40m
+        - filename: W10_03-04_Wed_Intervals_Hills_2x5x40m
+          name: W10_03-04_Wed_Intervals_Hills_2x5x40m
           desc: "Hill sprint workout with two separate series and jogging recovery"
           type_code: intervals
           distance_km: 8.4
-          estimated_duration_min: 58
+          estimated_duration_min: null
           steps:
             - type: dist_hr
               km: 2.0
-              hr_low: 125
+              hr_low: 80
               hr_high: 140
               intensity: warmup
             - type: dist_open
@@ -206,7 +206,7 @@ examples:
               count: 5
             - type: dist_hr
               km: 1.0
-              hr_low: 130
+              hr_low: 80
               hr_high: 150
               intensity: recovery
             - type: dist_open
@@ -247,8 +247,10 @@ examples:
           distance_km: 6.0
           estimated_duration_min: 45
           steps:
-            - type: dist_open
+            - type: dist_pace
               km: 2.0
+              pace_fast: "5:45"
+              pace_slow: "6:00"
               intensity: warmup
             - type: sbu_block
               drills:
@@ -266,8 +268,10 @@ examples:
               pace_fast: "5:30"
               pace_slow: "5:50"
               intensity: active
-            - type: dist_open
+            - type: dist_pace
               km: 1.0
+              pace_fast: "5:45"
+              pace_slow: "6:00"
               intensity: cooldown
   - id: intervals_hr
     tags: [intervals, hr, repeat, 1000]
@@ -283,14 +287,14 @@ examples:
       2 км разминка (пульс 130-145)
       5x1000м на пульсе 165-170, восстановление 400 м (пульс 130-145)
       1 км заминка
-      Итого: 9 км, 50 мин
+      Итого: 10 км, 50 мин
     output: |
       workouts:
         - filename: W08_02-19_Thu_Intervals_5x1000m
           name: W08_02-19_Thu_Intervals_5x1000m
           desc: "Intervals: 5x1000m at high HR with jogging recovery"
           type_code: intervals
-          distance_km: 9.0
+          distance_km: 10.0
           estimated_duration_min: 50
           steps:
             - type: dist_hr
@@ -311,10 +315,8 @@ examples:
             - type: repeat
               back_to_offset: 1
               count: 5
-            - type: dist_hr
+            - type: dist_open
               km: 1.0
-              hr_low: 130
-              hr_high: 145
               intensity: cooldown
   - id: progression_long
     tags: [progression, long, zones]
@@ -357,7 +359,7 @@ examples:
       - развивающий
       - 155
     input: |
-      8.03 (вс)
+      8.03.2026 (вс)
       Длительный кросс
       Развивающий режим
       Пульс до 155
@@ -369,11 +371,11 @@ examples:
           desc: "Long run with aerobic heart rate cap"
           type_code: long
           distance_km: 16.0
-          estimated_duration_min: 108
+          estimated_duration_min: null
           steps:
             - type: dist_hr
               km: 16.0
-              hr_low: 140
+              hr_low: 80
               hr_high: 155
               intensity: active
   - id: insertion_run
@@ -386,7 +388,7 @@ examples:
       - темповая вставка
       - длинный с темпом
     input: |
-      22.03 (вс)
+      22.03.2026 (вс)
       Длинный бег с темповыми вставками
       5 км аэробно (пульс 135-150)
       2 км темп (пульс 155-165)

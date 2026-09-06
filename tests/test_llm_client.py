@@ -1,5 +1,4 @@
 import unittest
-from types import SimpleNamespace
 
 import yaml
 
@@ -37,12 +36,12 @@ class TestUnifiedLLMClient(unittest.TestCase):
         )
         self.assertFalse(
             UnifiedLLMClient._openai_chat_response_needs_fallback(
-                "workouts:\n  - filename: W10_03-03_Tue_Easy_8km"
+                "workouts:\n  - filename: W10_03-03_Tue_Easy_8km\n    steps: [{type: dist_open, km: 8}]"
             )
         )
         self.assertFalse(
             UnifiedLLMClient._openai_chat_response_needs_fallback(
-                "```yaml\nworkouts:\n  - filename: W10_03-03_Tue_Easy_8km\n```"
+                "```yaml\nworkouts:\n  - filename: W10_03-03_Tue_Easy_8km\n    steps: [{type: dist_open, km: 8}]\n```"
             )
         )
 
@@ -149,7 +148,7 @@ class TestUnifiedLLMClient(unittest.TestCase):
 
         def fake_completions(prompt, timeout):
             calls.append("completions")
-            return "workouts:\n  - filename: W10_03-03_Tue_Easy_8km"
+            return "workouts:\n  - filename: W10_03-03_Tue_Easy_8km\n    steps: [{type: dist_open, km: 8}]"
 
         client._call_openai_chat = fake_chat
         client._call_openai_completion = fake_completions
@@ -215,97 +214,16 @@ class TestUnifiedLLMClient(unittest.TestCase):
             result.validation_errors,
         )
 
-    def test_segmented_generation_merges_single_workout_results(self):
-        client = UnifiedLLMClient(
-            model="dummy",
-            base_url="http://localhost:1234/v1",
-            api_type="openai",
-            openai_mode="auto",
-        )
-        analysis = SimpleNamespace(
-            workout_blocks=["3.03 (вт)\n8 км", "4.03 (ср)\n6 км"],
-            expected_workouts=2,
-            changes=[],
-            ambiguities=[],
-        )
-        returned = [
-            GeneratedYamlResult(
-                yaml_text="workouts:\n  - filename: W09_03-03_Tue_Easy_8km",
-                data={
-                    "workouts": [
-                        {
-                            "filename": "W09_03-03_Tue_Easy_8km",
-                            "name": "W09_03-03_Tue_Easy_8km",
-                            "desc": "Easy",
-                            "type_code": "easy",
-                            "distance_km": 8.0,
-                            "estimated_duration_min": 50,
-                            "steps": [{"type": "dist_open", "km": 8.0}],
-                        }
-                    ]
-                },
-                attempts=1,
-            ),
-            GeneratedYamlResult(
-                yaml_text="workouts:\n  - filename: W09_03-04_Wed_Easy_6km",
-                data={
-                    "workouts": [
-                        {
-                            "filename": "W09_03-04_Wed_Easy_6km",
-                            "name": "W09_03-04_Wed_Easy_6km",
-                            "desc": "Easy",
-                            "type_code": "easy",
-                            "distance_km": 6.0,
-                            "estimated_duration_min": 38,
-                            "steps": [{"type": "dist_open", "km": 6.0}],
-                        }
-                    ]
-                },
-                attempts=1,
-            ),
-        ]
-
-        def fake_generate_yaml_draft(block_text, max_retries):
-            return returned.pop(0)
-
-        client.generate_yaml_draft = fake_generate_yaml_draft
-
-        result = client._generate_segmented_yaml_draft(
-            analysis=analysis,
-            max_retries=1,
-            repair_plan_data=lambda data: (data, []),
-            validate_plan_data_detailed=lambda data, enforce_filename_name_match=True: ([], []),
-            group_issues_by_category=lambda errors: {},
-        )
-
-        self.assertFalse(result.validation_errors)
-        self.assertEqual(len(result.data["workouts"]), 2)
-        self.assertEqual(result.attempts, 2)
-
-    def test_repair_missing_source_repeat_uses_matching_interval_step(self):
-        workout = {
-            "steps": [
-                {"type": "dist_open", "km": 0.8, "intensity": "active"},
-                {"type": "dist_open", "km": 0.4, "intensity": "recovery"},
-            ]
-        }
-        fact = SourceWorkoutFact(
-            month=5,
-            day=3,
-            week=18,
-            weekday="Sat",
-            header="03.05.2026 (Сб) — Интервалы",
-            interval_count=6,
-            interval_rep_km=0.8,
-        )
-
-        UnifiedLLMClient._repair_missing_source_repeat(workout, fact)
-
-        self.assertEqual(workout["steps"][-1], {
-            "type": "repeat",
-            "count": 6,
-            "back_to_offset": 0,
-        })
+    def test_missing_repeat_is_rejected_without_modifying_steps(self):
+        workout = {"steps": [
+            {"type": "dist_open", "km": 0.8, "intensity": "active"},
+            {"type": "dist_open", "km": 0.4, "intensity": "recovery"},
+            {"type": "dist_open", "km": 2, "intensity": "cooldown"},
+        ]}
+        fact = SourceWorkoutFact(interval_count=6, interval_rep_km=0.8)
+        issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact)
+        self.assertIn("missing repeat count 6", issues)
+        self.assertEqual(len(workout["steps"]), 3)
 
     def test_extract_segment_header_info_parses_date_and_weekday(self):
         info = UnifiedLLMClient._extract_segment_header_info("12.03 (Thu)\nIntervals\n")
@@ -379,7 +297,7 @@ class TestUnifiedLLMClient(unittest.TestCase):
         UnifiedLLMClient._apply_source_fact_consistency_checks(result, [fact])
         self.assertTrue(any("source facts mismatch" in msg for msg in result.validation_errors))
 
-    def test_source_fact_mismatch_is_demoted_after_consistency_check(self):
+    def test_source_fact_mismatch_remains_blocking_after_consistency_check(self):
         fact = UnifiedLLMClient._extract_single_workout_fact(
             "10.03 (Tue)\nЛегкий кросс\n6 км\n"
         )
@@ -398,9 +316,7 @@ class TestUnifiedLLMClient(unittest.TestCase):
         )
 
         UnifiedLLMClient._apply_source_fact_consistency_checks(result, [fact])
-        UnifiedLLMClient._demote_source_fact_mismatch(result)
 
-        self.assertFalse(result.validation_errors)
-        self.assertNotIn("source_fact_mismatch", result.error_categories)
-        self.assertTrue(any("source facts mismatch" in msg for msg in result.warnings))
+        self.assertTrue(result.validation_errors)
+        self.assertIn("source_fact_mismatch", result.error_categories)
 

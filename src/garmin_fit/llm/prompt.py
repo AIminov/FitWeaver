@@ -5,6 +5,7 @@ Strict contract-first LLM prompt builder for workout YAML generation.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
@@ -192,7 +193,7 @@ def render_llm_contract(
         "known_name_pattern=" + naming.get("known_date_pattern", "W{calendar_week}_{MM-DD}_{DayName}_{Type}_{Details}"),
         "fallback_name_pattern=" + naming.get("fallback_pattern", "N{order}_{DayName?}_{Type}_{Details}"),
         "date_token=" + naming.get("date_output_token", "MM-DD"),
-        "calendar_week_rule=" + naming.get("calendar_week_rule", "Jan 1-7 = W01, Jan 8-14 = W02, etc."),
+        "calendar_week_rule=" + naming.get("calendar_week_rule", "ISO 8601 week number for the source year; if absent use the current year"),
         "source_date_forms=" + ", ".join(naming.get("supported_source_date_forms", [])),
         "day_names=" + ", ".join(naming.get("day_names_allowed", [])),
         "type_code_allowed=" + ", ".join(type_codes),
@@ -319,6 +320,7 @@ def create_system_prompt(
 
     sections = [
         "Convert running plan text into strict YAML for Garmin workouts.",
+        f"Current year for source dates without a year: {date.today().year}.",
         "Return only YAML. No reasoning. No markdown.",
         contract_block,
     ]
@@ -334,21 +336,24 @@ def create_system_prompt(
             [
                 "FINAL RULES",
                 "SOURCE INTERPRETATION",
-                "- First split the input by every date header; output one workout per non-rest training block.",
-                "- Markdown prefixes (#) and leading spaces before a date header are formatting only; still treat the date as a workout boundary.",
-                "- Count the blocks before writing YAML; output exactly the expected count, never only the first block.",
+                "- The input is arbitrary human prose, not a template. Understand the whole plan before writing YAML.",
+                "- Accept paragraphs, lists, tables, dated or undated plans, abbreviations and references to other days.",
+                "- Resolve shared instructions and references (such as 'repeat Tuesday') using the entire source; preserve every running session.",
+                "- Markdown prefixes (#) and whitespace are formatting only; dates can help identify sessions but are not required.",
+                "- Infer sessions from meaning, not just headings. A heading may contain zero, one, or multiple sessions; only an explicit user count is binding.",
                 "- Rest/off days produce no workout. Strength, sauna, stretching, plank, and other non-running notes are not separate workouts unless explicit running drills are given.",
                 "- Preserve every explicit source fact (date, distance, duration, HR, pace, repetitions); never invent missing values.",
+                "- Unknown distance_km or estimated_duration_min may be null; do not invent metrics to fill optional fields.",
                 "- A notation like 5x(200m + 200m jog) or 5x200m/200m jog is one repeat group: active 200m plus recovery 200m, then repeat count 5.",
                 "- Warmup, main work, recovery, and cooldown are separate steps when the source distinguishes them.",
                 "- only listed keys/enums; no invented fields or second documents",
                 "- pace(explicit)->dist_pace/time_pace; HR(explicit)->dist_hr/time_hr",
                 "- single upper HR cap only (e.g. \"до 130\", \"HR <= 130\")->use hr_low=80 and hr_high=cap",
-                "- time intervals->time_hr/time_pace, not dist_*",
-                "- intensity required on dist_hr/dist_pace/time_hr/time_pace; first step=warmup, last=cooldown",
+                "- time intervals->time_open/time_hr/time_pace according to explicit targets, not dist_*",
+                "- intensity is optional; use warmup/cooldown only when explicitly stated; a single running step is active",
                 "- sbu_block drills: {name,seconds,reps} only — no 'type' key",
                 "- repeat: back_to_offset=index of FIRST step in repeating group (e.g. warmup@0,active@1,recovery@2,repeat→back_to_offset:1 NOT 2); no nested repeats",
-                "VALIDATE: filenames unique; filename==name; pattern W{wk}_{MM-DD}_{Day}_{Type}_{Detail}",
+                "VALIDATE: filenames unique; filename==name; known date: W{wk}_{MM-DD}_{Day}_{Type}_{Detail}; unknown date: N{order}_{Type}_{Detail}",
                 "dist/seconds>0; hr_low<hr_high; 30≤hr≤240; pace=\"MM:SS\"; no mixed hr*/pace*",
                 "sbu drill name≤12chars; repeat back_to_offset<step_idx",
             ]

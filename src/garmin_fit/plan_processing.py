@@ -255,6 +255,7 @@ class SourceTextAnalysis:
     ambiguities: list[str] = field(default_factory=list)
     workout_headers: list[str] = field(default_factory=list)
     workout_blocks: list[str] = field(default_factory=list)
+    shared_context: str = ""
     expected_workouts: int = 0
     phase_weeks: int = 0        # total weeks detected from phase headers (e.g. "недели 1–4")
     days_per_week: int = 0      # training days/week detected from section headers (e.g. "### Среда")
@@ -338,6 +339,11 @@ def normalize_source_text(text: str) -> SourceTextAnalysis:
 
     ambiguities = detect_source_ambiguities(normalized)
     workout_blocks = _extract_workout_blocks(normalized)
+    preamble: list[str] = []
+    for line in normalized.splitlines():
+        if SOURCE_WORKOUT_HEADER_RE.match(line) or SOURCE_WORKOUT_NUMBERED_RE.match(line):
+            break
+        preamble.append(line)
     workout_headers = [block.splitlines()[0].strip() for block in workout_blocks if block.strip()]
     expected_workouts = len(workout_headers)
 
@@ -356,6 +362,7 @@ def normalize_source_text(text: str) -> SourceTextAnalysis:
         ambiguities=ambiguities,
         workout_headers=workout_headers,
         workout_blocks=workout_blocks,
+        shared_context="\n".join(preamble).strip(),
         expected_workouts=expected_workouts,
         phase_weeks=phase_weeks,
         days_per_week=days_per_week,
@@ -409,6 +416,24 @@ def _looks_like_rest_day_block(lines: list[str]) -> bool:
 
     # First line is the workout header (date/index), the rest is day content.
     content_lines = [line.strip() for line in lines[1:] if line.strip()]
+    header_tail = re.sub(
+        r"^\s*(?:#{1,6}\s*)?\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"
+        r"(?:\s*\([^)]*\))?\s*[,—–-]?\s*", "", lines[0],
+    )
+    # A weekday before the title is metadata, not workout content.
+    header_tail = re.sub(
+        r"^(?:понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|"
+        r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+        r"mon|tue|wed|thu|fri|sat|sun)\b\s*[,—–-]?\s*",
+        "", header_tail, flags=re.IGNORECASE,
+    ).strip(" —–-,")
+    # Add a title when it supplies running/rest information. A generic title
+    # (e.g. 'Сауна, силовые, планка') must not override explicit body notes.
+    if header_tail and SOURCE_WORKOUT_HEADER_RE.match(lines[0]) and (
+        not content_lines or REST_DAY_ONLY_RE.match(header_tail)
+        or re.search(r"\b(?:бег\w*|кросс\w*|интервал\w*|run\w*)\b|\d+\s*(?:км|km)\b", header_tail, re.IGNORECASE)
+    ):
+        content_lines.insert(0, header_tail)
     if not content_lines:
         return False
 
@@ -574,23 +599,8 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                 step["intensity"] = default_intensity
                 notes.append(f"{s_prefix}: applied default intensity '{default_intensity}'")
             elif original_intensity is None and step_type in _POSITIONAL_INTENSITY_TYPES:
-                last_content_idx = max(
-                    (i for i, s in enumerate(steps) if isinstance(s, dict) and s.get("type") != "repeat"),
-                    default=-1,
-                )
-                content_step_count = sum(
-                    1 for s in steps if isinstance(s, dict) and s.get("type") != "repeat"
-                )
-                if content_step_count == 1:
-                    positional_default = "active"
-                elif s_idx == 0:
-                    positional_default = "warmup"
-                elif s_idx == last_content_idx:
-                    positional_default = "cooldown"
-                else:
-                    positional_default = "active"
-                step["intensity"] = positional_default
-                notes.append(f"{s_prefix}: applied positional default intensity '{positional_default}'")
+                step["intensity"] = "active"
+                notes.append(f"{s_prefix}: applied default intensity 'active'")
 
             for field_name in ("pace_fast", "pace_slow"):
                 if field_name not in step:
@@ -608,16 +618,6 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                 if coerced != step.get(field_name):
                     step[field_name] = coerced
                     notes.append(f"{s_prefix}: coerced {field_name} to integer {coerced}")
-
-            if step.get("type") == "repeat" and s_idx > 0:
-                bto = step.get("back_to_offset")
-                if isinstance(bto, int) and bto >= s_idx:
-                    fixed = s_idx - 1
-                    step["back_to_offset"] = fixed
-                    notes.append(
-                        f"{s_prefix}: repaired back_to_offset {bto} >= step index {s_idx}"
-                        f" -> {fixed}"
-                    )
 
             if "km" in step:
                 coerced_km = _coerce_float(step.get("km"))
