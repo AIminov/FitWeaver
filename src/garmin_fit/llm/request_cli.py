@@ -5,7 +5,7 @@ Usage:
     python -m garmin_fit.llm.request_cli
     python -m garmin_fit.llm.request_cli --plan Plan/plan.txt --output Plan/plan.yaml
     python -m garmin_fit.llm.request_cli --api openai --url http://localhost:1234/v1
-    python -m garmin_fit.llm.request_cli --api openai --openai-mode completions
+    python -m garmin_fit.llm.request_cli --api openai --openai-mode auto
 """
 
 import argparse
@@ -66,7 +66,7 @@ def main():
     )
     parser.add_argument(
         "--model", type=str, default=None,
-        help="Model name (default: gemma2:2b for ollama, qwen3.8-27b for openai)"
+        help="Model name (default: gemma2:2b for ollama, qwen3.8-27b@iq3_xxs for openai)"
     )
     parser.add_argument(
         "--retries", type=int, default=MAX_RETRIES,

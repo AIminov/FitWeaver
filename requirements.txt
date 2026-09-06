@@ -1,3 +1,8 @@
+# NOTE: pyproject.toml is the canonical dependency source.
+# This file lists only the base runtime deps for a quick `pip install -r`.
+# For extras (garmin-calendar, api, build, gui) and dev tools use:
+#   pip install -e ".[dev]"   /   pip install -e ".[garmin-calendar,api,build,gui]"
+
 # Existing dependencies
 fit_tool
 garmin-fit-sdk

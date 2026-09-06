@@ -98,7 +98,7 @@ python -m garmin_fit.llm.request_cli \
   --plan Plan/my_plan.md \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
-  --openai-mode completions \
+  --openai-mode auto \
   --timeout-sec 1800
 ```
 
@@ -296,7 +296,7 @@ Plan/plan.md   или   Plan/plan.txt
 
 **3.** Сгенерируйте YAML через LLM (LM Studio):
 ```bash
-python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode completions
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode auto
 ```
 
 Если количество тренировок не определяется автоматически, укажите явно:

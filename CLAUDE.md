@@ -18,7 +18,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Last session summary
 
-**As of 2026-09-02** — Desktop GUI fully functional with 4 tabs (Calendar / LLM Generator / Constructor / Garmin Connect), simple/expert mode, multi-profile support (per-email), and dual standalone exes (GUI + CLI). Backend suite: 313 passed, 9 skipped (fastapi not installed), 322 collected. All architecture decisions (Plan API, SQLite staging, workout builder, error hints, drag&drop) are stable and in code. The per-session log lives in `AGENTS.md` («Журнал сессий»); `version.txt` keeps the version history; for detailed implementation notes see the git log (`git log --oneline src/`).
+**As of 2026-09-06** — Desktop GUI fully functional with 4 tabs (Calendar / LLM Generator / Constructor / Garmin Connect), simple/expert mode, multi-profile support (per-email), and dual standalone exes (GUI + CLI), rebuilt 2026-09-06. Backend suite: **364 passed**, 1 third-party DeprecationWarning (Starlette), with the `.venv` (Python 3.12.10) that has all extras installed. LLM canon is **local LM Studio at `http://127.0.0.1:1234`** with `qwen3.8-27b@iq3_xxs` and `--openai-mode auto` (native LM Studio chat, reasoning disabled); the old LAN Qwen server is retired. Free-form human plan text is passed to the LLM in one request — no auto-segmentation, no repeat/`back_to_offset` guessing; output YAML structure and repeat indices are validated strictly. All architecture decisions (Plan API, SQLite staging, workout builder, error hints, drag&drop) are stable and in code. The per-session log lives in `AGENTS.md` («Журнал сессий»); `version.txt` keeps the version history; for detailed implementation notes see the git log (`git log --oneline src/`).
 
 ---
 
@@ -32,11 +32,13 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed, start here):**
-1. Headless/manual smoke-test of the new Предпросмотр/Применить mode and the automatic YAML validation after load.
-2. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
-3. End-to-end Calendar dry-run/upload payload tests.
-4. Decide and document the minimum supported Python (`requires-python` says >=3.10, ruff/CI target 3.13).
-5. See `TODO.md` for the full backlog — it is the authoritative list.
+1. User smoke-test of a full real source plan through the freshly rebuilt exe on local LM Studio, including cross-day references ("repeat Tuesday's workout").
+2. Widen the free-form plan corpus for semantic-accuracy checks of the model (unit tests use mocks and do not prove model understanding).
+3. Consider server-side structured output without imposing a template on the human input text.
+4. End-to-end Calendar dry-run/upload payload tests.
+5. See `TODO.md` for the full backlog — it is the authoritative list; `AGENTS.md` «Журнал сессий» has the detailed per-session history.
+
+`requires-python` is `>=3.10` and ruff `target-version` is `py310` (they are kept in sync — see the comment in `pyproject.toml`); the working `.venv` is Python 3.12.10.
 
 **Working style preferences:**
 - Communicate in Russian, code/commits in English
@@ -54,12 +56,13 @@ pip install -e ".[dev]"          # editable install with test/lint deps
 pip install -e ".[garmin-calendar]"  # add Garmin Connect upload support
 pip install -e ".[api]"          # add the Plan API (FastAPI+uvicorn) -- needed to run garmin-fit-api
 pip install -e ".[build]"        # add PyInstaller -- needed to package the desktop GUI as .exe
+pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GUI falls back to plain Tkinter without it)
 ```
 
 ## Common Commands
 
 ```bash
-# Run all tests (313 passed, 9 skipped without the api extra, as of 2026-09-02)
+# Run all tests (364 passed with all extras installed, as of 2026-09-06)
 python3 -m pytest tests/
 
 # Run a single test file
