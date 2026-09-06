@@ -1,5 +1,12 @@
 # TODO — FitWeaver
 
+## ✅ FIXED 2026-09-06 — финальные exe
+
+- ✅ FIXED: пересобраны dist/FitWeaver.exe и dist/garmin-fit-cli.exe с текущими исправлениями.
+- ✅ FIXED: GUI жив 8 секунд, CLI --help успешен; 364 теста passed в build-окружении.
+- ✅ FIXED: сохранённый профиль dist использует localhost и qwen3.8-27b@iq3_xxs.
+- Следующая сессия: пользовательская проверка полного плана через новый exe.
+
 ## ✅ FIXED 2026-09-06 — localhost LM Studio
 
 - ✅ FIXED: defaults и GUI-профиль используют http://127.0.0.1:1234 и загруженную qwen3.8-27b@iq3_xxs.
