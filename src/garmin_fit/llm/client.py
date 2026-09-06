@@ -141,6 +141,9 @@ class UnifiedLLMClient:
         if max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be positive")
         self.max_output_tokens = max_output_tokens
+        self._lmstudio_probe_done = False
+        self._lmstudio_info: dict[str, Any] | None = None
+        self._last_llm_error: str | None = None
 
     def check_connection(self) -> bool:
         """Check if LLM server is running and model is available."""
@@ -200,10 +203,11 @@ class UnifiedLLMClient:
         for attempt in range(1, max_retries + 1):
             logger.info(f"LLM attempt {attempt}/{max_retries}...")
 
+            self._last_llm_error = None
             raw_response = self._call_llm(system_prompt, user_message)
             if not raw_response:
                 logger.warning(f"Attempt {attempt}: empty response from LLM")
-                last_errors = ["Empty response from LLM"]
+                last_errors = [self._last_llm_error or "Empty response from LLM"]
                 last_categories = {"llm_error": last_errors[:]}
                 continue
 
@@ -336,6 +340,10 @@ class UnifiedLLMClient:
             return None
 
     def _call_openai(self, messages: list, timeout: int) -> Optional[str]:
+        if self.openai_mode == "auto" and self._detect_lmstudio():
+            content = self._call_lmstudio(messages, timeout)
+            if self._lmstudio_info is not None:
+                return content
         if self.openai_mode in {"auto", "chat"}:
             chat_content = self._call_openai_chat(messages, timeout)
             if chat_content and not self._openai_chat_response_needs_fallback(chat_content):
@@ -352,15 +360,80 @@ class UnifiedLLMClient:
         prompt = self._messages_to_completion_prompt(messages)
         return self._call_openai_completion(prompt, timeout)
 
+    def _detect_lmstudio(self) -> bool:
+        """Probe once; generic OpenAI servers retain their existing transport."""
+        if not self._lmstudio_probe_done:
+            import requests
+
+            self._lmstudio_probe_done = True
+            try:
+                response = requests.get(f"{self.base_url.removesuffix('/v1')}/api/v0/models", timeout=2)
+                if response.status_code == 200:
+                    self._lmstudio_info = next((item for item in response.json().get("data", [])
+                                               if item.get("id") == self.model
+                                               and "compatibility_type" in item and "state" in item), None)
+            except (requests.RequestException, ValueError, TypeError):
+                pass
+        return self._lmstudio_info is not None
+
+    def _call_lmstudio(self, messages: list, timeout: int) -> Optional[str]:
+        """Use LM Studio's documented reasoning control, not ignored chat extras."""
+        import requests
+
+        info = self._lmstudio_info or {}
+        context = info.get("loaded_context_length") or 8192
+        # Leave room for the full source and prompt in the loaded context. Never
+        # truncate the user's input to make it fit; the server reports overflow.
+        output_limit = min(self.max_output_tokens, max(1, int(context) // 2))
+        payload = {
+            "model": self.model,
+            "system_prompt": "\n\n".join(m["content"] for m in messages if m["role"] == "system"),
+            "input": "\n\n".join(m["content"] for m in messages if m["role"] != "system"),
+            "temperature": 0.0, "reasoning": "off", "store": False,
+            "max_output_tokens": output_limit,
+        }
+        try:
+            response = requests.post(f"{self.base_url.removesuffix('/v1')}/api/v1/chat",
+                                     json=payload, timeout=timeout)
+            if response.status_code in {404, 405}:
+                self._lmstudio_info = None  # Older LM Studio: use compatibility API.
+                return None
+            if response.status_code != 200:
+                self._last_llm_error = f"LM Studio native chat error: {response.status_code} {response.text[:500]}"
+                logger.error(self._last_llm_error)
+                return None
+            data = response.json()
+            stats = data.get("stats", {})
+            logger.info(f"LM Studio tokens: input={stats.get('input_tokens')}, output={stats.get('total_output_tokens')}, reasoning={stats.get('reasoning_output_tokens')}")
+            if stats.get("total_output_tokens", 0) >= output_limit:
+                self._last_llm_error = f"LM Studio output reached token limit ({output_limit}); increase model context/output budget for this plan"
+                logger.error(self._last_llm_error)
+                return None
+            content = "\n".join(item["content"] for item in data.get("output", [])
+                                if item.get("type") == "message" and isinstance(item.get("content"), str))
+            return content or None
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            self._last_llm_error = f"LM Studio native request error: {exc}"
+            logger.error(self._last_llm_error)
+            return None
+
     def _call_openai_chat(self, messages: list, timeout: int) -> Optional[str]:
         try:
-            from openai import OpenAI
+            from urllib.parse import urlsplit
+
+            from openai import DefaultHttpxClient, OpenAI
+
+            # httpx does not consistently honor Windows' local proxy bypass.
+            # Loopback servers belong to this machine; retain proxy settings
+            # for every non-loopback endpoint.
+            loopback = urlsplit(self.base_url).hostname in {"localhost", "127.0.0.1", "::1"}
 
             client = OpenAI(
                 base_url=self.base_url,
                 api_key="not-needed",
                 timeout=float(timeout),
                 max_retries=0,  # Generation owns the retry budget.
+                http_client=DefaultHttpxClient(trust_env=not loopback),
             )
 
             response = client.chat.completions.create(
@@ -697,6 +770,24 @@ class UnifiedLLMClient:
         error_messages = [issue.message for issue in errors]
 
         if not errors:
+            for index, workout in enumerate(repaired_data.get("workouts", [])):
+                contributions: list[float] = []
+                for step in workout.get("steps", []):
+                    step_type = step.get("type")
+                    if step_type in {"dist_open", "dist_hr", "dist_pace"}:
+                        contributions.append(float(step["km"]))
+                    elif step_type == "repeat":
+                        start = step["back_to_offset"]
+                        contributions.append(sum(contributions[start:]) * (step["count"] - 1))
+                    else:
+                        break  # Time/open/SBU steps have unknown running distance.
+                else:
+                    if contributions:
+                        total = round(sum(contributions), 6)
+                        previous = workout.get("distance_km")
+                        if previous != total:
+                            workout["distance_km"] = total
+                            repair_notes.append(f"workouts[{index}]: recalculated distance_km from steps ({previous} -> {total})")
             rendered_yaml = yaml.safe_dump(
                 repaired_data,
                 allow_unicode=True,

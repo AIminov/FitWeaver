@@ -168,8 +168,8 @@ class App(_AppBase):
         self._next_step_btn: ttk.Button | None = None
 
         # LLM settings ("own" mode — direct connection to a local LLM)
-        self.llm_url     = tk.StringVar(value="http://192.168.1.107:8080")
-        self.llm_model   = tk.StringVar(value="/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
+        self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
+        self.llm_model   = tk.StringVar(value="qwen3.8-27b@iq3_xxs")
         self.llm_type    = tk.StringVar(value="openai")
         self.llm_timeout = tk.IntVar(value=900)
 
@@ -1910,8 +1910,10 @@ class App(_AppBase):
             return PlanApiClient(self.api_url.get(), self.api_token.get(), timeout_sec=timeout)
 
         from garmin_fit.llm.client import UnifiedLLMClient
+        # Auto detects LM Studio's native reasoning control, otherwise uses
+        # OpenAI-compatible chat with a completions fallback.
         kwargs = {"model": self.llm_model.get(), "base_url": self.llm_url.get(),
-                  "api_type": self.llm_type.get(), "openai_mode": "completions"}
+                  "api_type": self.llm_type.get(), "openai_mode": "auto"}
         if for_generation:
             kwargs["request_timeout_sec"] = max(60, self.llm_timeout.get())
         return UnifiedLLMClient(**kwargs)

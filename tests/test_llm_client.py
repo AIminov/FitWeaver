@@ -141,6 +141,7 @@ class TestUnifiedLLMClient(unittest.TestCase):
             openai_mode="auto",
         )
         calls: list[str] = []
+        client._lmstudio_probe_done = True  # Generic provider; no live discovery in this test.
 
         def fake_chat(messages, timeout):
             calls.append("chat")

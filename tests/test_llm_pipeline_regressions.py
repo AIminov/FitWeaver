@@ -217,3 +217,97 @@ def test_explicit_user_count_still_blocks_incomplete_output():
         result = c.generate_yaml_draft("Two easy runs this week", workouts_hint=2, max_retries=1)
     assert result.validation_errors
     assert "workout_count_mismatch" in result.error_categories
+
+
+@pytest.mark.parametrize("url,trust_env", [
+    ("http://127.0.0.1:1234", False),
+    ("http://localhost:1234", False),
+    ("http://[::1]:1234", False),
+    ("https://llm.example.com/v1", True),
+])
+def test_chat_bypasses_proxy_only_for_loopback(url, trust_env):
+    with patch("openai.DefaultHttpxClient") as http, patch("openai.OpenAI") as sdk:
+        sdk.return_value.chat.completions.create.return_value = SimpleNamespace(choices=[
+            SimpleNamespace(message=SimpleNamespace(content="workouts: []"), finish_reason="stop")])
+        c = UnifiedLLMClient(model="test", base_url=url, api_type="openai")
+        assert c._call_openai_chat([], 10) == "workouts: []"
+    http.assert_called_once_with(trust_env=trust_env)
+
+
+def test_cli_does_not_promote_detected_headers_to_explicit_count(tmp_path):
+    from garmin_fit.llm import request_cli
+
+    source = tmp_path / "plan.txt"
+    source.write_text("06.09.2026 - Easy 6 km\nRepeat that on Tuesday", encoding="utf-8")
+    output = tmp_path / "plan.yaml"
+    with patch("sys.argv", ["llm", "--plan", str(source), "--output", str(output)]), \
+         patch.object(request_cli, "UnifiedLLMClient") as factory, \
+         patch("builtins.input", side_effect=AssertionError("Must not require an input template")):
+        factory.return_value.generate_yaml_from_plan.return_value = "workouts: []"
+        assert request_cli.main()
+        assert factory.return_value.generate_yaml_from_plan.call_args.kwargs["workouts_hint"] == 0
+
+
+def test_lmstudio_auto_uses_native_reasoning_control_and_context_budget():
+    c = client()
+    info = {"id": "test", "compatibility_type": "gguf", "state": "loaded", "loaded_context_length": 8192}
+    body = {"output": [{"type": "message", "content": "workouts: []"}],
+            "stats": {"input_tokens": 20, "total_output_tokens": 5, "reasoning_output_tokens": 0}}
+    with patch("requests.get", return_value=SimpleNamespace(status_code=200, json=lambda: {"data": [info]})) as probe, \
+         patch("requests.post", return_value=SimpleNamespace(status_code=200, json=lambda: body)) as post, \
+         patch.object(c, "_call_openai_chat") as compatibility:
+        for _ in range(2):
+            assert c._call_openai([{"role": "system", "content": "schema"}, {"role": "user", "content": "whole plan"}], 10) == "workouts: []"
+    assert probe.call_count == 1
+    compatibility.assert_not_called()
+    payload = post.call_args.kwargs["json"]
+    assert payload["input"] == "whole plan"
+    assert payload["system_prompt"] == "schema"
+    assert payload["reasoning"] == "off" and payload["store"] is False
+    assert payload["max_output_tokens"] == 4096
+
+
+def test_lmstudio_rejects_output_at_token_limit():
+    c = client()
+    c._lmstudio_info = {"loaded_context_length": 8192}
+    body = {"output": [{"type": "message", "content": "workouts: []"}],
+            "stats": {"total_output_tokens": 4096}}
+    with patch("requests.post", return_value=SimpleNamespace(status_code=200, json=lambda: body)):
+        assert c._call_lmstudio([], 10) is None
+
+
+def test_distance_summary_is_computed_from_repeat_steps():
+    w = workout()
+    w["steps"] = [
+        {"type": "dist_open", "km": 2},
+        {"type": "dist_open", "km": 0.8},
+        {"type": "dist_open", "km": 0.4},
+        {"type": "repeat", "back_to_offset": 1, "count": 6},
+        {"type": "dist_open", "km": 1},
+    ]
+    c = client()
+    with patch.object(c, "_call_llm", return_value=yaml.safe_dump({"workouts": [w]})):
+        result = c.generate_yaml_draft("Intervals as described", max_retries=1)
+    assert not result.validation_errors
+    assert result.data["workouts"][0]["distance_km"] == 10.2
+    assert any("recalculated distance_km" in note for note in result.repairs)
+
+
+def test_old_lmstudio_without_native_endpoint_uses_chat_compatibility():
+    c = client()
+    c._lmstudio_probe_done = True
+    c._lmstudio_info = {"loaded_context_length": 8192}
+    answer = yaml.safe_dump({"workouts": [workout()]})
+    with patch("requests.post", return_value=SimpleNamespace(status_code=404)), \
+         patch.object(c, "_call_openai_chat", return_value=answer) as chat:
+        assert c._call_openai([], 10) == answer
+    chat.assert_called_once()
+
+
+def test_native_context_error_reaches_generation_result():
+    c = client()
+    c._lmstudio_probe_done = True
+    c._lmstudio_info = {"loaded_context_length": 8192}
+    with patch("requests.post", return_value=SimpleNamespace(status_code=400, text="Context size has been exceeded")):
+        result = c.generate_yaml_draft("A long plan", max_retries=1)
+    assert "Context size has been exceeded" in result.validation_errors[0]

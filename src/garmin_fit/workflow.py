@@ -238,8 +238,8 @@ def workflow_doctor(
     *,
     llm_check: bool = False,
     llm_api: str = "openai",
-    llm_url: str = "http://192.168.1.107:8080/v1",
-    llm_model: str = "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf",
+    llm_url: str = "http://127.0.0.1:1234/v1",
+    llm_model: str = "qwen3.8-27b@iq3_xxs",
     llm_openai_mode: str = "auto",
     llm_timeout_sec: int = 120,
 ) -> int:
