@@ -1960,11 +1960,15 @@ class App(_AppBase):
             from garmin_fit.api_client import PlanApiError
             try:
                 client = self._make_llm_client(for_generation=True)
+                # Retry budget is left at the shared default (llm.client.MAX_RETRIES)
+                # so the GUI gets the same correcting second attempt as the CLI and
+                # the bot; a hardcoded 1 here used to make the GUI fail on the first
+                # malformed YAML while the other entry points recovered from it.
                 if self.llm_conn_mode.get() == "api":
-                    result = client.build_plan_draft(plan_text, max_retries=1)
+                    result = client.build_plan_draft(plan_text)
                 else:
                     from garmin_fit.plan_service import build_plan_draft
-                    result = build_plan_draft(client, plan_text, max_retries=1)
+                    result = build_plan_draft(client, plan_text)
 
                 yaml_text = result.yaml_text or ""
                 warnings  = result.warnings or []

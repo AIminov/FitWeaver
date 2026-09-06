@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from .llm.client import GeneratedYamlResult, UnifiedLLMClient
+from .llm.client import MAX_RETRIES, GeneratedYamlResult, UnifiedLLMClient
 from .llm.prompt import get_sbu_drills_prompt
 from .plan_domain import plan_from_data
 from .plan_processing import repair_plan_data
@@ -20,9 +20,14 @@ def build_plan_draft(
     llm_client: UnifiedLLMClient,
     plan_text: str,
     *,
-    max_retries: int = 3,
+    max_retries: int = MAX_RETRIES,
 ) -> GeneratedYamlResult:
-    """Generate a previewable YAML draft from raw plan text."""
+    """Generate a previewable YAML draft from raw plan text.
+
+    The retry budget defaults to llm.client.MAX_RETRIES so the CLI, the GUI and
+    the bot (which reaches this through the Plan API) all get the same number of
+    attempts; previously this defaulted to 3 while the CLI used 2 and the GUI 1.
+    """
     return llm_client.generate_yaml_draft(plan_text, max_retries=max_retries)
 
 

@@ -311,3 +311,32 @@ def test_native_context_error_reaches_generation_result():
     with patch("requests.post", return_value=SimpleNamespace(status_code=400, text="Context size has been exceeded")):
         result = c.generate_yaml_draft("A long plan", max_retries=1)
     assert "Context size has been exceeded" in result.validation_errors[0]
+
+
+def test_all_entry_points_share_one_retry_budget():
+    """CLI, GUI, Plan API and the bot must agree on how many attempts a draft gets.
+
+    They used to disagree: llm.client said 2, plan_service and api_client defaulted
+    to 3, and the GUI hardcoded 1 -- so the same malformed YAML was recoverable in
+    the CLI and fatal in the GUI.
+    """
+    import inspect
+
+    from garmin_fit.api.schemas import GenerateDraftRequest
+    from garmin_fit.api_client import PlanApiClient
+    from garmin_fit.llm.client import MAX_RETRIES
+    from garmin_fit.plan_service import build_plan_draft
+
+    assert inspect.signature(build_plan_draft).parameters["max_retries"].default == MAX_RETRIES
+    assert inspect.signature(PlanApiClient.build_plan_draft).parameters["max_retries"].default == MAX_RETRIES
+    assert GenerateDraftRequest(plan_text="x").max_retries == MAX_RETRIES
+
+
+def test_gui_does_not_hardcode_a_retry_budget():
+    """The GUI must inherit the shared default instead of passing max_retries=1."""
+    from pathlib import Path
+
+    gui = Path(__file__).resolve().parent.parent / "fitweaver_gui.py"
+    source = gui.read_text(encoding="utf-8")
+    assert "build_plan_draft(plan_text, max_retries=" not in source
+    assert "build_plan_draft(client, plan_text, max_retries=" not in source

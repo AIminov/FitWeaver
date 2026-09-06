@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import requests
 
-from .llm.client import GeneratedYamlResult
+from .llm.client import MAX_RETRIES, GeneratedYamlResult
 
 
 class PlanApiError(RuntimeError):
@@ -43,7 +43,7 @@ class PlanApiClient:
         except requests.RequestException:
             return False
 
-    def build_plan_draft(self, plan_text: str, max_retries: int = 3) -> GeneratedYamlResult:
+    def build_plan_draft(self, plan_text: str, max_retries: int = MAX_RETRIES) -> GeneratedYamlResult:
         return self._post(
             "/v1/generate-draft", {"plan_text": plan_text, "max_retries": max_retries}
         )
