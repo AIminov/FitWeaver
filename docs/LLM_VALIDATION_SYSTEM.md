@@ -24,13 +24,13 @@ The LLM validation system has **three complementary layers**:
 │  │ 1. Load Prompt with:                                 │   │
 │  │    - LLM Contract (validation_rules)                 │   │
 │  │    - Strict Examples (correct + FAILURE cases)       │   │
-│  │    - Validation Checklist (16-point check)           │   │
+│  │    - Contract forbidden_patterns (negatives)         │   │
 │  └──────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │ 2. LLM Generates YAML using:                         │   │
 │  │    - Contract rules (enforce naming, ranges, etc.)   │   │
 │  │    - Failure examples (avoid common mistakes)        │   │
-│  │    - Checklist guidance (self-validation)            │   │
+│  │    - Forbidden patterns (what not to emit)           │   │
 │  └──────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │ 3. Runtime Validation:                               │   │
@@ -59,33 +59,30 @@ The contract defines all validation rules in structured YAML that the LLM prompt
 
 ### Key Sections:
 
+> The snippets below are quoted from `src/garmin_fit/llm/llm_contract.yaml`. If they
+> ever disagree with that file, the file wins — it is what the prompt actually renders.
+
 #### output
 ```yaml
 output:
   root_key: workouts
   skip_rest_days: true
-  workout_keys_exact:
-    - filename
-    - name
-    - desc
-    - type_code
-    - distance_km
-    - estimated_duration_min
-    - steps
 ```
+
+The per-workout key list is not part of the contract; it is enforced by
+`plan_schema.WorkoutSchema` (`filename`, `name`, `desc`, `type_code`, `distance_km`,
+`estimated_duration_min`, `steps`).
 
 #### naming
 ```yaml
 naming:
   known_date_pattern: "W{calendar_week}_{MM-DD}_{DayName}_{Type}_{Details}"
-  fallback_pattern: "N{order}_{DayName?}_{Type}_{Details}"
-  date_output_token: MM-DD
-  supported_source_date_forms:
-    - "01.12.2025"
-    - "1 Jan"
-    - "8.03 (вс)"
-  day_names_allowed: [Mon, Tue, Wed, ..., Sun]
+  calendar_week_rule: "ISO 8601 week number for the source year; if absent use the current year"
 ```
+
+The `N{order}_...` fallback for undated workouts and the list of recognised source date
+forms (`01.12.2025`, `1 Jan`, `8.03 (вс)`, …) live in `plan_processing.py`, not in the
+contract — see `docs/PROJECT_FLOW.md` under "Нормализация имен тренировок".
 
 #### allowed_type_codes
 ```yaml
@@ -97,11 +94,11 @@ allowed_type_codes:
   - long
   - recovery
   - progression
-  - easy_drills
-  - aerobic_drills
-  - race
+  - threshold
   - marathon_pace
+  - race
   - mixed
+  - easy_drills
 ```
 
 #### allowed_intensity
@@ -316,33 +313,42 @@ error_categories = {
 
 These are returned to the LLM (in some modes) for retry with feedback.
 
-## Layer 4: Validation Checklist (New!)
+## Layer 4: Pre-submission rules in the contract
 
-**File**: `src/garmin_fit/llm/prompt.py` (added to final instructions)
+**File**: `src/garmin_fit/llm/llm_contract.yaml` (rendered into the prompt by
+`src/garmin_fit/llm/prompt.py`)
 
-Added a **16-point validation checklist** that the LLM uses as a pre-submission guide:
+> **Historical note.** Up to v8.4 this was a literal 16-point "VALIDATION CHECKLIST"
+> block hardcoded in `prompt.py`. It no longer exists there — the rules moved into the
+> machine-readable contract, where there are now more of them and where the validator
+> and the prompt read from one file instead of two hand-synced lists.
 
-```
-VALIDATION CHECKLIST (before returning YAML):
-  1. All filenames are UNIQUE across workouts
-  2. filename == name (exactly identical)
-  3. Filenames follow pattern: W{week}_{MM-DD}_{DayName}_{Type}_{Details}
-  4. All distances (km) are > 0 (no zeros or negatives)
-  5. All durations (seconds) are > 0 (no zeros or negatives)
-  6. For dist_hr/time_hr: hr_low < hr_high (CRITICAL!)
-  7. For dist_hr/time_hr: 30 ≤ hr_low and hr_high ≤ 240
-  8. For dist_pace/time_pace: pace values are quoted strings "MM:SS"
-  9. For dist_pace/time_pace: MM ≥ 1, SS ∈ [00-59]
- 10. NEVER mix hr_* with pace_* in the same step
- 11. For sbu_block: drill names ≤ 12 characters only
- 12. For sbu_block: drills have ONLY {name, seconds, reps} — no 'type'
- 13. For repeat: back_to_offset < current step index
- 14. For repeat: back_to_offset points to a valid step (≥ 0)
- 15. intensity values (if used) are one of: active, warmup, cooldown, recovery
- 16. No nested repeat blocks (one repeat per section only)
-```
+The contract carries the rules in two sections. `validation_rules` groups the positive
+requirements:
 
-This checklist helps LLM self-validate before returning YAML.
+| Group | Covers |
+|---|---|
+| `naming` | filename pattern `W{week}_{MM-DD}_{Day}_{Type}_{Details}`, uniqueness, `filename == name` |
+| `distances` | every `km` strictly positive |
+| `durations` | every `seconds` strictly positive |
+| `heart_rate` | `hr_low < hr_high`, range 30–240, upper-only cap becomes `hr_low: 80` |
+| `pace_format` | quoted `"MM:SS"`, `MM >= 1`, `SS` in `00-59` |
+| `intensity` | only `active` / `warmup` / `cooldown` / `recovery` |
+| `sbu_drills` | drill names ≤ 12 chars, fields `{name, seconds, reps}` only, no `type` |
+| `repeat_block` | `back_to_offset` is a 0-based index below the current step index |
+
+`forbidden_patterns` lists the same ground as negatives (mixing `hr_*` with `pace_*`,
+`type` inside drills, zero/negative values, unquoted pace, and so on), which gives the
+model both framings of each rule.
+
+### Nested repeats: contract is stricter than the validator
+
+The contract forbids nested `repeat` blocks and the prompt repeats that instruction, but
+`plan_validator.py` **does** accept nested repeat ranges — it rejects only ranges that
+*cross* without containment, because the Garmin REST mapper handles proper nesting. This
+asymmetry is intentional in effect: a local model is not asked to produce nested
+structures, while the GUI's Конструктор (which computes `back_to_offset` from a selected
+range rather than guessing it) may legitimately create them.
 
 ## Integration with Full Pipeline
 
@@ -371,7 +377,7 @@ The validation happens at **two levels**:
 
 ### For LLM Developers:
 
-1. Always include the validation checklist in prompts
+1. Keep the rules in `llm_contract.yaml`, not in prompt string literals
 2. Load both correct AND failure examples
 3. Render the full llm_contract in the system prompt
 4. Handle validation errors gracefully (show error categories to user/LLM)
@@ -421,7 +427,7 @@ python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 |------|---------|
 | `src/garmin_fit/llm/llm_contract.yaml` | Machine-readable validation rules and step schema |
 | `src/garmin_fit/llm/strict_examples.yaml` | Correct examples (10) + Failure examples (10+) |
-| `src/garmin_fit/llm/prompt.py` | Renders contract and examples into prompt; includes checklist |
+| `src/garmin_fit/llm/prompt.py` | Renders contract and examples into the system prompt |
 | `src/garmin_fit/plan_validator.py` | Runtime validation logic (source of truth) |
 | `src/garmin_fit/plan_domain.py` | Constants: STEP_REQUIRED_FIELDS, ALLOWED_INTENSITY, etc. |
 | `docs/YAML_GUIDE.md` | Complete YAML syntax reference and human-readable LLM guide |
@@ -431,12 +437,12 @@ python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 ✅ **Three-Layer Validation**: Contract → Examples → Runtime
 ✅ **Structured Rules**: LLM contract in YAML format
 ✅ **Learning by Example**: Both correct and failure cases
-✅ **Pre-Submission Checklist**: 16-point validation guide for LLM
+✅ **Rules in One Place**: contract drives both the prompt and the reviewer's expectations
 ✅ **Automatic Enforcement**: Runtime validation in pipeline
 ✅ **Comprehensive Training**: ~30 examples covering all workout types and error scenarios
 
 This system significantly reduces YAML generation errors by providing:
 - Clear rules (contract)
 - Practical examples (correct and failure cases)
-- Self-validation guidance (checklist)
+- Negative framing of every rule (`forbidden_patterns`)
 - Automatic safety checks (runtime validation)

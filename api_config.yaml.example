@@ -24,7 +24,8 @@ host: "0.0.0.0"
 port: 8008
 
 # -----------------------------------------------------------------------
-# The LLM this API proxies to (same shape as bot_config.yaml's llm_* keys)
+# The LLM this API proxies to. These keys live here only -- the Telegram bot
+# reaches the LLM through this API and no longer has llm_* keys of its own.
 # -----------------------------------------------------------------------
 llm_url: "http://127.0.0.1:1234/v1"
 llm_model: "qwen3.8-27b@iq3_xxs"

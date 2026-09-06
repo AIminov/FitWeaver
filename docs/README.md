@@ -57,7 +57,7 @@ python -m garmin_fit.llm.request_cli
 Рекомендованный профиль для LM Studio:
 
 ```bash
-python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b@iq3_xxs --openai-mode auto --timeout-sec 1800 --retries 3
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --model qwen3.8-27b@iq3_xxs --openai-mode auto --timeout-sec 1800
 ```
 
 Если план фазовый или свободной структуры — укажи число тренировок явно:
