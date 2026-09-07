@@ -57,7 +57,7 @@ The full workflow requires no intermediate Python templates.
 
 | Method | How | Best for |
 |--------|-----|----------|
-| **USB** | Copy `.fit` to `/GARMIN/New files` | Single workouts, offline |
+| **USB** | Copy `.fit` to `/GARMIN/NewFiles` | Single workouts, offline |
 | **Garmin Calendar** | `garmin-calendar` CLI command | Full plans, automatic scheduling |
 
 ---
@@ -135,7 +135,7 @@ python -m garmin_fit.cli run
 
 **5.** Connect your Garmin watch and copy files from `Output_fit/`:
 
-- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Copy `.fit` files to the **`/GARMIN/NewFiles`** folder on the watch
 - The watch will process the files automatically — they will appear in **`/GARMIN/Workouts`**
 
 On the watch:
@@ -186,7 +186,7 @@ python -m garmin_fit.cli run --plan Plan/my_plan.yaml
 
 **6.** Copy files from `Output_fit/` to your watch:
 
-- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Copy `.fit` files to the **`/GARMIN/NewFiles`** folder on the watch
 - The watch will process the files automatically — they will appear in **`/GARMIN/Workouts`**
 
 On the watch:
@@ -317,7 +317,7 @@ python -m garmin_fit.cli run
 
 Files will appear in `Output_fit/`.
 
-- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Copy `.fit` files to the **`/GARMIN/NewFiles`** folder on the watch
 - The watch will process them automatically — workouts will appear in **`/GARMIN/Workouts`**
 
 ---

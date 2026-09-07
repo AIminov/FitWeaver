@@ -328,14 +328,15 @@ OneDrive-машине = 363 passed + 1 PermissionError (test_000_temp_bootstrap 
    (`threshold` есть, `aerobic_drills` нет).
 4. ✅ **ИСПРАВЛЕНО.** `PROJECT_FLOW.md` — блок «Сегментированная генерация» заменён на
    «Один запрос на весь план» с указанием, почему от сегментации отказались.
-5. ⏳ **ОТЛОЖЕНО (нужен пользователь).** `NewFiles` vs `New files` — расхождение реально
-   (`NewFiles` в HOW_TO_LOAD/TELEGRAM_SETUP/examples/`telegram_bot.py:263,440`/
-   `workflow.py:392`; `New files` в README×4, README.ru×2). Какое имя верное — из
-   репозитория не проверяется, у Garmin оно различается между MTP и mass-storage.
-   Нужно посмотреть на самих часах.
+5. ✅ **ИСПРАВЛЕНО.** Все места приведены к `NewFiles` — к тому, что код печатает
+   пользователю в рантайме (`telegram_bot.py:263,440`, `workflow.py:392`); правились
+   README×4 и README.ru×3. Какое имя физически на часах, из репозитория не проверить
+   (у Garmin различается между MTP и mass-storage), поэтому в `HOW_TO_LOAD.md`
+   добавлена оговорка: на части устройств папка показывается как `New Files`.
 6. ✅ **ИСПРАВЛЕНО.** `GARMIN_CALENDAR.md` → `pip install -e ".[garmin-calendar]"` с
    пояснением, что пакет не опубликован в PyPI.
-7. ⏳ **ОТЛОЖЕНО (P3).** CHANGELOG за 2026-09-04/06.
+7. ✅ **ИСПРАВЛЕНО.** В `docs/CHANGELOG.md` добавлена секция `## Unreleased` с
+   записями за 2026-09-04, 2026-09-06 и 2026-09-07.
 
 ### Проход C
 1. ✅ **ИСПРАВЛЕНО.** Комментарий в `api_config.yaml.example` больше не ссылается на
@@ -343,7 +344,7 @@ OneDrive-машине = 363 passed + 1 PermissionError (test_000_temp_bootstrap 
 
 ### Проход D
 1. ⚠️ **ДИАГНОЗ УТОЧНЁН — не детерминизм, и причина другая.** Полный `pytest tests/`
-   даёт **366 passed** во всех прогонах этой сессии (до правок — 364). Реальная причина:
+   даёт **366 passed** во всех прогонах этой сессии (до правок — 364; после P3 — 367). Реальная причина:
    каталог `C:\Users\imino\AppData\Local\Temp\pytest-of-imino` (создан 2026-09-06 23:05)
    повреждён — не читается даже `Get-Acl`. При **полном** прогоне
    `test_000_temp_bootstrap.py` уводит TMP в `.tmp_runtime_tests`, и битый каталог не
@@ -351,12 +352,23 @@ OneDrive-машине = 363 passed + 1 PermissionError (test_000_temp_bootstrap 
    системный temp и падает с `PermissionError`. То есть дело не в локе OneDrive на
    `.tmp_runtime_tests`, а в конкретном сломанном каталоге в системном temp.
    Лечится `rmdir /s /q` по этому пути; сам не удалял — содержимое нечитаемо.
-2. ⏳ **ОТЛОЖЕНО (P3).** 19 остаточных `tmp*` в `.tmp_runtime_tests`; отдельный вопрос —
-   стоит ли вообще держать TMP внутри OneDrive-репозитория.
+2. ✅ **ИСПРАВЛЕНО, вместе с корнем проблемы.** Бутстрап temp перенесён из
+   `test_000_temp_bootstrap.py` в `tests/conftest.py` — теперь срабатывает и на
+   одиночных прогонах, а не только при сборе всей папки. Корень выбирается по
+   порядку: `$FITWEAVER_TEST_TMP` → `<системный temp>/fitweaver_test_tmp` →
+   репозиторий как задокументированный fallback. То есть TMP больше не лежит внутри
+   OneDrive. Каталог `.tmp_runtime_tests` с 19 остаточными `tmp*` удалён (31 КБ
+   пустых каталогов). Проверено: `pytest tests/test_llm_pipeline_regressions.py`
+   отдельным файлом теперь проходит (37 passed) — раньше падал.
 
 ### Проход E
-1. ⏳ **ОТЛОЖЕНО (P3).** `.gitignore` про `packaging/fitweaver.spec`.
-2. ⏳ **ОТЛОЖЕНО (P3).** CI только на 3.13 при `requires-python >=3.10`.
+1. ✅ **ИСПРАВЛЕНО.** Комментарий в `.gitignore` теперь называет реальные
+   `packaging/fitweaver_gui.spec` и `fitweaver_cli.spec`.
+2. ✅ **ИСПРАВЛЕНО.** В `ci.yml` добавлена matrix `["3.10", "3.12", "3.13"]` с
+   пояснением, зачем нужна нижняя граница. Локально 3.10 нет, поэтому дополнительно
+   проверено статически: `ruff check --target-version py310` по всему дереву чист и
+   в коде нет 3.11+-only рантайм-фич (`Self`, `TaskGroup`, `datetime.UTC`, `tomllib`,
+   `StrEnum`, `ExceptionGroup`, `asyncio.timeout`, `itertools.batched`).
 
 ---
 

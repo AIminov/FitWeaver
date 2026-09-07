@@ -1,5 +1,91 @@
 # Changelog
 
+## Unreleased
+
+### 2026-09-07 - Consistency pass: docs vs code
+
+#### Fixed
+- **Bot setup guide described an architecture removed two versions ago.**
+  `docs/TELEGRAM_SETUP.md` told users to put `llm_model` / `llm_url` /
+  `llm_api_type` in `bot_config.yaml`. The bot has not read those keys since it
+  moved behind the Plan API; `telegram_bot.py` requires `plan_api_url` and
+  `plan_api_token`, so a config built from the guide failed at startup. The
+  guide now walks through starting `garmin-fit-api` first, and its
+  troubleshooting distinguishes "Plan API unreachable" from "LLM behind the API
+  unreachable".
+- **One retry budget instead of four.** `llm.client.MAX_RETRIES` was 2, but
+  `plan_service`, `api_client` and `api.schemas` each defaulted to 3 (so the bot
+  got 3) while the GUI hardcoded 1 in both connection modes. The GUI therefore
+  gave up on the first malformed YAML where the CLI recovered. All entry points
+  now default to `MAX_RETRIES`, pinned by regression tests.
+- **Docs that described removed mechanisms.** `LLM_VALIDATION_SYSTEM.md`
+  documented a 16-point prompt checklist and a contract sample with keys the
+  contract does not have; `PROJECT_FLOW.md` documented segmented generation.
+  Both were accurate for v8.4 and were carried forward unedited -- the checklist
+  became `llm_contract.yaml`, and segmentation was deliberately removed on
+  2026-09-06. Corrected, with historical notes explaining the change.
+- `README.md` / `README.ru.md` / `docs/README.md` recommended
+  `--openai-mode completions`, the mode the 2026-09-06 session identified as the
+  cause of context exhaustion on LM Studio. Now `auto`, matching the code default.
+- `docs/GARMIN_CALENDAR.md` suggested installing an unpublished PyPI package;
+  `api_config.yaml.example` pointed at `bot_config.yaml` keys that no longer
+  exist; `request_cli.py`'s `--model` help omitted the `@iq3_xxs` suffix, so
+  copying it targeted a model LM Studio does not have loaded.
+
+#### Changed
+- Test temp bootstrap moved from `tests/test_000_temp_bootstrap.py` into
+  `tests/conftest.py` and out of the repository. It only took effect when the
+  whole directory was collected, so single-file runs landed in the machine's
+  system temp; and its in-repo location meant every scratch directory was queued
+  for OneDrive sync. It now prefers `$FITWEAVER_TEST_TMP`, then a named
+  directory under the system temp, and keeps the repo-local path as a
+  documented fallback.
+- CI runs a Python matrix of 3.10 / 3.12 / 3.13. It previously tested only 3.13
+  while `requires-python` declares `>=3.10`, leaving the floor uncovered.
+- `CLAUDE.md` synced with `AGENTS.md` / `TODO.md`: localhost LM Studio canon,
+  current test count, `.[gui]` extra documented.
+
+### 2026-09-06 - Free-form plans and local LM Studio
+
+#### Fixed
+- Full plan text is sent to the model in **one request**. Automatic segmentation
+  into 2-10 blocks was dropped: it lost the shared context of the plan and
+  cross-day references such as "repeat Tuesday's workout".
+- Removed guessing of `repeat` and `back_to_offset`. An invalid repeat anchor is
+  now rejected by the validator rather than silently rewritten to a wrong step.
+- Positional intensity defaults (first step -> warmup, last -> cooldown) removed;
+  intensity is only set when the source states it.
+- Windows proxy no longer swallows loopback LLM requests; `auto` detects a
+  native LM Studio endpoint and uses it with reasoning disabled and an output
+  budget derived from the loaded context length.
+- Valid YAML with an unusual key order is no longer corrupted by the indentation
+  heuristic. `<think>` prefixes, truncated responses and incomplete chat replies
+  are handled explicitly.
+- `distance_km` is recomputed from fully distance-based steps and `repeat`.
+
+#### Changed
+- Canonical LLM endpoint is local LM Studio at `http://127.0.0.1:1234` with
+  `qwen3.8-27b@iq3_xxs`. The LAN Qwen server is retired.
+- `openai`/`pydantic` declared in dependencies; `auto` mode unified across GUI,
+  doctor and benchmark.
+- Both Windows executables rebuilt from an isolated staging copy.
+
+### 2026-09-04 - Markdown plans and interval reliability
+
+#### Fixed
+- Markdown headers of the form `### date, day - title` (including indentation
+  and the comma) are parsed into separate workout blocks; previously the whole
+  plan reached the model as one lump and workouts could be lost.
+- Days containing only strength work, sauna or general conditioning are no
+  longer counted as separate running workouts.
+- The GUI shows LLM generation errors instead of a false "ready - 0 workouts".
+- An obvious step `type` is recovered from the step's own fields before
+  validation.
+
+#### Changed
+- Prompt strengthened on exact workout count, fact preservation, intervals and
+  repetitions; `easy_drills` synced with the contract.
+
 ## 2026-09-02 - Consistency pass (v10.5.0)
 
 ### Changed

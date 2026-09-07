@@ -1,5 +1,58 @@
 # TODO — FitWeaver
 
+## ✅ FIXED 2026-09-07 — аудит согласованности (P0/P1/P2/P3)
+
+Источник: `qwen_audit.md` (локальная Qwen, проходы 1–2 и A–E). Из 14 находок
+подтвердились 12, две уточнены. 367 тестов passed, `ruff check .` чист.
+
+**P0 — ломало пользователя**
+- ✅ FIXED: `docs/TELEGRAM_SETUP.md` переписан под Plan API. Гайд велел заполнять
+  `llm_model`/`llm_url`/`llm_api_type`, которых бот не читает; `telegram_bot.py:709`
+  требует `plan_api_url`/`plan_api_token` — конфиг по гиду падал на старте.
+
+**P1 — код расходился с задокументированным каноном**
+- ✅ FIXED: единый бюджет retry. Было четыре значения: `MAX_RETRIES=2` (CLI),
+  `plan_service`/`api_client`/`api.schemas` = 3 (бот), GUI = 1. Всё сведено к
+  `MAX_RETRIES`; два регресс-теста фиксируют это.
+
+**P2 — доки описывали удалённое поведение**
+- ✅ FIXED: `LLM_VALIDATION_SYSTEM.md` — «16-point checklist» и образец контракта.
+- ✅ FIXED: `PROJECT_FLOW.md` — «сегментированная генерация».
+- ✅ FIXED: `GARMIN_CALENDAR.md` — pip неопубликованного пакета.
+- ✅ FIXED: `api_config.yaml.example` — ссылка на несуществующие `llm_*` бота.
+- ✅ FIXED: `docs/README.md` — `--retries 3`.
+
+**P3 — гигиена**
+- ✅ FIXED: temp тестов вынесен в `tests/conftest.py` и из репозитория. Раньше
+  срабатывал только при сборе всей папки (одиночные прогоны падали в системный
+  temp) и лежал внутри OneDrive. Порядок: `$FITWEAVER_TEST_TMP` → системный temp
+  → репозиторий как задокументированный fallback. Убраны 19 остаточных каталогов.
+- ✅ FIXED: CI matrix 3.10/3.12/3.13 вместо только 3.13 при `requires-python >=3.10`.
+- ✅ FIXED: `.gitignore` — комментарий про несуществующий `packaging/fitweaver.spec`.
+- ✅ FIXED: CHANGELOG за 2026-09-04, 09-06, 09-07.
+- ✅ FIXED: имя папки часов приведено к `NewFiles`; в `HOW_TO_LOAD.md` оговорка
+  про `New Files` на части устройств.
+
+**Сверка с прошлой итерацией (`Desktop/Garmin8.7/Garmin8.4`, v8.4)**
+- ✅ Существенных потерь функционала нет: те же 9 типов шагов и 4 intensity, все
+  10 `workflow_*` (+2 Garmin Calendar), все 12 старых тест-файлов, все 7 категорий
+  правил старого `LLM_YAML_RULES.md`.
+- ✅ Удалённое безопасно: `generate_marathon_templates.py`, `regenerate_v3_yaml.py`,
+  `_make_unique_file_destination` (никогда не вызывался), `load_hr_zones` (свёрнут
+  в `load_user_profile`), `run_pipeline.bat/.sh`.
+- Находки B2/B4 объяснились: чек-лист из 16 пунктов и сегментация реально
+  существовали в v8.4 — доки перенесены без правки, а не выдуманы.
+
+### Открытые вопросы после аудита
+
+- [ ] Вложенные `repeat`: контракт и промпт запрещают, `plan_validator.py:464`
+      поддерживает. Задокументировано как намеренная асимметрия — подтвердить или снять.
+- [ ] Удалить повреждённый `pytest-of-imino` в системном temp (не читается даже
+      `Get-Acl`). Тесты его больше не задевают.
+- [ ] Пересобрать оба exe после следующей порции изменений в коде.
+- [ ] Проверить полный исходный план пользователя через exe на localhost LM Studio.
+
+
 ## ✅ FIXED 2026-09-06 — финальные exe
 
 - ✅ FIXED: пересобраны dist/FitWeaver.exe и dist/garmin-fit-cli.exe с текущими исправлениями.
