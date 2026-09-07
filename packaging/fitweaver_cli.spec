@@ -19,13 +19,25 @@ SRC_DIR = REPO_ROOT / "src"
 block_cipher = None
 
 llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt"])
-garmin_fit_submodules = collect_submodules("garmin_fit")
+
+# The GUI-only modules are dropped from the force-include list, and the toolkits
+# they reach for are excluded outright. gui_theme.load_customtkinter() does a
+# lazy `import customtkinter` that PyInstaller's static analysis still follows,
+# so a blanket collect_submodules("garmin_fit") dragged all of customtkinter and
+# tkinter into this console exe -- which never touches either: importing
+# garmin_fit.cli pulls in zero tkinter modules. That was most of the reason this
+# exe weighed nearly the same as the GUI one.
+_GUI_ONLY = {"garmin_fit.gui_theme", "garmin_fit.gui_validation"}
+garmin_fit_submodules = [
+    m for m in collect_submodules("garmin_fit") if m not in _GUI_ONLY
+]
 
 a = Analysis(
     [str(REPO_ROOT / "packaging" / "cli_entry.py")],
     pathex=[str(SRC_DIR)],
     datas=llm_datas,
     hiddenimports=garmin_fit_submodules,
+    excludes=["tkinter", "_tkinter", "customtkinter", "PIL"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

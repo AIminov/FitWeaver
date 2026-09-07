@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### 2026-09-07 - Nested repeats, and a lighter CLI executable
+
+#### Added
+- Nested `repeat` blocks are allowed, so sets of intervals ("3 sets of 4x400m")
+  can be expressed. The ban came from the v8.4 prompt checklist and had outlived
+  its reason: `plan_validator` already distinguished containment from crossing
+  and rejected only the latter, and the Garmin mapper emits nested
+  `RepeatGroupDTO`s. Previously the model had to flatten such a workout into 12
+  straight reps, losing the between-sets recovery.
+- Two nesting tests for the FIT builder, which had none. The important one covers
+  nesting after an `sbu_block`: that is the only step type expanding into several
+  FIT steps, so both anchors of a nested pair must be translated through
+  `build_yaml_to_fit_index`.
+
+#### Changed
+- `fitweaver_cli.spec` no longer bundles the GUI toolkits. A blanket
+  `collect_submodules("garmin_fit")` reached `gui_theme`, whose lazy
+  `import customtkinter` PyInstaller follows statically, so the console exe
+  carried all of customtkinter and tkinter -- while `import garmin_fit.cli` pulls
+  in no tkinter modules at all. 28.0 MB -> 24.7 MB.
+
+#### Decided
+- The two executables stay separate. Merging them behind a `--cli` flag would
+  force one Windows subsystem on both: a windowed build run from a terminal
+  returns the prompt immediately and prints nothing visible, which is how the CLI
+  is actually used. The GUI's shell-out reads a pipe and is indifferent, so the
+  merge would trade a working standalone CLI for one fewer file.
+
 ### 2026-09-07 - Consistency pass: docs vs code
 
 #### Fixed

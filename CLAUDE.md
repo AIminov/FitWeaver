@@ -217,6 +217,24 @@ action ("Собрать FIT-файлы", Garmin upload/delete, the whole "ПРО
 frozen exe can't be re-run with `-m` like a real Python interpreter (`_cli_command()` in
 `fitweaver_gui.py` branches on `getattr(sys, "frozen", False)`).
 
+**Why two exes, and why the CLI one excludes the GUI toolkits:** the split exists because
+the two have different Windows subsystems — the GUI is built `console=False` (windowed, no
+console window on launch) and the CLI `console=True` (a real console app that blocks the
+prompt and prints where you ran it). Merging them into one exe with a `--cli` flag would
+save a file but force one subsystem on both: a windowed build returns the shell prompt
+immediately and prints nothing visible when run directly from a terminal, which is exactly
+how the CLI is used for smoke checks. The GUI's own shell-out is unaffected either way
+(it reads a pipe), so the merge would trade a working standalone CLI for one less file.
+Not worth it — see the 2026-09-07 journal entry in `AGENTS.md`.
+
+What *was* worth fixing: `fitweaver_cli.spec` used to force-include every `garmin_fit`
+submodule via `collect_submodules`, which reached `gui_theme` and its lazy
+`import customtkinter` — PyInstaller follows that statically, so the console exe carried
+all of customtkinter and tkinter despite `import garmin_fit.cli` pulling in zero tkinter
+modules. The spec now filters the GUI-only modules out of that list and passes
+`excludes=["tkinter", "_tkinter", "customtkinter", "PIL"]`, taking the CLI exe from 28.0 MB
+to 24.7 MB. Don't restore the blanket `collect_submodules` there.
+
 **Portable folder, not `%APPDATA%`:** writable state (`Plan/`, `profiles/`,
 `.gui_session.json`, `Output_fit/`, `Archive/`) resolves from `sys.executable`'s parent
 directory when frozen (`config.py`'s `PROJECT_ROOT`, `fitweaver_gui.py`'s own `PROJECT_ROOT`)
