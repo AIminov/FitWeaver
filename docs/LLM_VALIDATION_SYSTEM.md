@@ -341,14 +341,19 @@ requirements:
 `type` inside drills, zero/negative values, unquoted pace, and so on), which gives the
 model both framings of each rule.
 
-### Nested repeats: contract is stricter than the validator
+### Nested repeats
 
-The contract forbids nested `repeat` blocks and the prompt repeats that instruction, but
-`plan_validator.py` **does** accept nested repeat ranges — it rejects only ranges that
-*cross* without containment, because the Garmin REST mapper handles proper nesting. This
-asymmetry is intentional in effect: a local model is not asked to produce nested
-structures, while the GUI's Конструктор (which computes `back_to_offset` from a selected
-range rather than guessing it) may legitimately create them.
+Nested `repeat` blocks are allowed, and the contract says so. They are how sets are
+expressed — "3 sets of 4x400m" is an inner repeat over the 400m group plus an outer
+repeat that spans it. What the validator rejects is repeat ranges that *cross* without
+one containing the other: their replay order is ambiguous and cannot be represented as
+a tree of Garmin repeat groups.
+
+Until 2026-09-07 the contract forbade nesting outright. That rule came from the v8.4
+prompt checklist and outlived its reason: `plan_validator.py` had already been taught
+containment-vs-crossing, and the Garmin REST mapper emits nested `RepeatGroupDTO`s. The
+practical cost was that a perfectly ordinary set workout could not be expressed, so the
+model flattened it and lost the between-sets recovery.
 
 ## Integration with Full Pipeline
 

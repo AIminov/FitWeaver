@@ -170,3 +170,108 @@ workouts:
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class NestedRepeatBuildTests(unittest.TestCase):
+    """Sets-of-intervals ("3 sets of 4x400m") build into nested FIT repeats.
+
+    The Garmin Calendar mapper has its own nesting tests; these cover the FIT
+    path, where a repeat is a step whose duration_value is the FIT index to jump
+    back to. The sbu_block case matters most: sbu_block is the one step type that
+    expands into several FIT steps, so every back_to_offset after it has to be
+    translated through build_yaml_to_fit_index -- and both the inner and the
+    outer repeat of a nested pair need that same translation.
+    """
+
+    @staticmethod
+    def _steps(yaml_text):
+        with tempfile.TemporaryDirectory() as tmp:
+            yaml_path = Path(tmp) / "plan.yaml"
+            yaml_path.write_text(yaml_text, encoding="utf-8")
+            # load_plan_build_input raises if the plan does not validate,
+            # so reaching build_workout_steps already proves the validator
+            # accepts these nested repeats.
+            result = load_plan_build_input(yaml_path)
+        return build_workout_steps(result.plan.workouts[0])
+
+    def test_nested_repeat_without_expansion_keeps_yaml_indices(self):
+        # 0 warmup, 1 fast, 2 rest, 3 repeat(x4), 4 set rest, 5 repeat(x3)
+        steps = self._steps("""
+workouts:
+- filename: W01_SETS
+  name: W01_SETS
+  steps:
+  - type: dist_open
+    km: 2
+    intensity: warmup
+  - type: dist_pace
+    km: 0.4
+    pace_fast: "3:40"
+    pace_slow: "3:50"
+  - type: time_step
+    seconds: 60
+  - type: repeat
+    back_to_offset: 1
+    count: 4
+  - type: time_step
+    seconds: 300
+  - type: repeat
+    back_to_offset: 1
+    count: 3
+""")
+        self.assertEqual(len(steps), 6)
+        inner, outer = steps[3], steps[5]
+        # Both jump back to the same first step of the repeating group; the
+        # outer one spans the inner, which is what makes it a set.
+        self.assertEqual(inner.duration_value, 1)
+        self.assertEqual(inner.target_value, 4)
+        self.assertEqual(outer.duration_value, 1)
+        self.assertEqual(outer.target_value, 3)
+
+    def test_nested_repeat_after_sbu_block_translates_both_anchors(self):
+        # YAML 0 warmup -> FIT 0
+        # YAML 1 sbu_block (2 drills x 2 reps) -> FIT 1..8
+        # YAML 2 fast -> FIT 9, YAML 3 rest -> FIT 10
+        # YAML 4 inner repeat -> FIT 11, YAML 5 set rest -> FIT 12
+        # YAML 6 outer repeat -> FIT 13
+        steps = self._steps("""
+workouts:
+- filename: W01_SBU_SETS
+  name: W01_SBU_SETS
+  steps:
+  - type: dist_open
+    km: 2
+    intensity: warmup
+  - type: sbu_block
+    drills:
+    - name: Захлёст
+      seconds: 30
+      reps: 2
+    - name: Колени
+      seconds: 30
+      reps: 2
+  - type: dist_pace
+    km: 0.4
+    pace_fast: "3:40"
+    pace_slow: "3:50"
+  - type: time_step
+    seconds: 60
+  - type: repeat
+    back_to_offset: 2
+    count: 4
+  - type: time_step
+    seconds: 300
+  - type: repeat
+    back_to_offset: 2
+    count: 3
+""")
+        self.assertEqual([s.message_index for s in steps], list(range(14)))
+
+        inner, outer = steps[11], steps[13]
+        # YAML index 2 sits at FIT index 9 once the sbu_block has expanded.
+        # An untranslated anchor would leave 2 here and restart the workout
+        # inside the drill block instead of at the 400m rep.
+        self.assertEqual(inner.duration_value, 9)
+        self.assertEqual(inner.target_value, 4)
+        self.assertEqual(outer.duration_value, 9)
+        self.assertEqual(outer.target_value, 3)

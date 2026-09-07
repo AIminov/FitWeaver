@@ -61,12 +61,14 @@ validation_rules:
   repeat_block:
     - back_to_offset 0-based index pointing to first repeating step
     - back_to_offset must be less than current step index
-    - No nested repeats
+    - Nested repeats allowed for sets, e.g. 3 sets of 4x400m; the outer repeat must
+      fully contain the inner one
+    - Repeat ranges must never cross without containment
 
 forbidden_patterns:
   - Mixing hr and pace in same step
   - type field in sbu drills
-  - Nested repeat blocks
+  - Repeat ranges that overlap without one fully containing the other
   - Zero or negative values
   - hr_low greater than hr_high
   - HR outside 30-240 range

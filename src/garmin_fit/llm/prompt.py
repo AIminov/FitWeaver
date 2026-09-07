@@ -352,7 +352,7 @@ def create_system_prompt(
                 "- time intervals->time_open/time_hr/time_pace according to explicit targets, not dist_*",
                 "- intensity is optional; use warmup/cooldown only when explicitly stated; a single running step is active",
                 "- sbu_block drills: {name,seconds,reps} only — no 'type' key",
-                "- repeat: back_to_offset=index of FIRST step in repeating group (e.g. warmup@0,active@1,recovery@2,repeat→back_to_offset:1 NOT 2); no nested repeats",
+                "- repeat: back_to_offset=index of FIRST step in repeating group (e.g. warmup@0,active@1,recovery@2,repeat→back_to_offset:1 NOT 2); nested repeats OK for sets (3 sets of 4x400m = inner repeat over the 400m group, then an outer repeat whose back_to_offset points at the same first step), but repeat ranges must never cross without containment",
                 "VALIDATE: filenames unique; filename==name; known date: W{wk}_{MM-DD}_{Day}_{Type}_{Detail}; unknown date: N{order}_{Type}_{Detail}",
                 "dist/seconds>0; hr_low<hr_high; 30≤hr≤240; pace=\"MM:SS\"; no mixed hr*/pace*",
                 "sbu drill name≤12chars; repeat back_to_offset<step_idx",
