@@ -44,6 +44,12 @@
   while `requires-python` declares `>=3.10`, leaving the floor uncovered.
 - `CLAUDE.md` synced with `AGENTS.md` / `TODO.md`: localhost LM Studio canon,
   current test count, `.[gui]` extra documented.
+- Both Windows executables rebuilt so the frozen build carries the shared retry
+  budget. Verified that the lazily imported GUI modules (`plan_store`,
+  `workout_builder`, `profile_store`, `api_client`, `gui_theme`,
+  `garmin_calendar_export`) are present in the build's TOC -- PyInstaller drops
+  those silently when the build is run from the live tree instead of the
+  staging copy, with no build-time error.
 
 ### 2026-09-06 - Free-form plans and local LM Studio
 
