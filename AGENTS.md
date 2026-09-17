@@ -18,6 +18,50 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-17 — FitWeaver Workout Schema v1 + golden-датасет для fine-tuning FunctionGemma (сессия на паузе, нужен GPU)
+
+Аудит существующей схемы (`plan_schema.py`/`plan_domain.py`/`plan_validator.py`/`sbu_block.py`)
+и существующей LLM-инфраструктуры (`llm/prompt.py`, `llm_contract.yaml`, `strict_examples.yaml`,
+`llm/benchmark.py`) под задачу дообучения компактной локальной LLM (FunctionGemma 270M → выше по
+лестнице, если не хватит) для разбора тренировок с помощью Unsloth. Ничего в `src/garmin_fit/`
+не менялось — все новые файлы в `docs/llm_finetune/`.
+
+Результат:
+- `docs/llm_finetune/SCHEMA_V1.md` — Schema v1 = существующий `plan_schema.py` без изменений +
+  аддитивная обёртка `status: VALID|NEEDS_CLARIFICATION|UNSUPPORTED`, которой сегодня в
+  продакшене нет (`detect_source_ambiguities()` даёт только текстовые warning, не блокирующий
+  статус). Плюс рекомендация по форме function-call для FunctionGemma (один
+  `create_workout_plan`, схема — из уже существующего `get_plan_json_schema()`).
+- `docs/llm_finetune/golden_examples_v1.yaml` — **62 группы / 77 текстовых вариантов**: 8
+  промоутнуты из `strict_examples.yaml`, 10 — реальные подтверждённые на часах структуры из чата
+  «Структура тренировочного плана на три забега» (9 VALID + 1 переквалифицирован в
+  NEEDS_CLARIFICATION, т.к. HR-диапазоны там — интерполяция человека, не слова тренера), 28
+  синтетических закрывают структурные пробелы (вложенный `repeat`, отдельностоящий
+  `open_step`/`time_hr`, pace-варианты HR-паттернов), 11 — из открытого веб-поиска по формату
+  реальных тренерских тренировок (Yasso 800, фартлек, run/walk, относительный темп), числа
+  везде на реальных HR-зонах/темпах пользователя из марафонского цикла. 44/44 VALID canonical
+  проверены `WorkoutPlanSchema` + `validate_plan_data_detailed()` — 0 ошибок.
+- `docs/llm_finetune/REAL_DATASET_NOTES.md` фиксирует находку из чата про якобы
+  типозависимое поведение `back_to_offset` — перепроверено по текущему коду
+  (`build_yaml_to_fit_index` и оба build-пути): сейчас воспроизвести не удалось, маппинг чисто
+  позиционный, единственное исключение — `sbu_block`. Вероятно уже пофикшено коммитом `258c4c4`
+  (вложенные repeat) либо баг был на стороне Garmin Connect, а не в генерации FIT.
+- `docs/llm_finetune/README.md` — пошаговый план дальше (baseline → форма function-call →
+  расширение датасета → Unsloth), список открытых пробелов в датасете.
+
+### Next tasks — после 2026-09-17 (сессия на паузе, нужен GPU для запуска модели)
+- Прогнать 62 группы / 77 вариантов через FunctionGemma 270M zero-shot на RTX 4060 Ti — baseline
+  по `plan_schema.py`/`plan_validator.py` (переиспользовать `llm/benchmark.py`'s check-машинерию,
+  не писать отдельный валидатор). Явно отделить: понимание русского языка vs корректность формы
+  function-call vs доменное понимание (см. `SCHEMA_V1.md` §4, caveat).
+- Только после baseline — расширять датасет/парафразы и решать вопрос формы function-call.
+- Перепроверить на часах кейс `dist_hr(active)+time_step(recovery)+back_to_offset:2` — подтвердить,
+  что баг из чата про `back_to_offset` действительно исправлен (см. `REAL_DATASET_NOTES.md`),
+  прежде чем менять `build_from_plan.py`/`workout_utils.py`.
+- См. `docs/llm_finetune/README.md` — там же список открытых пробелов в датасете (неровная
+  глубина парафразов, нет многодневного плана целиком, NEEDS_CLARIFICATION/UNSUPPORTED пока
+  меньше VALID).
+
 ### 2026-09-07 — вложенные repeat разрешены; два exe оставлены, CLI облегчён
 Снят запрет на вложенные `repeat` в `llm_contract.yaml` и промпте. Запрет достался
 от чек-листа v8.4 и пережил свою причину: `plan_validator.py` давно различает
@@ -1045,3 +1089,6 @@ Compact version injected into prompt with `get_system_prompt(include_json_schema
 - `docs/PROJECT_FLOW.md` — pipeline details
 - `docs/TELEGRAM_SETUP.md` — bot setup and troubleshooting
 - `docs/GARMIN_CALENDAR.md` — Garmin Connect Calendar upload guide
+- `docs/llm_finetune/` — FitWeaver Workout Schema v1 audit + golden dataset (62 groups) for the
+  FunctionGemma/Unsloth local-LLM fine-tuning experiment; paused as of 2026-09-17 pending GPU
+  access for the zero-shot baseline. Start at `docs/llm_finetune/README.md`.
