@@ -126,21 +126,61 @@ duplicate their field lists (that's exactly the `llm_contract.yaml`
 duplication risk flagged in `SCHEMA_V1.md` §1, don't repeat it for
 FunctionGemma).
 
-## Step 5: baseline (point 20, step 5)
+## Step 5: baseline (point 20, step 5) — `run_baseline.py` is ready
 
-Run the 62 groups' 77 text variants through FunctionGemma 270M zero-shot (no
-fine-tuning yet) and record: JSON/function-call validity rate, schema
-validity rate (via the same `plan_schema.py`/`plan_validator.py` you already
-have — reuse `llm/benchmark.py`'s check machinery, don't write a second
-validator), and qualitatively whether failures are call-shape problems (§4
-caveat) vs. genuine domain misunderstanding vs. Russian-language
-comprehension (flagged as the top risk in the earlier discussion — test this
-explicitly and separately: run a handful of `coach_shorthand`/`conversational`
-Russian variants and check if the model's *raw* function-call arguments even
-approximate the right numbers, before scoring schema validity).
+`docs/llm_finetune/run_baseline.py` runs every VALID group's text variants
+through the model and scores the result with a real semantic-exact-match
+comparator (order-independent, `MM:SS` pace constants resolved via
+`plan_domain.PACE_CONSTANT_VALUES`, int/float normalized) against the
+group's canonical structure — closing the §5 gap in `SCHEMA_V1.md` (no
+second validator: it reuses `WorkoutPlanSchema`/`validate_plan_data_detailed`
+indirectly through `UnifiedLLMClient.generate_yaml_draft`, which already
+runs them). `NEEDS_CLARIFICATION`/`UNSUPPORTED` groups are skipped for now —
+the current prompt pipeline has no way to emit or grade that status yet
+(§3).
+
+It deliberately reuses the **existing production prompt**
+(`garmin_fit.llm.prompt`/`UnifiedLLMClient`) rather than a function-calling
+one — the first real measurement should be "can this model follow
+FitWeaver's existing YAML contract at all, zero-shot, in Russian" before
+committing to the §4 function-call framing decision.
+
+**Self-test first** (no LLM server needed — proves the comparator itself is
+sound: scores each canonical structure against itself, 44/44 must match,
+and against a deliberately mutated copy, 44/44 mutations must be caught):
+
+```bash
+python docs/llm_finetune/run_baseline.py --dry-run
+```
+
+**Real run**, once FunctionGemma 270M is loaded and serving in LM Studio
+(search "functiongemma" in LM Studio's model search, load `functiongemma-270m-it`,
+start the local server — same workflow this project already uses for Qwen):
+
+```bash
+python docs/llm_finetune/run_baseline.py \
+  --api openai --url http://127.0.0.1:1234/v1 --model functiongemma-270m-it
+```
+
+`--retries 1` is the default on purpose — this is a *zero-shot* baseline,
+not the production retry-corrected pipeline; raising it would measure the
+retry loop's ability to paper over mistakes, not the model's raw
+understanding. Report (schema-valid rate, semantic-exact-match rate,
+per-variant diffs) prints to stdout and saves to
+`Build_artifacts/llm_finetune_baseline.<model>.json` (gitignored).
+
+Explicitly separate, when reading results: whether failures are
+call-shape problems (not applicable yet — this baseline doesn't use
+function-calling), genuine domain misunderstanding, or Russian-language
+comprehension (flagged as the top risk in the earlier discussion — check
+the per-variant diffs for `coach_shorthand`/`conversational` style variants
+specifically; if the model's raw output doesn't even approximate the right
+numbers there while doing fine on `formal_plan` style, that's a language
+problem, not a domain one).
 
 Do **not** treat a bad zero-shot score as disqualifying (per your point 14) —
-only compare base vs. fine-tuned on the same benchmark.
+only compare base vs. fine-tuned on the same benchmark, using this same
+script (point it at the fine-tuned model's LM Studio/server endpoint later).
 
 ## Step 6+: only after the baseline exists
 
