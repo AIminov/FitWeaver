@@ -13,7 +13,7 @@
 #   - `status: NEEDS_CLARIFICATION` / `UNSUPPORTED` groups have no `canonical`
 #     workouts; they carry the expected `question` / `reason` instead
 #
-# Provenance (51 groups total as of v2):
+# Provenance (62 groups total as of v3):
 #   - groups 1-13 (v1): 8 VALID promoted from src/garmin_fit/llm/strict_examples.yaml
 #     (existing few-shot corpus for the production prompt) with paraphrases
 #     added, 1 hallucination-trap, 2 NEEDS_CLARIFICATION, 2 UNSUPPORTED.
@@ -28,6 +28,11 @@
 #     using the real marathon-cycle HR zones/paces (ВБ 120-135, АБ 125-142,
 #     ДБ 135-145, ТБ 170-174, ИТ<ПАНО 165-172, ИТ МПК 175-182, МТ 150-162;
 #     LT pace ~4:46/km) for domain-consistent numbers.
+#   - groups with source "web_inspired": structure/terminology cross-checked
+#     against public running-coaching sources (Yasso 800s, fartlek, relative-
+#     pace long runs, run/walk intervals, circuit training) via web search;
+#     wording is original, written for this dataset, not copied from any
+#     single source. See README.md's 'web-search expansion' section for links.
 
 groups:
   - group_id: intervals_pace_800
@@ -1568,3 +1573,290 @@ groups:
         style: conversational
         text: |
           Сегодня вместо бега — час йоги на растяжку и подвижность.
+  - group_id: yasso_800_10x_marathon_pace
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Yasso_10x800m
+          name: Yasso_10x800m
+          desc: 'Yasso 800s: 10x800m at marathon-goal pace, equal-time jog recovery (3:45 work / 3:45
+            jog)'
+          type_code: intervals
+          distance_km: 12.0
+          estimated_duration_min: 75
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_pace
+              km: 0.8
+              pace_fast: '4:35'
+              pace_slow: '4:45'
+              intensity: active
+            - type: time_step
+              seconds: 225
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 10
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: yasso_800_10x_v1
+        style: formal_plan
+        text: |
+          Классика Яссо: 10x800м в темпе 4:35-4:45 (целевое время марафона 3:45 переносим на 800м),
+          между повторами — трусца 3:45 (равное время работе). Разминка 2 км, заминка 1 км.
+      - id: yasso_800_10x_v2
+        style: coach_shorthand
+        text: |
+          яссо 10х800 4.35-4.45 отд трусца 3.45(=время отрезка) р2 з1
+  - group_id: beginner_run_walk_intervals_6x5_1
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Beginner_RunWalk_6x5_1
+          name: Beginner_RunWalk_6x5_1
+          desc: 'Beginner run/walk intervals: 6x(5min easy run + 1min walk)'
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: 40
+          steps:
+            - type: time_hr
+              seconds: 300
+              hr_low: 120
+              hr_high: 140
+              intensity: active
+            - type: time_step
+              seconds: 60
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 0
+              count: 6
+    variants:
+      - id: beginner_run_walk_v1
+        style: formal_plan
+        text: |
+          Для начинающих: 6 циклов — 5 минут лёгкого бега (пульс 120-140), 1 минута ходьбы. Без отдельной разминки.
+  - group_id: long_run_relative_to_race_pace
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Long_16km_RelativePace
+          name: Long_16km_RelativePace
+          desc: 'Long run defined relative to race pace: 30-60s/km slower than 4:30/km race pace'
+          type_code: long
+          distance_km: 16.0
+          estimated_duration_min: 92
+          steps:
+            - type: dist_pace
+              km: 16.0
+              pace_fast: '5:00'
+              pace_slow: '5:30'
+              intensity: active
+    variants:
+      - id: long_run_relative_pace_v1
+        style: conversational
+        text: |
+          Длительный 16 км в темпе на 30-60 секунд медленнее целевого соревновательного (у меня это 4:30),
+          то есть где-то 5:00-5:30 на километр.
+        note: Tests whether the model can resolve a pace given only relative to another stated reference
+          pace, not as an absolute number.
+  - group_id: mile_repeats_5x1600_short_rest
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: MileRepeats_5x1600m
+          name: MileRepeats_5x1600m
+          desc: 5x1600m (mile repeats) at threshold pace, short jog recovery between reps
+          type_code: threshold
+          distance_km: 11.0
+          estimated_duration_min: 62
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: warmup
+            - type: dist_pace
+              km: 1.6
+              pace_fast: '4:42'
+              pace_slow: '4:55'
+              intensity: active
+            - type: dist_open
+              km: 0.3
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: cooldown
+    variants:
+      - id: mile_repeats_5x1600_v1
+        style: formal_plan
+        text: |
+          5 миль-повторов (1.6 км) в пороговом темпе 4:42-4:55, между ними 300м лёгкого бега трусцой.
+          Разминка 2 км, заминка 1 км.
+  - group_id: cruise_intervals_4x1600_short_rest
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: CruiseIntervals_4x1600m
+          name: CruiseIntervals_4x1600m
+          desc: 'Cruise intervals: 4x1600m at tempo/threshold pace, very short 60s standing-ish recovery'
+          type_code: tempo
+          distance_km: 9.0
+          estimated_duration_min: 52
+          steps:
+            - type: dist_pace
+              km: 1.5
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: warmup
+            - type: dist_pace
+              km: 1.6
+              pace_fast: '4:45'
+              pace_slow: '4:55'
+              intensity: active
+            - type: time_step
+              seconds: 60
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 4
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: cooldown
+    variants:
+      - id: cruise_intervals_v1
+        style: formal_plan
+        text: "«Круизные интервалы»: 4x1600м в темпе 4:45-4:55, отдых между ними всего 60 секунд (почти\
+          \ без \nостановки). Разминка 1.5 км, заминка 1 км.\n"
+      - id: cruise_intervals_v2
+        style: coach_shorthand
+        text: |
+          круизные 4х1600 4.45-4.55 отд 60с! р1.5 з1
+  - group_id: taper_week_easy_short_20min
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Taper_Easy_20min
+          name: Taper_Easy_20min
+          desc: Short easy taper-week shakeout run before a race
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: 20
+          steps:
+            - type: time_hr
+              seconds: 1200
+              hr_low: 120
+              hr_high: 138
+              intensity: recovery
+    variants:
+      - id: taper_week_easy_v1
+        style: conversational
+        text: |
+          Разгрузочная неделя перед стартом: всего 20 минут совсем лёгкого бега, пульс не выше 138, просто размяться.
+  - group_id: fartlek_by_feel_no_targets
+    status: NEEDS_CLARIFICATION
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    question: Сколько ускорений и какой они длины? В тексте только общее время фартлека (20-30 минут)
+      и указание менять темп «по ощущениям и рельефу», без числа отрезков или хотя бы ориентировочного
+      темпа ускорений.
+    variants:
+      - id: fartlek_by_feel_v1
+        style: conversational
+        text: |
+          Побегай минут 20-30 фартлек: меняй скорость как чувствуешь, ориентируясь на рельеф и настроение.
+  - group_id: tempo_effort_only_no_numbers
+    status: NEEDS_CLARIFICATION
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    question: Нужен хотя бы примерный пульс или темп для «комфортно-тяжёлого» темпового участка — по описанию
+      усилия («трудно разговаривать») нельзя однозначно определить числовые границы dist_hr/dist_pace.
+    variants:
+      - id: tempo_effort_only_v1
+        style: conversational
+        text: |
+          Сегодня темповый бег 6 км: беги в комфортно-тяжёлом темпе, чтобы разговаривать уже было трудно.
+  - group_id: landmark_based_fartlek_unknown_distance
+    status: NEEDS_CLARIFICATION
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    question: Какое расстояние или время соответствует «до следующего столба» и «до конца квартала»? Ориентиры
+      местности не переводятся в km/seconds без дополнительной информации о самой трассе.
+    variants:
+      - id: landmark_fartlek_v1
+        style: conversational
+        text: |
+          На пробежке ускоряйся от одного фонарного столба до следующего, потом беги легко до конца квартала, и так весь круг.
+  - group_id: unsupported_circuit_training_strength
+    status: UNSUPPORTED
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    reason: Circuit/strength training (push-ups, squats, burpees, plank by reps/time) — not a running
+      workout, no FitWeaver step type applies even though it's structured as timed/counted rounds like
+      a run interval would be.
+    variants:
+      - id: unsupported_circuit_v1
+        style: conversational
+        text: |
+          Круговая тренировка: 3 круга по (15 отжиманий, 20 приседаний, 10 берпи, планка 40 секунд), отдых между кругами 2 минуты.
+        note: Deliberately structurally similar to a repeat-interval running session (rounds + rest) to
+          test that the model classifies by CONTENT (strength exercises), not by the repeat-like shape
+          of the text.
+  - group_id: unsupported_core_workout_only
+    status: UNSUPPORTED
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    reason: Core/abs-only session, no running content — not structurable as FitWeaver running steps.
+    variants:
+      - id: unsupported_core_v1
+        style: conversational
+        text: |
+          Сегодня без бега: только пресс и кор — 20 минут по таймеру, разные упражнения на пресс.

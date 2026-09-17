@@ -1,9 +1,9 @@
 # FitWeaver → local LLM fine-tuning: next steps
 
 Context: `SCHEMA_V1.md` (audit + target schema) and `golden_examples_v1.yaml`
-now have **51 groups / 64 text variants** — this satisfies step 1-3 of your
-plan's point 20 ("Audit → Schema v1 → ~50 initial golden examples"). Made up
-of:
+now have **62 groups / 77 text variants** — comfortably past step 1-3 of
+your plan's point 20 ("Audit → Schema v1 → ~50 initial golden examples").
+Made up of:
 - 13 seed groups (v1): 8 VALID promoted from
   `src/garmin_fit/llm/strict_examples.yaml` + paraphrases, 1
   hallucination-trap, 2 `NEEDS_CLARIFICATION`, 2 `UNSUPPORTED`.
@@ -12,28 +12,76 @@ of:
   `fitweaver_golden_dataset.zip`) — 9 `VALID`, 1 reclassified to
   `NEEDS_CLARIFICATION` (see `REAL_DATASET_NOTES.md` for why, and for the
   `back_to_offset` finding from that chat re-verified against current code).
-- 28 new synthetic groups closing the structural gaps the v1 file had
+- 28 synthetic groups (v2) closing the structural gaps the v1 file had
   (nested repeat, standalone `open_step`/`time_hr`, pace-based variants of
   HR-based patterns, more `NEEDS_CLARIFICATION`/`UNSUPPORTED` variety),
   using the real marathon-cycle HR zones/paces for domain-consistent
   numbers.
+- 11 groups (v3, `source: web_inspired`) added from public running-coaching
+  terminology confirmed via web search — see "Web-search expansion" below.
 
-All 38 `VALID` canonical structures are re-validated against
+All 44 `VALID` canonical structures are re-validated against
 `WorkoutPlanSchema` + `validate_plan_data_detailed()` on every regeneration
 (see the check command below) — 0 errors as of this version. Nothing here
 has touched `src/garmin_fit/` or the production pipeline.
+
+## Web-search expansion (v3, 11 new groups)
+
+Searched for how Russian/English running coaching content actually describes
+workouts, to pull in structures and terminology the two source chats hadn't
+produced yet. Text is original — written for this dataset in the found
+style/terminology, not copied from any source. Group IDs use
+`source: web_inspired`.
+
+What came out of it:
+- **Yasso 800s** (`yasso_800_10x_marathon_pace`) — 10x800m at a pace derived
+  from the marathon goal time (h:mm → m:ss), equal-time jog recovery. Chose
+  numbers consistent with this project's own LT pace from `REAL_DATASET_NOTES.md`'s
+  context (goal 3:45 marathon → ~4:40/km), so it also cross-checks against
+  the real data rather than being an arbitrary example.
+- **Run/walk intervals** (`beginner_run_walk_intervals_6x5_1`) — a structural
+  variant not covered before: alternating *running* (not a rest) with a
+  *walking* recovery, common in beginner plans.
+- **Relative-pace long run** (`long_run_relative_to_race_pace`) — pace stated
+  only as an offset from another stated pace ("30-60 sec/km slower than my
+  race pace of 4:30"), not as absolute numbers. Tests whether the model can
+  resolve one pace through another rather than pattern-matching a bare
+  MM:SS.
+- **Mile repeats** and **cruise intervals** (`mile_repeats_5x1600_short_rest`,
+  `cruise_intervals_4x1600_short_rest`) — same rough pace zone as existing
+  threshold groups but different terminology and very different recovery
+  length (60s vs 2min), to decouple "recognizes threshold pace" from
+  "recognizes recovery duration" as separate model behaviors.
+- **Taper-week shakeout** (`taper_week_easy_short_20min`).
+- **3 new `NEEDS_CLARIFICATION`**: fartlek "by feel" with a stated total time
+  but no rep count/pace (`fartlek_by_feel_no_targets`), tempo defined only by
+  perceived effort ("hard to talk") with no number at all
+  (`tempo_effort_only_no_numbers`), and landmark-based surges ("to the next
+  lamppost") that don't resolve to km/seconds without knowing the route
+  (`landmark_based_fartlek_unknown_distance`).
+- **2 new `UNSUPPORTED`**: circuit/strength training
+  (`unsupported_circuit_training_strength` — deliberately phrased with
+  rounds+rest, structurally close to a running repeat block, to check the
+  model classifies by *content* not by *shape*) and a core-only session
+  (`unsupported_core_workout_only`).
+
+Sources consulted (for terminology/structure, not copied text):
+- [Марафонец — Что такое тест Яссо](https://marathonec.ru/test-yasso/)
+- [Марафонец — Что такое фартлек](https://marathonec.ru/fartlek/)
+- [T-Ж — Что такое фартлек](https://t-j.ru/what-is-fartlek/)
+- [T-Ж — План тренировок для бега](https://t-j.ru/running-training-plan/)
+- [Академия марафона — Беговые тренировки](https://academymarathon.ru/blog/begovye-trenirovki)
 
 ## Still-open gaps before calling the dataset "done enough" for baseline
 
 The structural gaps are closed, but coverage is still thin in a few places
 worth another pass before or during baseline analysis (point 20, step 5):
 
-1. **Paraphrase depth is uneven.** The 10 real groups have exactly 1 text
-   variant each (the original coach/user note) — no paraphrases yet. The 28
-   new synthetic groups mostly have 1-2. Only the original 8 promoted groups
-   have 2-3. If the baseline shows the model is sensitive to phrasing style
-   rather than domain content, that's the first place to add more variants
-   — don't do it speculatively first.
+1. **Paraphrase depth is uneven.** The 10 real groups and most v2/v3
+   synthetic groups have only 1-2 text variants; only the original 8
+   promoted groups have 2-3. If the baseline shows the model is sensitive to
+   phrasing style rather than domain content, that's the first place to add
+   more variants — don't do it speculatively first.
 2. **No genuinely long/multi-day input** (a whole week of sessions in one
    text block, like `tests/fixtures/llm_benchmark/plan_10workouts_2026_03.yaml`'s
    source). Every current group is single-workout-per-text. Worth adding a
@@ -42,7 +90,7 @@ worth another pass before or during baseline analysis (point 20, step 5):
    single-workout, matching per-example golden pairs — but confirm before
    spending time on it).
 3. **`NEEDS_CLARIFICATION`/`UNSUPPORTED` still outnumbered by `VALID`**
-   (7 and 6 vs. 38) — realistic for a "correct classification is easy"
+   (10 and 8 vs. 44) — realistic for a "correct classification is easy"
    sanity check, but your point 15 wants `clarification_accuracy` and
    `unsupported_classification_accuracy` as real metrics; a handful more of
    each, sourced from actual ambiguous coach notes as they arrive, will
@@ -68,7 +116,7 @@ Every new example must pass the same check used above:
 
 ## Step 4: FunctionGemma representation
 
-Now that the dataset has 50+ groups, pick the function-call framing per §4 of
+Now that the dataset has 60+ groups, pick the function-call framing per §4 of
 `SCHEMA_V1.md` (single `create_workout_plan(workouts=[...])`, JSON Schema
 derived from `get_plan_json_schema()`) and write a small converter:
 `golden_examples_v1.yaml` group → FunctionGemma chat-turn training example
@@ -80,7 +128,7 @@ FunctionGemma).
 
 ## Step 5: baseline (point 20, step 5)
 
-Run the 51 groups' 64 text variants through FunctionGemma 270M zero-shot (no
+Run the 62 groups' 77 text variants through FunctionGemma 270M zero-shot (no
 fine-tuning yet) and record: JSON/function-call validity rate, schema
 validity rate (via the same `plan_schema.py`/`plan_validator.py` you already
 have — reuse `llm/benchmark.py`'s check machinery, don't write a second
