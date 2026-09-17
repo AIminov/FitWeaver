@@ -1,0 +1,1862 @@
+# FitWeaver golden dataset — seed v1 (Schema v1, docs/llm_finetune/SCHEMA_V1.md)
+#
+# Purpose: starting corpus for the FunctionGemma 270M baseline + fine-tune
+# experiment. NOT wired into the production Qwen pipeline.
+#
+# Structure per your plan's point 12/13:
+#   - one `group_id` per distinct canonical workout
+#   - `canonical` is exactly `status: VALID` + a `workouts:` list valid
+#     against plan_schema.py (WorkoutPlanSchema)
+#   - `variants` are natural-language paraphrases of the SAME canonical
+#     workout — keep every variant of one group in the same train/val/test
+#     split, never spread across splits (leakage rule, point 13)
+#   - `status: NEEDS_CLARIFICATION` / `UNSUPPORTED` groups have no `canonical`
+#     workouts; they carry the expected `question` / `reason` instead
+#
+# Provenance (62 groups total as of v3):
+#   - groups 1-13 (v1): 8 VALID promoted from src/garmin_fit/llm/strict_examples.yaml
+#     (existing few-shot corpus for the production prompt) with paraphrases
+#     added, 1 hallucination-trap, 2 NEEDS_CLARIFICATION, 2 UNSUPPORTED.
+#   - groups with source starting "promoted:fitweaver_golden_dataset.zip":
+#     real confirmed-on-watch structures pulled from the marathon-cycle
+#     planning chat ("Структура тренировочного плана на три забега") — see
+#     docs/llm_finetune/REAL_DATASET_NOTES.md for the back_to_offset finding
+#     from that chat and its current-code re-verification.
+#   - groups with source "new": synthetic groups filling structural gaps
+#     (nested repeat, standalone open_step/time_hr, pace-based variants of
+#     HR-based patterns, more NEEDS_CLARIFICATION/UNSUPPORTED variety),
+#     using the real marathon-cycle HR zones/paces (ВБ 120-135, АБ 125-142,
+#     ДБ 135-145, ТБ 170-174, ИТ<ПАНО 165-172, ИТ МПК 175-182, МТ 150-162;
+#     LT pace ~4:46/km) for domain-consistent numbers.
+#   - groups with source "web_inspired": structure/terminology cross-checked
+#     against public running-coaching sources (Yasso 800s, fartlek, relative-
+#     pace long runs, run/walk intervals, circuit training) via web search;
+#     wording is original, written for this dataset, not copied from any
+#     single source. See README.md's 'web-search expansion' section for links.
+
+groups:
+  - group_id: intervals_pace_800
+    status: VALID
+    source: promoted:intervals_pace
+    canonical:
+      workouts:
+        - filename: W16_04-14_Tue_Intervals_6x800m
+          name: W16_04-14_Tue_Intervals_6x800m
+          desc: 'Classic intervals: 6x800m at tempo pace with jogging recovery'
+          type_code: intervals
+          distance_km: 10.2
+          estimated_duration_min: 55
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: warmup
+            - type: dist_pace
+              km: 0.8
+              pace_fast: '4:20'
+              pace_slow: '4:30'
+              intensity: active
+            - type: dist_pace
+              km: 0.4
+              pace_fast: '5:30'
+              pace_slow: '6:00'
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 6
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: cooldown
+    variants:
+      - id: intervals_pace_800_v1_formal
+        style: formal_plan
+        text: |
+          14.04.2026 (вт)
+          Интервалы 6x800м
+          Разминка: 2 км (5:45-6:00)
+          6x800м по 4:20-4:30, восстановление 400 м трусцой (5:30-6:00)
+          Заминка: 1 км (5:45-6:00)
+          Итого: ~10.2 км, 55 мин
+      - id: intervals_pace_800_v2_shorthand
+        style: coach_shorthand
+        text: |
+          14.04 вт: р2(5.45-6.00) + 6х800 4.20-4.30 отд 400 трусцой(5.30-6.00) + з1(5.45-6.00)
+      - id: intervals_pace_800_v3_conversational
+        style: conversational
+        text: |
+          Во вторник интервальная: сначала два километра разминки в темпе 5:45-6:00,
+          потом шесть восьмисоток по 4:20-4:30, между ними по 400 метров трусцой
+          в темпе 5:30-6:00, и километр заминки в том же лёгком темпе.
+  - group_id: tempo_5km
+    status: VALID
+    source: promoted:tempo_pace
+    canonical:
+      workouts:
+        - filename: W16_04-15_Wed_Tempo_5km
+          name: W16_04-15_Wed_Tempo_5km
+          desc: 'Tempo run: 5km at threshold pace with warmup and cooldown'
+          type_code: tempo
+          distance_km: 8.0
+          estimated_duration_min: 45
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: warmup
+            - type: dist_pace
+              km: 5.0
+              pace_fast: '4:50'
+              pace_slow: '5:00'
+              intensity: active
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: cooldown
+    variants:
+      - id: tempo_5km_v1_formal
+        style: formal_plan
+        text: |
+          15.04.2026 (ср)
+          Темповый бег
+          Разминка 2 км легко (5:45-6:00)
+          Темп 5 км по 4:50-5:00
+          Заминка 1 км (5:45-6:00)
+          Итого: 8 км, 45 мин
+      - id: tempo_5km_v2_shorthand
+        style: coach_shorthand
+        text: |
+          15.04 ср: р2 + темп5(4.50-5.00) + з1
+      - id: tempo_5km_v3_typo
+        style: conversational_with_typos
+        text: |
+          в среду темповый: 2км разминка легко потом 5 км темпо 4.50-5.00 и километр заминки
+  - group_id: easy_hr_cap_8km
+    status: VALID
+    source: promoted:easy_hr_cap
+    canonical:
+      workouts:
+        - filename: W10_03-03_Tue_Easy_8km
+          name: W10_03-03_Tue_Easy_8km
+          desc: Easy run with heart rate capped at 140 bpm
+          type_code: easy
+          distance_km: 8.0
+          estimated_duration_min: null
+          steps:
+            - type: dist_hr
+              km: 8.0
+              hr_low: 80
+              hr_high: 140
+              intensity: recovery
+    variants:
+      - id: easy_hr_cap_8km_v1_formal
+        style: formal_plan
+        text: |
+          Во вторник, 3 марта 2026 года, пробеги спокойно восемь километров.
+          Пульс держи не выше 140. Темп выбирай по самочувствию.
+      - id: easy_hr_cap_8km_v2_shorthand
+        style: coach_shorthand
+        text: |
+          вт 3.03: 8км легко пульс до 140
+  - group_id: fartlek_5x2_3
+    status: VALID
+    source: promoted:fartlek_time
+    canonical:
+      workouts:
+        - filename: W16_04-16_Thu_Fartlek
+          name: W16_04-16_Thu_Fartlek
+          desc: 'Fartlek: 5 cycles of 2min fast + 3min easy running'
+          type_code: mixed
+          distance_km: 8.0
+          estimated_duration_min: 45
+          steps:
+            - type: time_pace
+              seconds: 600
+              pace_fast: '5:30'
+              pace_slow: '6:00'
+              intensity: warmup
+            - type: time_pace
+              seconds: 120
+              pace_fast: '4:30'
+              pace_slow: '4:50'
+              intensity: active
+            - type: time_pace
+              seconds: 180
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: time_pace
+              seconds: 600
+              pace_fast: '5:30'
+              pace_slow: '6:00'
+              intensity: cooldown
+    variants:
+      - id: fartlek_5x2_3_v1_formal
+        style: formal_plan
+        text: |
+          16.04.2026 (чт)
+          Фартлек
+          10 мин разминка лёгко (5:30-6:00)
+          5 циклов: 2 мин быстро (4:30-4:50) + 3 мин легко (5:45-6:00)
+          10 мин заминка (5:30-6:00)
+          Итого: примерно 8 км, 45 мин
+      - id: fartlek_5x2_3_v2_shorthand
+        style: coach_shorthand
+        text: |
+          чт: фартлек 10р + 5х(2'быстро 4.30-4.50 / 3'легко 5.45-6.00) + 10з
+  - group_id: hills_2x5x40m
+    status: VALID
+    source: promoted:hills_series
+    canonical:
+      workouts:
+        - filename: W10_03-04_Wed_Intervals_Hills_2x5x40m
+          name: W10_03-04_Wed_Intervals_Hills_2x5x40m
+          desc: Hill sprint workout with two separate series and jogging recovery
+          type_code: intervals
+          distance_km: 8.4
+          estimated_duration_min: null
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 80
+              hr_high: 140
+              intensity: warmup
+            - type: dist_open
+              km: 0.04
+              intensity: active
+            - type: dist_open
+              km: 0.4
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_hr
+              km: 1.0
+              hr_low: 80
+              hr_high: 150
+              intensity: recovery
+            - type: dist_open
+              km: 0.04
+              intensity: active
+            - type: dist_open
+              km: 0.4
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 5
+              count: 5
+            - type: dist_open
+              km: 1.0
+              intensity: cooldown
+    variants:
+      - id: hills_2x5x40m_v1_formal
+        style: formal_plan
+        text: |
+          4.03.2026 (ср)
+          Разминка
+          2 км спокойно (пульс до 140)
+          Спринтерская работа
+          Одна серия:
+          ускорение в гору 40 м
+          затем 400 м спокойной трусцы
+          повторить 5 раз
+          Всего: 2 серии
+          Между сериями:
+          1 км трусцы
+          пульс до 150
+          Заминка
+          1 км спокойно
+        note: |
+          Nested/two-block repeat structure — important negative-space
+          example: two separate 5x groups with an inter-series recovery
+          km between them, NOT one repeat of 10.
+  - group_id: sbu_easy_6km
+    status: VALID
+    source: promoted:sbu_drills
+    canonical:
+      workouts:
+        - filename: W16_04-18_Sat_Easy_SBU
+          name: W16_04-18_Sat_Easy_SBU
+          desc: Easy run with SBU drills block
+          type_code: easy_drills
+          distance_km: 6.0
+          estimated_duration_min: 45
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: warmup
+            - type: sbu_block
+              drills:
+                - name: High Knees
+                  seconds: 30
+                  reps: 2
+                - name: Bounding
+                  seconds: 30
+                  reps: 2
+                - name: Skipping
+                  seconds: 30
+                  reps: 2
+            - type: dist_pace
+              km: 3.0
+              pace_fast: '5:30'
+              pace_slow: '5:50'
+              intensity: active
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:45'
+              pace_slow: '6:00'
+              intensity: cooldown
+    variants:
+      - id: sbu_easy_6km_v1_formal
+        style: formal_plan
+        text: |
+          18.04.2026 (сб)
+          Лёгкий бег + СБУ
+          2 км разминка легко (5:45-6:00)
+          СБУ: High Knees 30с x2, Bounding 30с x2, Skipping 30с x2
+          3 км аэробный бег (5:30-5:50)
+          1 км заминка (5:45-6:00)
+          Итого: 6 км, 45 мин
+      - id: sbu_easy_6km_v2_shorthand
+        style: coach_shorthand
+        text: |
+          сб: р2 + сбу(выс.бедро 30х2, захлест 30х2, многоскоки 30х2) + 3км(5.30-5.50) + з1
+  - group_id: intervals_hr_5x1000
+    status: VALID
+    source: promoted:intervals_hr
+    canonical:
+      workouts:
+        - filename: W08_02-19_Thu_Intervals_5x1000m
+          name: W08_02-19_Thu_Intervals_5x1000m
+          desc: 'Intervals: 5x1000m at high HR with jogging recovery'
+          type_code: intervals
+          distance_km: 10.0
+          estimated_duration_min: 50
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 1.0
+              hr_low: 165
+              hr_high: 170
+              intensity: active
+            - type: dist_hr
+              km: 0.4
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_open
+              km: 1.0
+              intensity: cooldown
+    variants:
+      - id: intervals_hr_5x1000_v1_formal
+        style: formal_plan
+        text: |
+          19.02.2026 (чт)
+          Интервалы 5x1000м
+          2 км разминка (пульс 130-145)
+          5x1000м на пульсе 165-170, восстановление 400 м (пульс 130-145)
+          1 км заминка
+          Итого: 10 км, 50 мин
+      - id: intervals_hr_5x1000_v2_shorthand
+        style: coach_shorthand
+        text: |
+          чт 19.02: 2р(130-145) + 5х1000 пульс 165-170 отд 400(130-145) + 1з
+  - group_id: insertion_long_14km
+    status: VALID
+    source: promoted:insertion_run
+    canonical:
+      workouts:
+        - filename: W12_03-22_Sun_Long_Insertion_14km
+          name: W12_03-22_Sun_Long_Insertion_14km
+          desc: 'Long run with two tempo inserts: aerobic base + 2x2km tempo segments'
+          type_code: long
+          distance_km: 14.0
+          estimated_duration_min: 95
+          steps:
+            - type: dist_hr
+              km: 5.0
+              hr_low: 135
+              hr_high: 150
+              intensity: active
+            - type: dist_hr
+              km: 2.0
+              hr_low: 155
+              hr_high: 165
+              intensity: active
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: dist_hr
+              km: 2.0
+              hr_low: 155
+              hr_high: 165
+              intensity: active
+            - type: dist_hr
+              km: 4.0
+              hr_low: 135
+              hr_high: 150
+              intensity: active
+    variants:
+      - id: insertion_long_14km_v1_formal
+        style: formal_plan
+        text: |
+          22.03.2026 (вс)
+          Длинный бег с темповыми вставками
+          5 км аэробно (пульс 135-150)
+          2 км темп (пульс 155-165)
+          1 км восстановление (пульс 130-145)
+          2 км темп (пульс 155-165)
+          4 км аэробно (пульс 135-150)
+          Итого: 14 км, 95 мин
+        note: |
+          No repeat step here on purpose — two tempo inserts written out in
+          full are NOT a repeat block (the aerobic segments before/after
+          differ in distance: 5km vs 4km). A model that "sees two tempo
+          pieces" and reaches for `repeat` fails this example.
+  - group_id: easy_hour_no_targets
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: N1_Easy_1h
+          name: N1_Easy_1h
+          desc: Easy hour, no explicit HR or pace target
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: 60
+          steps:
+            - type: time_step
+              seconds: 3600
+              intensity: recovery
+    variants:
+      - id: easy_hour_no_targets_v1
+        style: conversational
+        text: |
+          Беги час легко.
+        note: |
+          Hallucination trap: the model must NOT invent hr_low/hr_high or a
+          pace target. Only duration=3600, intensity=recovery are licensed
+          by the text. Adding "hr_low: 120, hr_high: 145" here is a failure,
+          not a helpful guess.
+  - group_id: ambiguous_430_duration_or_pace
+    status: NEEDS_CLARIFICATION
+    source: new
+    question: 4:30 — продолжительность интервала или темп 4:30/км?
+    variants:
+      - id: ambiguous_430_v1
+        style: conversational
+        text: |
+          5 интервалов по 4:30
+        note: |
+          Textbook case from the plan doc itself. "4:30" could be a duration
+          (mm:ss) or a pace (min/km) — nothing in the sentence disambiguates.
+          Do not guess either interpretation.
+  - group_id: ambiguous_effort_by_feel
+    status: NEEDS_CLARIFICATION
+    source: new
+    question: Нужен ли числовой ориентир (пульс или темп), или тренировка полностью по самочувствию без
+      конкретных цифр?
+    variants:
+      - id: ambiguous_effort_v1
+        style: conversational
+        text: |
+          Побегай минут 40-50 в своё удовольствие, темп по самочувствию.
+        note: |
+          Already flagged by plan_processing.detect_source_ambiguities() via
+          the "по самочувствию" pattern today, but only as a free-text repair
+          note, not a blocking status — this is the case that motivates §3
+          of SCHEMA_V1.md.
+  - group_id: unsupported_strength_session
+    status: UNSUPPORTED
+    source: new
+    reason: Strength/gym session, not a running workout — no FitWeaver step type applies.
+    variants:
+      - id: unsupported_strength_v1
+        style: conversational
+        text: |
+          Сегодня зал: присед 4х8, жим лёжа 4х8, планка 3х1мин.
+        note: |
+          Matches the existing rule in llm/prompt.py: "Strength, sauna,
+          stretching, plank... are not separate workouts unless explicit
+          running drills are given." Currently silently produces zero
+          workouts (skip); for the fine-tuning target it should be an
+          explicit UNSUPPORTED, not silence, so evaluators can score it.
+  - group_id: unsupported_power_target
+    status: UNSUPPORTED
+    source: new
+    reason: Power (running power in watts) target requested — no power_low/power_high step fields exist
+      in Schema v1 yet (see plan point 7, 'power targets, if supported').
+    variants:
+      - id: unsupported_power_v1
+        style: conversational
+        text: |
+          5 км в темпе по мощности 280-300 ватт.
+        note: |
+          Deliberately included per your point 7 ("power targets, if
+          supported") — today they are not. Keep this UNSUPPORTED until a
+          `power_low/power_high` step pair is added to plan_schema.py; do not
+          let the model silently coerce watts into hr_* or pace_*.
+  - group_id: real_recovery_6km
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Recovery_6km
+          name: Recovery_6km
+          desc: Easy recovery run 6km, HR 120-135
+          type_code: recovery
+          distance_km: 6.0
+          estimated_duration_min: 39
+          steps:
+            - type: dist_hr
+              km: 6.0
+              hr_low: 120
+              hr_high: 135
+              intensity: recovery
+    variants:
+      - id: real_recovery_6km_v1_coach_note
+        style: coach_note
+        text: |
+          Восстановительный бег 6 км, пульс 120–135.
+  - group_id: real_aerobic_sbu_accel_9km
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Aerobic_SBU_9km
+          name: Aerobic_SBU_9km
+          desc: Aerobic 9km + SBU drills + 6x30s accelerations, HR 125-142
+          type_code: aerobic
+          distance_km: 9.0
+          estimated_duration_min: 65
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 125
+              hr_high: 142
+              intensity: warmup
+            - type: sbu_block
+              drills:
+                - name: Высок.Бедро
+                  seconds: 20
+                  reps: 2
+                - name: Захлёст
+                  seconds: 20
+                  reps: 2
+                - name: Прям.Ноги
+                  seconds: 20
+                  reps: 2
+                - name: Многоскоки
+                  seconds: 20
+                  reps: 2
+            - type: time_hr
+              seconds: 30
+              hr_low: 155
+              hr_high: 168
+              intensity: active
+            - type: time_step
+              seconds: 45
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 2
+              count: 6
+            - type: dist_hr
+              km: 5.0
+              hr_low: 125
+              hr_high: 142
+              intensity: active
+    variants:
+      - id: real_aerobic_sbu_accel_9km_v1_coach_note
+        style: coach_note
+        text: |
+          Аэробный бег 9 км, пульс 125–142. После разминки 2 км — СБУ (высокое бедро,
+          захлёст голени, бег на прямых ногах, многоскоки — по 2×20 сек каждое), затем
+          6×30 сек ускорений на 80–85% усилия (НЕ на максимум), отдых 45 сек между
+          повторами. Дальше основной аэробный бег.
+  - group_id: real_threshold_4x1500m
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Threshold_4x1500m
+          name: Threshold_4x1500m
+          desc: Threshold 4x1.5km, HR 170-174, 2min jog recovery. Warmup 2km + cooldown 1km
+          type_code: threshold
+          distance_km: 9.0
+          estimated_duration_min: 55
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 1.5
+              hr_low: 170
+              hr_high: 174
+              intensity: active
+            - type: time_step
+              seconds: 120
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 4
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: real_threshold_4x1500m_v1_coach_note
+        style: coach_note
+        text: |
+          Пороговая тренировка: разминка 2 км, затем 4×1.5 км на пульсе 170–174,
+          отдых 2 минуты трусцой между отрезками, заминка 1 км.
+  - group_id: real_intervals_5x1200m
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Intervals_5x1200m
+          name: Intervals_5x1200m
+          desc: Intervals 5x1200m VO2max, HR 175-182, 400m jog recovery
+          type_code: intervals
+          distance_km: 11.0
+          estimated_duration_min: 62
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 1.2
+              hr_low: 175
+              hr_high: 182
+              intensity: active
+            - type: dist_hr
+              km: 0.4
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: real_intervals_5x1200m_v1_coach_note
+        style: coach_note
+        text: |
+          Интервалы 5×1200 м на пульсе 175–182 (МПК-работа), разминка 2 км, отдых
+          400 м лёгкой трусцой между отрезками, заминка 1 км.
+  - group_id: real_long_21km_mtfinish_2seg
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Long_21km_MTfinish
+          name: Long_21km_MTfinish
+          desc: 'Long run with MT-finish: 13km easy + 8km marathon pace. Train pace under fatigue'
+          type_code: long
+          distance_km: 21.0
+          estimated_duration_min: 122
+          steps:
+            - type: dist_hr
+              km: 13.0
+              hr_low: 135
+              hr_high: 145
+              intensity: active
+            - type: dist_hr
+              km: 8.0
+              hr_low: 150
+              hr_high: 162
+              intensity: active
+    variants:
+      - id: real_long_21km_mtfinish_2seg_v1_coach_note
+        style: coach_note
+        text: |
+          Длинная тренировка с MT-finish: 13 км легко на пульсе 135–145, затем 8 км в
+          марафонском темпе на пульсе 150–162 — тренируем держать темп на накопленной
+          усталости.
+  - group_id: real_long_32km_mtfinish_3seg_peak
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Long_32km_MTfinish_Peak
+          name: Long_32km_MTfinish_Peak
+          desc: 'PEAK LONG RUN with MT-finish: 22km easy + 8km MT + 2km easy. Full nutrition rehearsal'
+          type_code: long
+          distance_km: 32.0
+          estimated_duration_min: 188
+          steps:
+            - type: dist_hr
+              km: 22.0
+              hr_low: 135
+              hr_high: 145
+              intensity: active
+            - type: dist_hr
+              km: 8.0
+              hr_low: 150
+              hr_high: 162
+              intensity: active
+            - type: dist_hr
+              km: 2.0
+              hr_low: 135
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: real_long_32km_mtfinish_3seg_peak_v1_coach_note
+        style: coach_note
+        text: |
+          Пиковая длинная 32 км: 22 км легко (пульс 135–145), затем 8 км в марафонском
+          темпе (пульс 150–162), и 2 км лёгкой заминки (пульс 135–145). Полная
+          репетиция питания на дистанции.
+  - group_id: real_race_10k_pacing
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Race_10km
+          name: Race_10km
+          desc: '10KM RACE — target sub 45:00 (4:30/km). Splits: 1-2km patient, 3-7km work pace, 8-10km
+            push by feel'
+          type_code: race
+          distance_km: 10.0
+          estimated_duration_min: 45
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 160
+              hr_high: 170
+              intensity: active
+            - type: dist_hr
+              km: 5.0
+              hr_low: 168
+              hr_high: 176
+              intensity: active
+            - type: dist_hr
+              km: 3.0
+              hr_low: 172
+              hr_high: 185
+              intensity: active
+    variants:
+      - id: real_race_10k_pacing_v1_coach_note
+        style: coach_note
+        text: |
+          10 км старт, цель — выбежать из 45 минут (темп 4:30/км). Первые 2 км —
+          сдержанно, не рвать со старта. Следующие 5 км — основной рабочий темп.
+          Последние 3 км — по ощущениям, если есть силы — ускоряться.
+  - group_id: real_speed_6x400m_fixed
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Speed_6x400m
+          name: Speed_6x400m
+          desc: Speed activation 6x400m at 10K race pace (NOT faster), ~200m jog recovery. Wake up legs,
+            no deep lactate
+          type_code: intervals
+          distance_km: 7.0
+          estimated_duration_min: 42
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 120
+              hr_high: 140
+              intensity: warmup
+            - type: dist_hr
+              km: 0.4
+              hr_low: 165
+              hr_high: 180
+              intensity: active
+            - type: dist_hr
+              km: 0.2
+              hr_low: 120
+              hr_high: 140
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 6
+            - type: dist_hr
+              km: 1.5
+              hr_low: 120
+              hr_high: 140
+              intensity: cooldown
+    variants:
+      - id: real_speed_6x400m_fixed_v1_coach_note
+        style: coach_note
+        text: |
+          Активация скорости перед стартом: разминка 2 км, затем 6×400 м в темпе 10 км
+          (строго не быстрее), между повторами — лёгкая трусца ~200 м для полного
+          восстановления. Заминка 1.5 км. Цель — разбудить ноги, не закислиться.
+  - group_id: real_easy_30min_plus_gym
+    status: VALID
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    canonical:
+      workouts:
+        - filename: Easy_30min_cap150
+          name: Easy_30min_cap150
+          desc: 'Easy run 30min before strength training, HR up to 150 (cap, no floor stated). Followed
+            by non-running gym work: hamstrings/glutes (squats), abs, back, hip ab/adduction — not represented
+            in steps'
+          type_code: easy
+          distance_km: 5.0
+          estimated_duration_min: 30
+          steps:
+            - type: time_hr
+              seconds: 1800
+              hr_low: 110
+              hr_high: 150
+              intensity: active
+    variants:
+      - id: real_easy_30min_plus_gym_v1_coach_note
+        style: coach_note
+        text: |
+          Бег 30 минут, пульс до 150, разминка + зал/силовая: задняя поверхность,
+          ягодицы (присяды), пресс, спину, отведение-приведение.
+  - group_id: real_ladder_no_explicit_targets
+    status: NEEDS_CLARIFICATION
+    source: promoted:fitweaver_golden_dataset.zip (marathon-cycle chat, confirmed workouts uploaded/executed
+      on watch, or trivial low-risk structures — see docs/llm_finetune/REAL_DATASET_NOTES.md)
+    question: Для каждого отрезка лесенки (2км/1.6км/1.2км/800м) укажите целевой темп или пульс — задан
+      только стартовый темп «от 4:50» и общее указание «разбегаться», без конкретных границ на каждый
+      отрезок.
+    variants:
+      - id: real_ladder_no_explicit_targets_v1_coach_note
+        style: coach_note
+        text: |
+          Разминочный бег 15 минут, разминка-гибкость, разминочные ускорения 3 по 50м
+          Лесенка: 2км+1.6км+1.2км+800м
+          Между отрезками отдых 2 минуты
+          Темп от 4:50 на км, с каждым отрезком нужно немного разбегаться
+          Заминочный бег 5 минут
+  - group_id: open_lap_easy_by_feel
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Easy_OpenLap
+          name: Easy_OpenLap
+          desc: Easy run by feel, watch controlled by lap button only, no HR/pace target
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: null
+          steps:
+            - type: open_step
+              intensity: recovery
+    variants:
+      - id: open_lap_easy_v1
+        style: conversational
+        text: |
+          Лёгкий бег без привязки к пульсу и темпу, беги как чувствуешь, круг нажимай сам в конце.
+      - id: open_lap_easy_v2
+        style: coach_shorthand
+        text: |
+          бег по ощущениям, без цифр, круг вручную
+  - group_id: nested_repeat_3sets_4x400
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Intervals_3x4x400m
+          name: Intervals_3x4x400m
+          desc: 3 sets of 4x400m VO2max intervals, jog recovery within set, longer recovery between sets
+          type_code: intervals
+          distance_km: 11.2
+          estimated_duration_min: 65
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 0.4
+              hr_low: 175
+              hr_high: 182
+              intensity: active
+            - type: time_step
+              seconds: 90
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 4
+            - type: time_step
+              seconds: 180
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 3
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: nested_repeat_3sets_4x400_v1
+        style: formal_plan
+        text: |
+          Разминка 2 км (пульс 130-145).
+          3 серии по 4x400м на пульсе 175-182, отдых между отрезками 90 сек трусцой,
+          между сериями отдых 3 минуты.
+          Заминка 1 км.
+      - id: nested_repeat_3sets_4x400_v2
+        style: coach_shorthand
+        text: |
+          р2(130-145) + 3х[4х400 175-182 отд90с] отд.между сериями 3мин + з1
+  - group_id: recovery_time_based_40min
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Recovery_40min
+          name: Recovery_40min
+          desc: Time-based recovery run, no distance given, HR floor+cap
+          type_code: recovery
+          distance_km: null
+          estimated_duration_min: 40
+          steps:
+            - type: time_hr
+              seconds: 2400
+              hr_low: 120
+              hr_high: 135
+              intensity: recovery
+    variants:
+      - id: recovery_time_based_40min_v1
+        style: conversational
+        text: |
+          Сегодня 40 минут восстановительного бега, пульс 120-135, дистанцию не считай.
+  - group_id: long_single_db_18km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Long_18km_DB
+          name: Long_18km_DB
+          desc: Long aerobic run, single long-zone HR band, no MT-finish segment
+          type_code: long
+          distance_km: 18.0
+          estimated_duration_min: 105
+          steps:
+            - type: dist_hr
+              km: 18.0
+              hr_low: 135
+              hr_high: 145
+              intensity: active
+    variants:
+      - id: long_single_db_18km_v1
+        style: formal_plan
+        text: |
+          Длинный бег 18 км, пульс 135-145, ровно, без ускорений в конце.
+      - id: long_single_db_18km_v2
+        style: coach_shorthand
+        text: |
+          дб 18км 135-145 ровно
+  - group_id: tempo_pace_progression_8km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Progression_Pace_8km
+          name: Progression_Pace_8km
+          desc: 'Pace-based progression: aerobic pace building into threshold pace, no HR targets'
+          type_code: progression
+          distance_km: 8.0
+          estimated_duration_min: 46
+          steps:
+            - type: dist_pace
+              km: 5.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: active
+            - type: dist_pace
+              km: 3.0
+              pace_fast: '4:42'
+              pace_slow: '4:55'
+              intensity: active
+    variants:
+      - id: tempo_pace_progression_8km_v1
+        style: formal_plan
+        text: |
+          8 км прогрессивный по темпу: 5 км в аэробном темпе 5:50-6:10, затем 3 км в пороговом темпе 4:42-4:55.
+  - group_id: threshold_pace_3x2km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Threshold_Pace_3x2km
+          name: Threshold_Pace_3x2km
+          desc: 3x2km at threshold pace, jog recovery, warmup+cooldown at aerobic pace
+          type_code: threshold
+          distance_km: 10.0
+          estimated_duration_min: 58
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: warmup
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '4:42'
+              pace_slow: '4:55'
+              intensity: active
+            - type: dist_open
+              km: 0.5
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 3
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: cooldown
+    variants:
+      - id: threshold_pace_3x2km_v1
+        style: formal_plan
+        text: |
+          Разминка 2 км (5:50-6:10). 3x2 км в пороговом темпе 4:42-4:55, между отрезками 500м трусцой.
+          Заминка 2 км (5:50-6:10).
+      - id: threshold_pace_3x2km_v2
+        style: coach_shorthand
+        text: |
+          р2 + 3х2000 4.42-4.55 отд 500 трусцой + з2
+  - group_id: fartlek_8x1_2min
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Fartlek_8x1_2min
+          name: Fartlek_8x1_2min
+          desc: 'Fartlek: 8 cycles of 1min fast + 2min easy'
+          type_code: mixed
+          distance_km: 9.0
+          estimated_duration_min: 50
+          steps:
+            - type: time_pace
+              seconds: 600
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: warmup
+            - type: time_pace
+              seconds: 60
+              pace_fast: '4:30'
+              pace_slow: '4:50'
+              intensity: active
+            - type: time_pace
+              seconds: 120
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 8
+            - type: time_pace
+              seconds: 600
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: cooldown
+    variants:
+      - id: fartlek_8x1_2min_v1
+        style: formal_plan
+        text: |
+          10 мин разминка легко. 8 циклов: 1 мин быстро (4:30-4:50) + 2 мин легко (5:50-6:10). 10 мин заминка.
+  - group_id: it_below_lt_6x1000
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: IT_BelowLT_6x1000m
+          name: IT_BelowLT_6x1000m
+          desc: 6x1000m at below-threshold intensity zone, jog recovery
+          type_code: intervals
+          distance_km: 10.0
+          estimated_duration_min: 58
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 1.0
+              hr_low: 165
+              hr_high: 172
+              intensity: active
+            - type: dist_hr
+              km: 0.3
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 6
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: it_below_lt_6x1000_v1
+        style: formal_plan
+        text: |
+          Разминка 2 км (130-145). 6x1000м на пульсе 165-172, отдых 300м трусцой (130-145). Заминка 1 км.
+      - id: it_below_lt_6x1000_v2
+        style: coach_shorthand
+        text: |
+          р2 + 6х1000 пульс165-172 отд300(130-145) + з1
+  - group_id: it_vo2_5x600
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: IT_VO2max_5x600m
+          name: IT_VO2max_5x600m
+          desc: 5x600m VO2max intervals, 10K-block only zone, full jog recovery
+          type_code: intervals
+          distance_km: 8.0
+          estimated_duration_min: 48
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_hr
+              km: 0.6
+              hr_low: 175
+              hr_high: 182
+              intensity: active
+            - type: dist_hr
+              km: 0.4
+              hr_low: 130
+              hr_high: 145
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: it_vo2_5x600_v1
+        style: formal_plan
+        text: |
+          МПК-блок: разминка 2 км, 5x600м на пульсе 175-182, отдых 400м трусцой (130-145), заминка 1 км.
+  - group_id: mt_pace_steady_10km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: MT_Steady_10km
+          name: MT_Steady_10km
+          desc: Steady run entirely at marathon-pace HR zone, single uniform step
+          type_code: marathon_pace
+          distance_km: 10.0
+          estimated_duration_min: 58
+          steps:
+            - type: dist_hr
+              km: 10.0
+              hr_low: 150
+              hr_high: 162
+              intensity: active
+    variants:
+      - id: mt_pace_steady_10km_v1
+        style: conversational
+        text: |
+          10 км ровно в марафонском темпе, пульс 150-162, без разминки отдельно.
+  - group_id: strides_after_easy_6x100
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Easy_Strides_6x100m
+          name: Easy_Strides_6x100m
+          desc: Easy run + 6x100m strides (open lap-button reps, no HR target), full jog recovery
+          type_code: easy_drills
+          distance_km: 7.0
+          estimated_duration_min: 45
+          steps:
+            - type: dist_hr
+              km: 5.0
+              hr_low: 125
+              hr_high: 142
+              intensity: active
+            - type: open_step
+              intensity: active
+            - type: dist_open
+              km: 0.15
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 6
+    variants:
+      - id: strides_after_easy_6x100_v1
+        style: formal_plan
+        text: |
+          5 км в аэробном темпе (пульс 125-142), затем 6x100м ускорений (без привязки к пульсу), между ними 150м трусцой.
+  - group_id: sbu_only_standalone
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: SBU_Only_15min
+          name: SBU_Only_15min
+          desc: Standalone SBU drills block, no surrounding run
+          type_code: easy_drills
+          distance_km: null
+          estimated_duration_min: 15
+          steps:
+            - type: sbu_block
+              drills:
+                - name: Выс.бедро
+                  seconds: 20
+                  reps: 2
+                - name: Захлест
+                  seconds: 20
+                  reps: 2
+                - name: Прям.ноги
+                  seconds: 20
+                  reps: 2
+                - name: Многоскоки
+                  seconds: 20
+                  reps: 2
+    variants:
+      - id: sbu_only_standalone_v1
+        style: coach_shorthand
+        text: |
+          только сбу сегодня: выс.бедро 20х2, захлест 20х2, прям.ноги 20х2, многоскоки 20х2, без бега вокруг
+  - group_id: race_half_marathon_negative_split
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Race_HalfMarathon_NegSplit
+          name: Race_HalfMarathon_NegSplit
+          desc: Half marathon race, 3-segment negative split pacing plan
+          type_code: race
+          distance_km: 21.1
+          estimated_duration_min: 103
+          steps:
+            - type: dist_pace
+              km: 7.0
+              pace_fast: '5:00'
+              pace_slow: '5:10'
+              intensity: active
+            - type: dist_pace
+              km: 7.0
+              pace_fast: '4:50'
+              pace_slow: '5:00'
+              intensity: active
+            - type: dist_pace
+              km: 7.1
+              pace_fast: '4:40'
+              pace_slow: '4:50'
+              intensity: active
+    variants:
+      - id: race_half_marathon_negative_split_v1
+        style: formal_plan
+        text: |
+          Полумарафон, негативный сплит: первые 7 км по 5:00-5:10, следующие 7 км по 4:50-5:00,
+          последние 7.1 км по 4:40-4:50.
+  - group_id: race_5k_time_trial
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Race_5km_TimeTrial
+          name: Race_5km_TimeTrial
+          desc: 5km time trial with short warmup, all-out main effort
+          type_code: race
+          distance_km: 6.0
+          estimated_duration_min: 28
+          steps:
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_pace
+              km: 5.0
+              pace_fast: '4:00'
+              pace_slow: '4:15'
+              intensity: active
+    variants:
+      - id: race_5k_time_trial_v1
+        style: conversational
+        text: |
+          Контрольная 5 км: км разминки, потом 5 км в полную силу по 4:00-4:15.
+  - group_id: hills_single_series_6x60m
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Hills_1x6x60m
+          name: Hills_1x6x60m
+          desc: Single hill sprint series, 6x60m, jog-down recovery
+          type_code: intervals
+          distance_km: 4.4
+          estimated_duration_min: null
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 120
+              hr_high: 140
+              intensity: warmup
+            - type: dist_open
+              km: 0.06
+              intensity: active
+            - type: dist_open
+              km: 0.3
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 6
+            - type: dist_open
+              km: 1.0
+              intensity: cooldown
+    variants:
+      - id: hills_single_series_6x60m_v1
+        style: formal_plan
+        text: |
+          Разминка 2 км (пульс до 140). Ускорение в гору 60м, спуск трусцой 300м, повторить 6 раз. Заминка 1 км.
+  - group_id: long_insertion_pace_16km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Long_Insertion_Pace_16km
+          name: Long_Insertion_Pace_16km
+          desc: Long run with two pace-based tempo inserts (not HR-based)
+          type_code: long
+          distance_km: 16.0
+          estimated_duration_min: 92
+          steps:
+            - type: dist_pace
+              km: 6.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: active
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '4:50'
+              pace_slow: '5:00'
+              intensity: active
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: recovery
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '4:50'
+              pace_slow: '5:00'
+              intensity: active
+            - type: dist_pace
+              km: 5.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: active
+    variants:
+      - id: long_insertion_pace_16km_v1
+        style: formal_plan
+        text: |
+          16 км с темповыми вставками: 6 км в темпе 5:50-6:10, 2 км в темпе 4:50-5:00, 1 км восстановление
+          5:50-6:10, снова 2 км в темпе 4:50-5:00, 5 км в темпе 5:50-6:10.
+  - group_id: easy_recovery_short_4km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Recovery_4km_Short
+          name: Recovery_4km_Short
+          desc: Very short easy recovery jog
+          type_code: recovery
+          distance_km: 4.0
+          estimated_duration_min: 26
+          steps:
+            - type: dist_hr
+              km: 4.0
+              hr_low: 120
+              hr_high: 135
+              intensity: recovery
+    variants:
+      - id: easy_recovery_short_4km_v1
+        style: conversational
+        text: |
+          Совсем лёгкая трусца 4 км, пульс 120-135, просто размяться.
+  - group_id: deload_week_easy_5km
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Deload_Easy_5km
+          name: Deload_Easy_5km
+          desc: Easy run explicitly framed as a deload-week session
+          type_code: easy
+          distance_km: 5.0
+          estimated_duration_min: 33
+          steps:
+            - type: dist_hr
+              km: 5.0
+              hr_low: 120
+              hr_high: 135
+              intensity: recovery
+    variants:
+      - id: deload_week_easy_5km_v1
+        style: coach_shorthand
+        text: |
+          разгрузочная неделя: 5км легко 120-135, без экспериментов
+  - group_id: brick_run_after_bike
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Run_After_Bike_20min
+          name: Run_After_Bike_20min
+          desc: Run portion of a bike+run brick session; bike stays in desc, not structured as steps
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: 20
+          steps:
+            - type: time_hr
+              seconds: 1200
+              hr_low: 130
+              hr_high: 150
+              intensity: active
+    variants:
+      - id: brick_run_after_bike_v1
+        style: conversational
+        text: |
+          Сегодня велосипед 40 минут в среднем темпе, сразу после — бег 20 минут, пульс до 150.
+        note: Bike portion has no FitWeaver step type — only the run 20min/HR-cap is structurable; bike
+          stays in desc, must not be invented as running steps.
+  - group_id: speed_activation_no_main_target
+    status: VALID
+    source: new
+    canonical:
+      workouts:
+        - filename: Speed_Activation_Strides
+          name: Speed_Activation_Strides
+          desc: 'Pre-race activation: warmup + open-step strides + cooldown, no explicit rep pace target'
+          type_code: easy_drills
+          distance_km: 5.0
+          estimated_duration_min: 30
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 120
+              hr_high: 140
+              intensity: warmup
+            - type: open_step
+              intensity: active
+            - type: dist_open
+              km: 0.2
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_open
+              km: 1.5
+              intensity: cooldown
+    variants:
+      - id: speed_activation_no_main_target_v1
+        style: formal_plan
+        text: |
+          Активация: 2 км разминка, 5 коротких ускорений по ощущениям (без заданного темпа), между ними 200м трусцой, заминка 1.5 км.
+  - group_id: ambiguous_laps_unstated_distance
+    status: NEEDS_CLARIFICATION
+    source: new
+    question: Какой длины один круг стадиона (400м стандартный или другой)? В тексте это не указано.
+    variants:
+      - id: ambiguous_laps_v1
+        style: conversational
+        text: |
+          Сегодня 5 кругов по стадиону в среднем темпе.
+  - group_id: ambiguous_lower_bound_only_pace
+    status: NEEDS_CLARIFICATION
+    source: new
+    question: Нужен верхний предел темпа — указано только «быстрее 5:00/км», без ограничения сверху.
+    variants:
+      - id: ambiguous_lower_bound_v1
+        style: conversational
+        text: |
+          5 км бежать быстрее 5:00 на километр.
+  - group_id: ambiguous_no_numbers_at_all
+    status: NEEDS_CLARIFICATION
+    source: new
+    question: В тексте нет ни дистанции, ни времени, ни пульса, ни темпа — нужны хотя бы приблизительные
+      цифры, чтобы построить шаг тренировки.
+    variants:
+      - id: ambiguous_no_numbers_v1
+        style: conversational
+        text: |
+          Сегодня побегай, как получится.
+  - group_id: ambiguous_relative_day_reference
+    status: NEEDS_CLARIFICATION
+    source: new
+    question: Текст ссылается на тренировку «как в четверг», но содержание четверговой тренировки в этом
+      входе отсутствует — без него структуру построить нельзя.
+    variants:
+      - id: ambiguous_relative_day_v1
+        style: conversational
+        text: |
+          Повтори тренировку с четверга.
+  - group_id: unsupported_swim_session
+    status: UNSUPPORTED
+    source: new
+    reason: Swimming session — no FitWeaver running step type applies; this is a non-running discipline.
+    variants:
+      - id: unsupported_swim_v1
+        style: conversational
+        text: |
+          Сегодня бассейн: 2000м вольным стилем в равномерном темпе.
+  - group_id: unsupported_bike_trainer_session
+    status: UNSUPPORTED
+    source: new
+    reason: Indoor bike trainer session — not a running workout, no applicable step type.
+    variants:
+      - id: unsupported_bike_v1
+        style: conversational
+        text: |
+          Велостанок 1.5 часа, интервалы 5x5 минут на FTP.
+  - group_id: unsupported_cadence_target
+    status: UNSUPPORTED
+    source: new
+    reason: Cadence (steps/min) target requested — no cadence_low/cadence_high step fields exist in Schema
+      v1; do not coerce into hr_* or pace_*.
+    variants:
+      - id: unsupported_cadence_v1
+        style: conversational
+        text: |
+          8 км в равномерном темпе, держи каденс не ниже 180 шагов в минуту.
+  - group_id: unsupported_yoga_stretch_session
+    status: UNSUPPORTED
+    source: new
+    reason: Yoga/stretching-only session — not a running workout, no applicable step type.
+    variants:
+      - id: unsupported_yoga_v1
+        style: conversational
+        text: |
+          Сегодня вместо бега — час йоги на растяжку и подвижность.
+  - group_id: yasso_800_10x_marathon_pace
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Yasso_10x800m
+          name: Yasso_10x800m
+          desc: 'Yasso 800s: 10x800m at marathon-goal pace, equal-time jog recovery (3:45 work / 3:45
+            jog)'
+          type_code: intervals
+          distance_km: 12.0
+          estimated_duration_min: 75
+          steps:
+            - type: dist_hr
+              km: 2.0
+              hr_low: 130
+              hr_high: 145
+              intensity: warmup
+            - type: dist_pace
+              km: 0.8
+              pace_fast: '4:35'
+              pace_slow: '4:45'
+              intensity: active
+            - type: time_step
+              seconds: 225
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 10
+            - type: dist_hr
+              km: 1.0
+              hr_low: 130
+              hr_high: 145
+              intensity: cooldown
+    variants:
+      - id: yasso_800_10x_v1
+        style: formal_plan
+        text: |
+          Классика Яссо: 10x800м в темпе 4:35-4:45 (целевое время марафона 3:45 переносим на 800м),
+          между повторами — трусца 3:45 (равное время работе). Разминка 2 км, заминка 1 км.
+      - id: yasso_800_10x_v2
+        style: coach_shorthand
+        text: |
+          яссо 10х800 4.35-4.45 отд трусца 3.45(=время отрезка) р2 з1
+  - group_id: beginner_run_walk_intervals_6x5_1
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Beginner_RunWalk_6x5_1
+          name: Beginner_RunWalk_6x5_1
+          desc: 'Beginner run/walk intervals: 6x(5min easy run + 1min walk)'
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: 40
+          steps:
+            - type: time_hr
+              seconds: 300
+              hr_low: 120
+              hr_high: 140
+              intensity: active
+            - type: time_step
+              seconds: 60
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 0
+              count: 6
+    variants:
+      - id: beginner_run_walk_v1
+        style: formal_plan
+        text: |
+          Для начинающих: 6 циклов — 5 минут лёгкого бега (пульс 120-140), 1 минута ходьбы. Без отдельной разминки.
+  - group_id: long_run_relative_to_race_pace
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Long_16km_RelativePace
+          name: Long_16km_RelativePace
+          desc: 'Long run defined relative to race pace: 30-60s/km slower than 4:30/km race pace'
+          type_code: long
+          distance_km: 16.0
+          estimated_duration_min: 92
+          steps:
+            - type: dist_pace
+              km: 16.0
+              pace_fast: '5:00'
+              pace_slow: '5:30'
+              intensity: active
+    variants:
+      - id: long_run_relative_pace_v1
+        style: conversational
+        text: |
+          Длительный 16 км в темпе на 30-60 секунд медленнее целевого соревновательного (у меня это 4:30),
+          то есть где-то 5:00-5:30 на километр.
+        note: Tests whether the model can resolve a pace given only relative to another stated reference
+          pace, not as an absolute number.
+  - group_id: mile_repeats_5x1600_short_rest
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: MileRepeats_5x1600m
+          name: MileRepeats_5x1600m
+          desc: 5x1600m (mile repeats) at threshold pace, short jog recovery between reps
+          type_code: threshold
+          distance_km: 11.0
+          estimated_duration_min: 62
+          steps:
+            - type: dist_pace
+              km: 2.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: warmup
+            - type: dist_pace
+              km: 1.6
+              pace_fast: '4:42'
+              pace_slow: '4:55'
+              intensity: active
+            - type: dist_open
+              km: 0.3
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 5
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: cooldown
+    variants:
+      - id: mile_repeats_5x1600_v1
+        style: formal_plan
+        text: |
+          5 миль-повторов (1.6 км) в пороговом темпе 4:42-4:55, между ними 300м лёгкого бега трусцой.
+          Разминка 2 км, заминка 1 км.
+  - group_id: cruise_intervals_4x1600_short_rest
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: CruiseIntervals_4x1600m
+          name: CruiseIntervals_4x1600m
+          desc: 'Cruise intervals: 4x1600m at tempo/threshold pace, very short 60s standing-ish recovery'
+          type_code: tempo
+          distance_km: 9.0
+          estimated_duration_min: 52
+          steps:
+            - type: dist_pace
+              km: 1.5
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: warmup
+            - type: dist_pace
+              km: 1.6
+              pace_fast: '4:45'
+              pace_slow: '4:55'
+              intensity: active
+            - type: time_step
+              seconds: 60
+              intensity: recovery
+            - type: repeat
+              back_to_offset: 1
+              count: 4
+            - type: dist_pace
+              km: 1.0
+              pace_fast: '5:50'
+              pace_slow: '6:10'
+              intensity: cooldown
+    variants:
+      - id: cruise_intervals_v1
+        style: formal_plan
+        text: "«Круизные интервалы»: 4x1600м в темпе 4:45-4:55, отдых между ними всего 60 секунд (почти\
+          \ без \nостановки). Разминка 1.5 км, заминка 1 км.\n"
+      - id: cruise_intervals_v2
+        style: coach_shorthand
+        text: |
+          круизные 4х1600 4.45-4.55 отд 60с! р1.5 з1
+  - group_id: taper_week_easy_short_20min
+    status: VALID
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    canonical:
+      workouts:
+        - filename: Taper_Easy_20min
+          name: Taper_Easy_20min
+          desc: Short easy taper-week shakeout run before a race
+          type_code: easy
+          distance_km: null
+          estimated_duration_min: 20
+          steps:
+            - type: time_hr
+              seconds: 1200
+              hr_low: 120
+              hr_high: 138
+              intensity: recovery
+    variants:
+      - id: taper_week_easy_v1
+        style: conversational
+        text: |
+          Разгрузочная неделя перед стартом: всего 20 минут совсем лёгкого бега, пульс не выше 138, просто размяться.
+  - group_id: fartlek_by_feel_no_targets
+    status: NEEDS_CLARIFICATION
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    question: Сколько ускорений и какой они длины? В тексте только общее время фартлека (20-30 минут)
+      и указание менять темп «по ощущениям и рельефу», без числа отрезков или хотя бы ориентировочного
+      темпа ускорений.
+    variants:
+      - id: fartlek_by_feel_v1
+        style: conversational
+        text: |
+          Побегай минут 20-30 фартлек: меняй скорость как чувствуешь, ориентируясь на рельеф и настроение.
+  - group_id: tempo_effort_only_no_numbers
+    status: NEEDS_CLARIFICATION
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    question: Нужен хотя бы примерный пульс или темп для «комфортно-тяжёлого» темпового участка — по описанию
+      усилия («трудно разговаривать») нельзя однозначно определить числовые границы dist_hr/dist_pace.
+    variants:
+      - id: tempo_effort_only_v1
+        style: conversational
+        text: |
+          Сегодня темповый бег 6 км: беги в комфортно-тяжёлом темпе, чтобы разговаривать уже было трудно.
+  - group_id: landmark_based_fartlek_unknown_distance
+    status: NEEDS_CLARIFICATION
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    question: Какое расстояние или время соответствует «до следующего столба» и «до конца квартала»? Ориентиры
+      местности не переводятся в km/seconds без дополнительной информации о самой трассе.
+    variants:
+      - id: landmark_fartlek_v1
+        style: conversational
+        text: |
+          На пробежке ускоряйся от одного фонарного столба до следующего, потом беги легко до конца квартала, и так весь круг.
+  - group_id: unsupported_circuit_training_strength
+    status: UNSUPPORTED
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    reason: Circuit/strength training (push-ups, squats, burpees, plank by reps/time) — not a running
+      workout, no FitWeaver step type applies even though it's structured as timed/counted rounds like
+      a run interval would be.
+    variants:
+      - id: unsupported_circuit_v1
+        style: conversational
+        text: |
+          Круговая тренировка: 3 круга по (15 отжиманий, 20 приседаний, 10 берпи, планка 40 секунд), отдых между кругами 2 минуты.
+        note: Deliberately structurally similar to a repeat-interval running session (rounds + rest) to
+          test that the model classifies by CONTENT (strength exercises), not by the repeat-like shape
+          of the text.
+  - group_id: unsupported_core_workout_only
+    status: UNSUPPORTED
+    source: 'web_inspired: structure/terminology confirmed against public running-coaching sources (Yasso
+      800s, fartlek, warmup/cooldown conventions, relative-pace long runs) via web search; wording is
+      original, not copied from any single source — see docs/llm_finetune/README.md ''2026-xx web-search
+      expansion'' section for the source list.'
+    reason: Core/abs-only session, no running content — not structurable as FitWeaver running steps.
+    variants:
+      - id: unsupported_core_v1
+        style: conversational
+        text: |
+          Сегодня без бега: только пресс и кор — 20 минут по таймеру, разные упражнения на пресс.

@@ -1,5 +1,32 @@
 # TODO — FitWeaver
 
+## 🟢 На паузе (нужен GPU) 2026-09-17 — Schema v1 + golden-датасет для FunctionGemma
+
+Побочная ветка работы, не пересекается с основным приложением (`src/garmin_fit/` не тронут).
+Подробности решений — `AGENTS.md` «Журнал сессий» 2026-09-17, план дальше — `docs/llm_finetune/README.md`.
+
+- ✅ Готово: `docs/llm_finetune/SCHEMA_V1.md` — аудит существующей схемы, Schema v1 =
+  `plan_schema.py` без изменений + аддитивный `status: VALID|NEEDS_CLARIFICATION|UNSUPPORTED`.
+- ✅ Готово: `docs/llm_finetune/golden_examples_v1.yaml` — 62 группы / 77 текстовых вариантов
+  (8 из `strict_examples.yaml`, 10 реальных подтверждённых на часах, 28 синтетических на
+  структурные пробелы, 11 из веб-поиска по формату реальных тренировок). 44/44 VALID
+  canonical проверены `WorkoutPlanSchema`/`validate_plan_data_detailed()` — 0 ошибок.
+- ✅ Готово: `docs/llm_finetune/REAL_DATASET_NOTES.md` — находка про `back_to_offset` из чата
+  с планами перепроверена по текущему коду, не воспроизвелась (см. файл для деталей).
+
+### Next tasks — как только освободится GPU
+- [ ] Zero-shot baseline: 62 группы / 77 вариантов через FunctionGemma 270M на RTX 4060 Ti,
+      метрики через `plan_schema.py`/`plan_validator.py` (переиспользовать check-машинерию
+      `llm/benchmark.py`, не писать отдельный валидатор).
+- [ ] Отдельно оценить понимание русского языка (особенно `coach_shorthand`-варианты) —
+      главный риск, до сих пор не проверен эмпирически.
+- [ ] Только после baseline: расширять датасет/парафразы, решать форму function-call
+      (см. `SCHEMA_V1.md` §4).
+- [ ] Перепроверить на часах `dist_hr(active)+time_step(recovery)+back_to_offset:2` —
+      подтвердить, что баг из чата про `back_to_offset` действительно уже исправлен, прежде
+      чем трогать `build_from_plan.py`/`workout_utils.py`.
+
+
 ## ✅ FIXED 2026-09-07 (2) — вложенные repeat и вес CLI
 
 - ✅ FIXED: снят запрет на вложенные `repeat` в `llm_contract.yaml` и промпте.
