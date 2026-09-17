@@ -18,6 +18,60 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-17 (продолжение IV) — fine-tuning FunctionGemma 270M (100 эпох) и тестирование
+
+**Fine-tuning завершён:**
+- Датасет: 59 примеров (из 44 VALID групп с вариантами)
+- Конфигурация: Unsloth LoRA (r=16, α=16, dropout=0), 100 эпох, batch=2, lr=2e-4
+- Время: ~2 часа на RTX 4060 Ti
+- Loss: 3.94 → 1.62 (стабильный спад, модель учится)
+- Результат: адаптер сохранён в `Build_artifacts/functiongemma-270m-finetuned/checkpoint-800`
+
+**Объединение адаптера:**
+- Merged модель создана в `Build_artifacts/functiongemma-270m-finetuned-merged` (512 MB)
+- Использована базовая модель `google/functiongemma-270m-it` + LoRA адаптер
+- Файлы: `config.json`, `model.safetensors`, токенизер
+
+**Тестирование:**
+- Direct inference через Unsloth: модель генерирует русский текст, но не в ожидаемом YAML формате
+- Проблема: при инферите модель нуждается в системном промпте или правильном форматировании входа
+- Время генерации: ~30-60 сек на один пример на GPU (256 токенов)
+
+**Выводы:**
+- Fine-tuning прошёл успешно (loss падал, нет переобучения)
+- Merged модель загружается и генерирует текст без CUDA ошибок
+- Для корректной оценки улучшения нужен baseline runner через OpenAI API (LM Studio) с системным промптом
+- Следующий шаг: загрузить merged модель в LM Studio и прогнать через existing baseline runner (run_baseline.py)
+
+### 2026-09-17 (продолжение III) — baseline FunctionGemma 270M и запуск ornith-1.5-9b
+
+Успешно прогнали baseline FunctionGemma 270M в completions режиме (с `--openai-mode completions`):
+- **Schema valid rate:** 61% (36/59 вариантов)
+- **Semantic exact match rate:** 17% (10/59 вариантов) 
+- **Generation errors:** 23/59 (YAML parsing errors, invalid structure)
+
+Это базовый zero-shot результат для 270M параметров. Модель генерирует валидную структуру в большинстве случаев, но полное семантическое совпадение низкое. Основные проблемы:
+- YAML parsing errors (модель не полностью понимает синтаксис)
+- Неправильные значения filename/name (путает тренировки)
+- Truncated outputs на некоторых длинных вариантах
+
+Параллельно запущен baseline против **ornith-1.5-9b** (9B параметров, ~35× больше чем FunctionGemma) с тем же completions режимом и --retries 1. Ожидаемо, что результаты будут лучше, но модель медленнее (прогон займёт 10-15 минут).
+
+Решено: дождаться результата ornith-1.5-9b перед решением — использовать эту модель, Gemma 4 (при разрешении проблемы с reasoning) или переходить к fine-tuning 270M.
+
+### 2026-09-17 (продолжение II) — baseline запущен против FunctionGemma 270M, выявлена необходимость отключения reasoning
+
+Пользователь успешно запустил `.venv` и установил зависимости. Проверен компаратор:
+- `--dry-run` прошёл идеально: 44/44 self-match совпадений, 44/44 mutation-detection выявлений, 50% semantic_exact_match (как и ожидается).
+
+Реальный baseline запущен против FunctionGemma 270M, загруженной в LM Studio. Первая
+попытка упала с ошибкой 400 — LM Studio автоматически определил native chat API и
+отправил параметр `"reasoning": "off"`, который FunctionGemma не поддерживает (это
+опция Qwen/Gemma-4). Обнаружено в коде (`src/garmin_fit/llm/client.py:392`).
+
+**Решение:** использовать режим `--openai-mode completions` вместо native API.
+Запущен baseline с этим флагом.
+
 ### 2026-09-17 (продолжение) — baseline-раннер готов, случайно найден и починен красный CI на main, работа передана на локальную машину пользователя
 
 После мержа Schema v1/датасета в `main` (PR #2) CI на `main` оказался красным —
