@@ -1,9 +1,12 @@
 # TODO — FitWeaver
 
-## 🟢 На паузе (нужен GPU) 2026-09-17 — Schema v1 + golden-датасет для FunctionGemma
+## 🟢 Передано на локальную машину пользователя 2026-09-17 — Schema v1 + golden-датасет + baseline-раннер для FunctionGemma
 
-Побочная ветка работы, не пересекается с основным приложением (`src/garmin_fit/` не тронут).
-Подробности решений — `AGENTS.md` «Журнал сессий» 2026-09-17, план дальше — `docs/llm_finetune/README.md`.
+Побочная ветка работы, не пересекается с основным приложением (`src/garmin_fit/` не тронут,
+кроме одного несвязанного однострочного фикса CI — см. ниже). Подробности решений —
+`AGENTS.md` «Журнал сессий» 2026-09-17 (обе записи), план дальше — `docs/llm_finetune/README.md`.
+Дальше работа продолжается на Windows 11 + RTX 4060 Ti пользователя (клон в
+`C:\Users\imino\OneDrive\Desktop\my_g`) — у этой сессии нет доступа к тому железу.
 
 - ✅ Готово: `docs/llm_finetune/SCHEMA_V1.md` — аудит существующей схемы, Schema v1 =
   `plan_schema.py` без изменений + аддитивный `status: VALID|NEEDS_CLARIFICATION|UNSUPPORTED`.
@@ -13,12 +16,20 @@
   canonical проверены `WorkoutPlanSchema`/`validate_plan_data_detailed()` — 0 ошибок.
 - ✅ Готово: `docs/llm_finetune/REAL_DATASET_NOTES.md` — находка про `back_to_offset` из чата
   с планами перепроверена по текущему коду, не воспроизвелась (см. файл для деталей).
+- ✅ Готово: `docs/llm_finetune/run_baseline.py` — раннер zero-shot baseline: гоняет 44 VALID-
+  группы через существующий продакшен-промпт против любого OpenAI-совместимого сервера (LM
+  Studio) и сравнивает с canonical через свой semantic-exact-match компаратор. `--dry-run`
+  самопроверяет компаратор без сети — 44/44 самосовпадений, 44/44 пойманных мутаций.
+- ✅ FIXED (попутно, не связано с этой веткой): CI на `main` был красным с 2026-09-07 —
+  `test_all_entry_points_share_one_retry_budget` безусловно импортировал `garmin_fit.api.schemas`
+  (нужен `fastapi`), которого CI не ставит. Добавлен `pytest.importorskip`, как у остальных
+  fastapi-тестов. `main` снова зелёный.
 
-### Next tasks — как только освободится GPU
-- [ ] Zero-shot baseline: 62 группы / 77 вариантов через FunctionGemma 270M на RTX 4060 Ti,
-      метрики через `plan_schema.py`/`plan_validator.py` (переиспользовать check-машинерию
-      `llm/benchmark.py`, не писать отдельный валидатор).
-- [ ] Отдельно оценить понимание русского языка (особенно `coach_shorthand`-варианты) —
+### Next tasks — ждём результат от пользователя
+- [ ] Пользователь запускает `python docs/llm_finetune/run_baseline.py --api openai --url
+      http://127.0.0.1:1234/v1 --model functiongemma-270m-it` локально против LM Studio.
+- [ ] По результату (`schema_valid_rate`/`semantic_exact_match_rate`/diffs) — отдельно оценить
+      понимание русского языка (особенно `coach_shorthand`-варианты) vs доменное понимание —
       главный риск, до сих пор не проверен эмпирически.
 - [ ] Только после baseline: расширять датасет/парафразы, решать форму function-call
       (см. `SCHEMA_V1.md` §4).

@@ -18,6 +18,52 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-17 (продолжение) — baseline-раннер готов, случайно найден и починен красный CI на main, работа передана на локальную машину пользователя
+
+После мержа Schema v1/датасета в `main` (PR #2) CI на `main` оказался красным —
+`test_all_entry_points_share_one_retry_budget` (добавлен в 911e841) безусловно
+импортирует `garmin_fit.api.schemas`, которому нужен `fastapi`, а CI ставит только
+`.[dev]`. Баг существовал с 7 сентября, не связан с этим PR (проверено — тот же
+фейл на `main` в прогонах ещё до нашего мержа). Все остальные тесты на `fastapi`
+уже используют `@unittest.skipIf`, этот — нет. Исправлено одной строкой
+(`pytest.importorskip("fastapi", ...)`), проверено в обоих режимах (без fastapi —
+skip, с fastapi — реально проходит). PR #3, смержен, CI на `main` снова зелёный.
+
+Добавлен `docs/llm_finetune/run_baseline.py` (PR #4) — реальный раннер для
+zero-shot baseline: гоняет все 44 VALID-группы датасета через переиспользуемый
+продакшен-промпт (`UnifiedLLMClient`/`llm/prompt.py`, ещё не function-calling —
+это сознательное решение, см. README) против любого OpenAI-совместимого сервера
+(LM Studio) и сравнивает результат с canonical через собственный
+semantic-exact-match компаратор (порядок ключей неважен, `MM:SS`-константы пар
+темпа резолвятся через `plan_domain.PACE_CONSTANT_VALUES`, int/float
+нормализуются) — закрывает пробел метрик из `SCHEMA_V1.md` §5, второй валидатор
+не писался — используется существующий `plan_schema.py`/`plan_validator.py`
+через `generate_yaml_draft()`. `--dry-run` самопроверяет компаратор без сети
+(44/44 самосовпадений проходят, 44/44 намеренных мутаций ловятся) — проверено
+локально.
+
+**Дальше работа переезжает на локальную машину пользователя** (Windows 11,
+RTX 4060 Ti 16GB, клон в `C:\Users\imino\OneDrive\Desktop\my_g`) — у этой
+сессии нет доступа к их железу. Обсуждали: Unsloth официально поддерживает
+нативный Windows (не только WSL) через `irm https://unsloth.ai/install.ps1 | iex`;
+для самого baseline через LM Studio никакой Unsloth/PyTorch не нужен вообще —
+только LM Studio с загруженной `functiongemma-270m-it` (есть в каталоге LM
+Studio) и `python docs/llm_finetune/run_baseline.py --api openai --url
+http://127.0.0.1:1234/v1 --model functiongemma-270m-it`. Отдельно предупредили
+про OneDrive: синхронизация папки проекта может конфликтовать с `.venv`/весами
+модели — лучше исключить их из синхронизации или держать вне OneDrive-папки.
+
+### Next tasks — после 2026-09-17 (продолжение)
+- Ждём от пользователя реальный прогон `run_baseline.py` против FunctionGemma
+  270M в LM Studio на его машине — результат (`schema_valid_rate`,
+  `semantic_exact_match_rate`, per-variant diffs) определит, движемся ли по
+  лестнице размеров дальше или переходим к дообучению 270M.
+- Как будет результат: разобрать, где именно проседает — форма промпта (§4),
+  понимание домена или русский язык конкретно на `coach_shorthand`-вариантах
+  (см. инструкцию в README, как их отличить по diff'ам).
+- Остальное — см. блок «Next tasks — после 2026-09-17» ниже (расширение
+  датасета, перепроверка `back_to_offset` на часах) — актуально без изменений.
+
 ### 2026-09-17 — FitWeaver Workout Schema v1 + golden-датасет для fine-tuning FunctionGemma (сессия на паузе, нужен GPU)
 
 Аудит существующей схемы (`plan_schema.py`/`plan_domain.py`/`plan_validator.py`/`sbu_block.py`)

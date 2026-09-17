@@ -20,13 +20,19 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 **As of 2026-09-06** — Desktop GUI fully functional with 4 tabs (Calendar / LLM Generator / Constructor / Garmin Connect), simple/expert mode, multi-profile support (per-email), and dual standalone exes (GUI + CLI), rebuilt 2026-09-06. Backend suite: **364 passed**, 1 third-party DeprecationWarning (Starlette), with the `.venv` (Python 3.12.10) that has all extras installed. LLM canon is **local LM Studio at `http://127.0.0.1:1234`** with `qwen3.8-27b@iq3_xxs` and `--openai-mode auto` (native LM Studio chat, reasoning disabled); the old LAN Qwen server is retired. Free-form human plan text is passed to the LLM in one request — no auto-segmentation, no repeat/`back_to_offset` guessing; output YAML structure and repeat indices are validated strictly. All architecture decisions (Plan API, SQLite staging, workout builder, error hints, drag&drop) are stable and in code. The per-session log lives in `AGENTS.md` («Журнал сессий»); `version.txt` keeps the version history; for detailed implementation notes see the git log (`git log --oneline src/`).
 
-**As of 2026-09-17 (paused, needs GPU)** — separate, unrelated to the above: audited the existing
-schema/LLM infrastructure and produced `docs/llm_finetune/` (`SCHEMA_V1.md`,
-`golden_examples_v1.yaml` — 62 groups/77 text variants, `REAL_DATASET_NOTES.md`, `README.md`) for
-a FunctionGemma 270M/Unsloth local-LLM fine-tuning experiment. Nothing in `src/garmin_fit/`
-touched. **Paused here** — next step (zero-shot baseline) needs the RTX 4060 Ti free for the
-model; see `AGENTS.md` «Журнал сессий» 2026-09-17 entry and `docs/llm_finetune/README.md` for
-where to resume.
+**As of 2026-09-17 (handed off to the user's local machine)** — separate, unrelated to the above:
+audited the existing schema/LLM infrastructure and produced `docs/llm_finetune/` (`SCHEMA_V1.md`,
+`golden_examples_v1.yaml` — 62 groups/77 text variants, `REAL_DATASET_NOTES.md`, `README.md`,
+`run_baseline.py`) for a FunctionGemma 270M/Unsloth local-LLM fine-tuning experiment. Nothing in
+`src/garmin_fit/` touched, except one unrelated one-line CI fix (`pytest.importorskip("fastapi")`
+in `test_all_entry_points_share_one_retry_budget`, which had been red on `main` since 2026-09-07,
+unrelated to this work — found while watching CI on the docs PR). `run_baseline.py` is a
+ready-to-run zero-shot baseline: scores FunctionGemma against the 44 VALID golden groups through
+the existing production prompt, with a real semantic-exact-match comparator (`--dry-run`
+self-tests it without a network call). **Paused here** — the user is cloning the repo to their
+own Windows 11 + RTX 4060 Ti machine (this session has no access to it) to run LM Studio +
+`run_baseline.py` locally; see `AGENTS.md` «Журнал сессий» 2026-09-17 entries and
+`docs/llm_finetune/README.md` for where to resume once results are back.
 
 ---
 
@@ -45,7 +51,7 @@ where to resume.
 3. Consider server-side structured output without imposing a template on the human input text.
 4. End-to-end Calendar dry-run/upload payload tests.
 5. See `TODO.md` for the full backlog — it is the authoritative list; `AGENTS.md` «Журнал сессий» has the detailed per-session history.
-6. **Paused, needs GPU:** `docs/llm_finetune/` — run the 62-group golden dataset through FunctionGemma 270M zero-shot on the RTX 4060 Ti for a baseline, then continue per `docs/llm_finetune/README.md`. Unrelated to items 1-4 above; resume whenever the GPU is free.
+6. **Handed off to local machine:** `docs/llm_finetune/run_baseline.py` is ready to run — the user runs it against LM Studio (FunctionGemma 270M) on their own Windows 11 + RTX 4060 Ti machine. Unrelated to items 1-4 above; resume the fine-tuning work once baseline results are reported back (per `docs/llm_finetune/README.md`).
 
 `requires-python` is `>=3.10` and ruff `target-version` is `py310` (they are kept in sync — see the comment in `pyproject.toml`); the working `.venv` is Python 3.12.10.
 
