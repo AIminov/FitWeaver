@@ -322,6 +322,8 @@ def test_all_entry_points_share_one_retry_budget():
     """
     import inspect
 
+    pytest.importorskip("fastapi", reason="fastapi/uvicorn not installed (pip install -e '.[api]')")
+
     from garmin_fit.api.schemas import GenerateDraftRequest
     from garmin_fit.api_client import PlanApiClient
     from garmin_fit.llm.client import MAX_RETRIES
