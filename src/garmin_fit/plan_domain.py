@@ -82,6 +82,8 @@ STEP_REQUIRED_FIELDS = {
     "time_hr": {"seconds", "hr_low", "hr_high"},
     "dist_pace": {"km", "pace_fast", "pace_slow"},
     "time_pace": {"seconds", "pace_fast", "pace_slow"},
+    "dist_cadence": {"km", "cad_low", "cad_high"},
+    "time_cadence": {"seconds", "cad_low", "cad_high"},
     "dist_open": {"km"},
     "time_step": {"seconds"},
     "open_step": set(),
@@ -108,6 +110,8 @@ class WorkoutStep:
     pace_slow: Any = None
     hr_low: Any = None
     hr_high: Any = None
+    cad_low: Any = None
+    cad_high: Any = None
     back_to_offset: Any = None
     count: Any = None
     drills: list[Drill] | None = None
@@ -162,6 +166,8 @@ def step_from_data(data: Mapping[str, Any]) -> WorkoutStep:
         pace_slow=data.get("pace_slow"),
         hr_low=data.get("hr_low"),
         hr_high=data.get("hr_high"),
+        cad_low=data.get("cad_low"),
+        cad_high=data.get("cad_high"),
         back_to_offset=data.get("back_to_offset"),
         count=data.get("count"),
         drills=drills,
@@ -176,6 +182,8 @@ def step_from_data(data: Mapping[str, Any]) -> WorkoutStep:
                 "pace_slow",
                 "hr_low",
                 "hr_high",
+                "cad_low",
+                "cad_high",
                 "back_to_offset",
                 "count",
                 "drills",
@@ -260,6 +268,10 @@ def step_to_data(step: WorkoutStep) -> dict[str, Any]:
         data["hr_low"] = step.hr_low
     if step.hr_high is not None:
         data["hr_high"] = step.hr_high
+    if step.cad_low is not None:
+        data["cad_low"] = step.cad_low
+    if step.cad_high is not None:
+        data["cad_high"] = step.cad_high
     if step.back_to_offset is not None:
         data["back_to_offset"] = step.back_to_offset
     if step.count is not None:

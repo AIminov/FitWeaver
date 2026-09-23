@@ -333,11 +333,12 @@ VALIDATION CHECKLIST (before returning YAML):
   7. For dist_hr/time_hr: 30 ≤ hr_low and hr_high ≤ 240
   8. For dist_pace/time_pace: pace values are quoted strings "MM:SS"
   9. For dist_pace/time_pace: MM ≥ 1, SS ∈ [00-59]
- 10. NEVER mix hr_* with pace_* in the same step
- 11. For sbu_block: drill names ≤ 12 characters only
- 12. For sbu_block: drills have ONLY {name, seconds, reps} — no 'type'
- 13. For repeat: back_to_offset < current step index
- 14. For repeat: back_to_offset points to a valid step (≥ 0)
+ 10. For dist_cadence/time_cadence: 30 ≤ cad_low < cad_high ≤ 250 steps/min
+ 11. NEVER mix hr_* with pace_* in the same step
+ 12. For sbu_block: drill names ≤ 12 characters only
+ 13. For sbu_block: drills have ONLY {name, seconds, reps} — no 'type'
+ 14. For repeat: back_to_offset < current step index
+ 15. For repeat: back_to_offset points to a valid step (≥ 0)
  15. intensity values (if used) are one of: active, warmup, cooldown, recovery
  16. No nested repeat blocks (one repeat per section only)
 ```

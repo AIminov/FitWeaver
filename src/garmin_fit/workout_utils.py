@@ -342,6 +342,18 @@ def time_hr(idx, seconds, hr_low, hr_high, intensity=Intensity.ACTIVE):
         tgt_high=bpm_to_fit_hr(hr_high))
 
 
+def dist_cadence(idx, km, cad_low, cad_high, intensity=Intensity.ACTIVE):
+    return make_step(idx, WorkoutStepDuration.DISTANCE, km_to_dist(km),
+                     WorkoutStepTarget.CADENCE, intensity,
+                     tgt_val=0, tgt_low=int(cad_low), tgt_high=int(cad_high))
+
+
+def time_cadence(idx, seconds, cad_low, cad_high, intensity=Intensity.ACTIVE):
+    return make_step(idx, WorkoutStepDuration.TIME, sec_to_time(seconds),
+                     WorkoutStepTarget.CADENCE, intensity,
+                     tgt_val=0, tgt_low=int(cad_low), tgt_high=int(cad_high))
+
+
 def repeat_step(idx, back_to, count):
     """
     Create a repeat step.

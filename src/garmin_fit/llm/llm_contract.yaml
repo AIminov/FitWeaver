@@ -49,6 +49,11 @@ validation_rules:
     - Pace values quoted strings MM:SS format
     - MM at least 1, SS between 00-59
 
+  cadence:
+    - Use dist_cadence for distance steps and time_cadence for timed steps
+    - cad_low and cad_high are steps per minute; cad_low must be less than cad_high
+    - Add cadence targets only when explicitly specified by the source plan
+
   intensity:
     - Optional field, only active/warmup/cooldown/recovery
     - Never easy, hard, fast, slow, main, work, light

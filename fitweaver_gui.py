@@ -88,6 +88,11 @@ _STEP_TYPE_FIELDS = {
         ("pace_fast", "Темп быстрый (мм:сс)", str),
         ("pace_slow", "Темп медленный (мм:сс)", str),
     ),
+    "dist_cadence": (
+        ("km", "Расстояние (км)", float),
+        ("cad_low", "Частота шагов от (шаг/мин)", int),
+        ("cad_high", "Частота шагов до (шаг/мин)", int),
+    ),
     "time_open": (("seconds", "Длительность (сек)", int),),
     "time_hr": (
         ("seconds", "Длительность (сек)", int),
@@ -98,6 +103,11 @@ _STEP_TYPE_FIELDS = {
         ("seconds", "Длительность (сек)", int),
         ("pace_fast", "Темп быстрый (мм:сс)", str),
         ("pace_slow", "Темп медленный (мм:сс)", str),
+    ),
+    "time_cadence": (
+        ("seconds", "Длительность (сек)", int),
+        ("cad_low", "Частота шагов от (шаг/мин)", int),
+        ("cad_high", "Частота шагов до (шаг/мин)", int),
     ),
 }
 
@@ -192,6 +202,8 @@ class App(_AppBase):
         self._profile_status_var = tk.StringVar(value="Профиль не выбран")
         self._selected_workout: dict | None = None
         self._builder_edit_workout_id: int | None = None
+        self._builder_garmin_edit_event: dict[str, str] | None = None
+        self._gc_selected_event: dict[str, str] | None = None
 
         # Visual builder draft stays in memory until saved to a plan or file.
         self._builder_steps: list = []
@@ -1398,6 +1410,7 @@ class App(_AppBase):
         if workout is None:
             return
         self._builder_edit_workout_id = workout_id
+        self._builder_garmin_edit_event = None
         self._builder_steps = [step_from_data(step_to_data(step)) for step in workout.steps]
         self._builder_filename_var.set(workout.filename or "")
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
@@ -2141,6 +2154,24 @@ class App(_AppBase):
     def _builder_on_canvas_resize(self, e):
         self._builder_canvas.itemconfig(self._builder_list_win, width=e.width)
 
+    def _builder_hr_zones(self) -> dict[str, dict[str, int]]:
+        email = self._active_profile_email
+        if not email:
+            return {}
+        try:
+            from garmin_fit.profile_store import user_profile_yaml_path
+
+            path = user_profile_yaml_path(email)
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            zones = data.get("hr_zones", {}) if isinstance(data, dict) else {}
+            return {
+                str(name).lower(): {"low": int(bounds["low"]), "high": int(bounds["high"])}
+                for name, bounds in zones.items()
+                if isinstance(bounds, dict) and bounds.get("low") and bounds.get("high")
+            }
+        except (OSError, ValueError, TypeError, yaml.YAMLError):
+            return {}
+
     def _builder_has_repeat(self) -> bool:
         return any(s.step_type == "repeat" for s in self._builder_steps)
 
@@ -2157,6 +2188,7 @@ class App(_AppBase):
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
         self._builder_edit_workout_id = None
+        self._builder_garmin_edit_event = None
         self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
         _label, factory = TEMPLATES[key]
         self._builder_steps = factory()
@@ -2167,6 +2199,7 @@ class App(_AppBase):
     def _builder_clear(self):
         self._builder_steps = []
         self._builder_edit_workout_id = None
+        self._builder_garmin_edit_event = None
         self._builder_filename_var.set("")
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
@@ -2216,6 +2249,7 @@ class App(_AppBase):
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
         self._builder_edit_workout_id = None
+        self._builder_garmin_edit_event = None
         self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
         from garmin_fit.plan_domain import step_from_data
         from garmin_fit.profile_store import list_user_templates
@@ -2316,6 +2350,8 @@ class App(_AppBase):
             parts.append(f"HR {step.hr_low}-{step.hr_high}")
         if step.pace_fast and step.pace_slow:
             parts.append(f"{step.pace_fast}-{step.pace_slow}")
+        if step.cad_low is not None and step.cad_high is not None:
+            parts.append(f"{step.cad_low}-{step.cad_high} шаг/мин")
         if step.step_type == "sbu_block":
             parts.append(f"{len(step.drills or [])} упражнений СБУ")
         body = " · ".join(parts) if parts else step.step_type
@@ -2450,6 +2486,38 @@ class App(_AppBase):
                       style="Error.TLabel", wraplength=230, justify="left").pack(
                           anchor="w", pady=(2, 6))
 
+        if step.step_type in {"dist_hr", "time_hr"}:
+            zones = self._builder_hr_zones()
+            zone_choices = {
+                f"Z{index} · {zones.get(f'zone{index}', {}).get('low', '?')}–"
+                f"{zones.get(f'zone{index}', {}).get('high', '?')} bpm": zones[f"zone{index}"]
+                for index in range(1, 6) if f"zone{index}" in zones
+            }
+            if zone_choices:
+                ttk.Label(self._builder_editor_frame, text="Подставить пульсовую зону:",
+                          style="Muted.TLabel").pack(anchor="w")
+                zone_var = tk.StringVar()
+
+                def _apply_zone(_e=None, s=step, v=zone_var, choices=zone_choices):
+                    bounds = choices.get(v.get())
+                    if bounds:
+                        s.hr_low, s.hr_high = bounds["low"], bounds["high"]
+                        self._builder_render_list()
+                        self._builder_render_editor()
+                        self._builder_update_validation()
+
+                zone_cb = ttk.Combobox(
+                    self._builder_editor_frame, textvariable=zone_var, width=25,
+                    values=list(zone_choices), state="readonly")
+                zone_cb.pack(anchor="w", pady=(0, 6))
+                zone_cb.bind("<<ComboboxSelected>>", _apply_zone)
+            else:
+                ttk.Label(
+                    self._builder_editor_frame,
+                    text="Настройте пульсовые зоны в профиле, чтобы выбирать Z1–Z5.",
+                    style="Muted.TLabel", wraplength=230, justify="left").pack(
+                        anchor="w", pady=(0, 6))
+
         ttk.Label(self._builder_editor_frame, text="Интенсивность:",
                   style="Muted.TLabel").pack(anchor="w")
         intensity_var = tk.StringVar(value=step.intensity or "")
@@ -2506,10 +2574,17 @@ class App(_AppBase):
         if not hasattr(self, "_builder_save_yaml_btn"):
             return
         self._builder_add_btn.configure(
-            state="normal" if valid and self._store is not None else "disabled")
+            state="normal" if valid and (
+                self._store is not None or (
+                    self._builder_garmin_edit_event is not None
+                    and self._builder_garmin_edit_event.get("profile_email")
+                    == self._active_profile_email
+                )
+            ) else "disabled")
         self._builder_save_yaml_btn.configure(state="normal" if valid else "disabled")
         self._builder_send_garmin_btn.configure(
-            state="normal" if valid and self._active_profile_email else "disabled")
+            state="normal" if valid and self._active_profile_email
+            and self._builder_garmin_edit_event is None else "disabled")
 
     def _builder_current_workout(self):
         from garmin_fit.plan_domain import Workout
@@ -2689,6 +2764,76 @@ class App(_AppBase):
         self._result_var.set(f"Тренировка сохранена в YAML: {filename}")
         self._log(f"[OK] Изменения сохранены в {self.yaml_path.get()}: «{filename}»")
 
+    def _builder_replace_garmin_event(self) -> None:
+        event = self._builder_garmin_edit_event
+        workout = self._builder_current_workout()
+        if not event or workout is None:
+            return
+        if event.get("profile_email") != self._active_profile_email:
+            messagebox.showwarning(
+                "Профиль изменён",
+                "Выберите исходный профиль Garmin и снова откройте тренировку из календаря.",
+                parent=self,
+            )
+            return
+        from garmin_fit.workout_builder import validate_draft
+
+        errors, _warnings = validate_draft(
+            workout.filename or "", workout.name or "", self._builder_steps)
+        if errors:
+            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
+            return
+        if not messagebox.askyesno(
+            "Сохранить изменения в Garmin Connect",
+            f"Загрузить новую версию «{workout.name}» на {event['date']} и убрать "
+            "старое назначение из календаря?\n\n"
+            "Исходный шаблон останется в библиотеке Garmin.",
+            parent=self,
+        ):
+            return
+        if not self._begin_operation("Обновление тренировки Garmin"):
+            return
+        workout.desc = event.get("description", "")
+        profile_email = self._active_profile_email
+        password = self.pass_var.get() or None
+        self._result_var.set("Отправляю изменённую тренировку в Garmin Connect…")
+
+        def worker() -> None:
+            try:
+                from garmin_fit.garmin_calendar_edit import replace_scheduled_workout
+                from garmin_fit.workflow import _connect_garmin_cli_client
+
+                client = _connect_garmin_cli_client(
+                    email=profile_email,
+                    password=password,
+                    prompt_mfa=self._gui_mfa_prompt,
+                )
+                new_id = replace_scheduled_workout(
+                    client, workout,
+                    old_schedule_id=event["schedule_id"],
+                    date=event["date"],
+                )
+                message = (
+                    f"Тренировка Garmin обновлена на {event['date']} · новая версия ID {new_id}. "
+                    "Исходный шаблон сохранён в библиотеке."
+                )
+                self.after(0, self._result_var.set, message)
+                self.after(0, self._log, f"[OK] {message}")
+                self.after(0, self._record_gc_operation, "Изменение тренировки", True, message)
+                self.after(0, self._builder_clear)
+                self.after(0, self._nb.select, 3)
+                self.after(0, self._gc_views.select, 0)
+                self.after(0, self._end_operation, True)
+                self.after(150, self._gc_calendar_load)
+            except Exception as exc:
+                detail = self._gc_friendly_error(exc)
+                self.after(0, self._result_var.set, f"Не удалось обновить Garmin: {detail}")
+                self.after(0, self._log, f"[ERR] Обновление Garmin: {detail}")
+                self.after(0, self._record_gc_operation, "Изменение тренировки", False, detail)
+                self.after(0, self._end_operation, False)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     # ── Garmin Connect tab ────────────────────────────────────────────────────
     def _build_garmin_tab(self, parent):
         self._build_page_header(
@@ -2719,6 +2864,10 @@ class App(_AppBase):
         self._gc_calendar_detail_var = tk.StringVar(value="")
         ttk.Label(calendar_tab, textvariable=self._gc_calendar_detail_var,
                   style="Status.TLabel").pack(fill="x", pady=(4, 0))
+        self._gc_edit_event_btn = ttk.Button(
+            calendar_tab, text="Изменить выбранную тренировку Garmin",
+            command=self._gc_edit_selected_event, state="disabled")
+        self._gc_edit_event_btn.pack(anchor="e", pady=(4, 0))
         self._gc_calendar_render()
 
         bar = ttk.Frame(library_tab)
@@ -2798,6 +2947,9 @@ class App(_AppBase):
             month = 1
         self._gc_calendar_month = self._gc_calendar_month.replace(year=year, month=month, day=1)
         self._gc_scheduled_workouts = []
+        self._gc_selected_event = None
+        if hasattr(self, "_gc_edit_event_btn"):
+            self._gc_edit_event_btn.configure(state="disabled")
         self._gc_calendar_detail_var.set("")
         self._gc_calendar_render()
         if self._active_profile_email:
@@ -2847,9 +2999,82 @@ class App(_AppBase):
                     chip.bind("<Button-1>", lambda _e, item=event: self._gc_calendar_show_event(item))
 
     def _gc_calendar_show_event(self, event: dict[str, str]) -> None:
+        self._gc_selected_event = event
         self._gc_calendar_detail_var.set(
             f"Garmin Connect · {event['date']} · {event['name']}"
         )
+        editable = bool(event.get("schedule_id"))
+        self._gc_edit_event_btn.configure(
+            state="normal" if editable else "disabled")
+
+    def _gc_edit_selected_event(self) -> None:
+        event = self._gc_selected_event
+        if not event or not event.get("schedule_id"):
+            return
+        if not self._active_profile_email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
+            return
+        profile_email = self._active_profile_email
+        password = self.pass_var.get() or None
+        if not self._begin_operation("Загрузка тренировки Garmin для редактирования"):
+            return
+        self._gc_calendar_status_var.set("Загружаю шаги тренировки Garmin…")
+
+        def worker() -> None:
+            try:
+                from garmin_fit.garmin_workout_import import workout_from_garmin
+                from garmin_fit.workflow import _connect_garmin_cli_client
+
+                client = _connect_garmin_cli_client(
+                    email=profile_email,
+                    password=password,
+                    prompt_mfa=self._gui_mfa_prompt,
+                )
+                schedule = client.get_scheduled_workout_by_id(event["schedule_id"])
+                if not isinstance(schedule, dict):
+                    raise RuntimeError("Garmin вернул неожиданный формат назначения")
+                workout_id = event.get("workout_id") or schedule.get("workoutId")
+                if not workout_id and isinstance(schedule.get("workout"), dict):
+                    workout_id = schedule["workout"].get("workoutId")
+                if not workout_id:
+                    raise RuntimeError("Garmin не вернул ID шаблона тренировки")
+                payload = client.get_workout_by_id(str(workout_id))
+                workout = workout_from_garmin(payload, date=event["date"])
+                resolved_event = dict(
+                    event, workout_id=str(workout_id),
+                    description=str(payload.get("description") or ""),
+                    profile_email=profile_email or "")
+                self.after(0, self._builder_load_garmin_event, workout, resolved_event)
+                self.after(0, self._record_gc_operation,
+                           "Открытие тренировки Garmin", True, workout.name or "")
+                self.after(0, self._end_operation, True)
+            except Exception as exc:
+                detail = self._gc_friendly_error(exc)
+                self.after(0, self._gc_calendar_status_var.set,
+                           f"Не удалось открыть для редактирования: {detail}")
+                self.after(0, self._record_gc_operation,
+                           "Открытие тренировки Garmin", False, detail)
+                self.after(0, self._log, f"[ERR] Редактирование Garmin: {detail}")
+                self.after(0, self._end_operation, False)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _builder_load_garmin_event(self, workout, event: dict[str, str]) -> None:
+        from garmin_fit.plan_domain import step_from_data, step_to_data
+
+        self._builder_clear()
+        self._builder_garmin_edit_event = event
+        self._builder_filename_var.set(workout.name or event["name"])
+        self._builder_steps = [step_from_data(step_to_data(step)) for step in workout.steps]
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_add_btn.configure(
+            text="Сохранить в Garmin Connect", command=self._builder_replace_garmin_event)
+        self._builder_render_list()
+        self._builder_render_editor()
+        self._builder_update_validation()
+        self._nb.select(2)
+        self._result_var.set(
+            f"Открыта тренировка Garmin · {event['date']} · {len(self._builder_steps)} шагов")
 
     def _gc_calendar_load(self) -> None:
         if not self._active_profile_email:
@@ -2858,6 +3083,9 @@ class App(_AppBase):
         month = self._gc_calendar_month
         if not self._begin_operation("Загрузка календаря Garmin"):
             return
+        self._gc_selected_event = None
+        self._gc_edit_event_btn.configure(state="disabled")
+        self._gc_calendar_detail_var.set("")
         self._gc_calendar_status_var.set("Загружаю события Garmin Connect…")
 
         def worker():

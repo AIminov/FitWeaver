@@ -22,7 +22,9 @@ FILENAME_SAFE_RE = re.compile(r"[^\w.-]+", re.UNICODE)
 
 # Step types where intensity should always be set but LLM may omit it.
 # Positional heuristic is used: first step → warmup, last non-repeat step → cooldown, else → active.
-_POSITIONAL_INTENSITY_TYPES = frozenset({"dist_hr", "dist_pace", "time_hr", "time_pace"})
+_POSITIONAL_INTENSITY_TYPES = frozenset({
+    "dist_hr", "dist_pace", "time_hr", "time_pace", "dist_cadence", "time_cadence",
+})
 HR_CAP_ONLY_DEFAULT_LOW = 80
 INTERVAL_MULTIPLIER_RE = re.compile(r"(?<=\d)\s*[xX\u0445\u0425\u00D7]\s*(?=\d)")
 MULTISPACE_RE = re.compile(r"[ \t]{2,}")
@@ -452,12 +454,16 @@ def infer_missing_step_type(step: dict[str, Any]) -> str | None:
     if "count" in step and "back_to_offset" in step:
         return "repeat"
     if "km" in step:
+        if "cad_low" in step or "cad_high" in step:
+            return "dist_cadence"
         if "hr_low" in step or "hr_high" in step:
             return "dist_hr"
         if "pace_fast" in step or "pace_slow" in step:
             return "dist_pace"
         return "dist_open"
     if "seconds" in step:
+        if "cad_low" in step or "cad_high" in step:
+            return "time_cadence"
         if "hr_low" in step or "hr_high" in step:
             return "time_hr"
         if "pace_fast" in step or "pace_slow" in step:

@@ -96,6 +96,7 @@
 | workoutTargetTypeId | workoutTargetTypeKey | targetValueOne / targetValueTwo |
 |--------------------|---------------------|----------------------------------|
 | 1 | no.target | — (поля отсутствуют) |
+| 3 | **cadence** | шагов/мин: 170 / 180 |
 | 4 | **heart.rate.zone** | raw bpm: 130 / 145 ← **используем** (не номер зоны!) |
 | 5 | speed.zone | номер зоны скорости — **НЕ м/с** |
 | 7 | **speed** | м/с: 1000/pace_seconds ← используем |
@@ -103,6 +104,8 @@
 > ⚠️ **Поля для значений таргета: `targetValueOne` / `targetValueTwo`** (не `targetValueLow`/`targetValueHigh`!)
 > `targetValueOne` = нижняя граница (медленнее / меньше BPM)
 > `targetValueTwo` = верхняя граница (быстрее / больше BPM)
+
+Для цели `cadence` значения задаются в шагах в минуту.
 
 > ⚠️ **id=6 `heart.rate` НЕ использовать!** Garmin Connect интерпретирует его как темп/скорость
 > и отображает "0-0 мин/км" вместо пульса. Для кастомного BPM диапазона — только id=4.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-23 - Garmin calendar editing and cadence targets
+
+### Added
+- Garmin Connect calendar events with a schedule ID can be opened in the builder and saved back.
+  The app uploads and schedules the edited copy before removing the old calendar assignment;
+  the original workout template stays in the Garmin library.
+- Added cadence target ranges (`cad_low` / `cad_high`) for distance- and time-based steps across
+  YAML validation, FIT generation, Garmin Connect payloads, LLM schema, and the builder.
+- Added dedicated pace/cadence blocks and a profile based Z1–Z5 picker that applies BPM ranges.
+
+### Safety
+- Garmin workouts with unsupported step or target formats are rejected for editing so the import
+  cannot silently discard instructions.
+
 ## 2026-09-02 - Consistency pass (v10.5.0)
 
 ### Changed

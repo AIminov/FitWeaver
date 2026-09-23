@@ -66,6 +66,7 @@ TARGET_NO  = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target",    
 TARGET_HR  = {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4}
 # id=7 "speed" — custom m/s range via targetValueOne / targetValueTwo
 TARGET_SPD = {"workoutTargetTypeId": 7, "workoutTargetTypeKey": "speed",           "displayOrder": 7}
+TARGET_CAD = {"workoutTargetTypeId": 3, "workoutTargetTypeKey": "cadence",        "displayOrder": 3}
 
 # intensity field → Garmin stepTypeKey
 _INTENSITY_TO_STEP_TYPE: dict[str, str] = {
@@ -218,6 +219,26 @@ def _map_time_pace(step: WorkoutStep, order: int) -> dict[str, Any]:
     )
 
 
+def _map_cadence(step: WorkoutStep, order: int, *, distance: bool) -> dict[str, Any]:
+    return _executable_step(
+        step_order=order,
+        step_type_key=_intensity_to_step_key(step.intensity),
+        end_condition=END_COND_DISTANCE if distance else END_COND_TIME,
+        end_condition_value=_km_to_m(step.km) if distance else float(step.seconds),
+        target_type=TARGET_CAD,
+        target_value_one=int(step.cad_low),
+        target_value_two=int(step.cad_high),
+    )
+
+
+def _map_dist_cadence(step: WorkoutStep, order: int) -> dict[str, Any]:
+    return _map_cadence(step, order, distance=True)
+
+
+def _map_time_cadence(step: WorkoutStep, order: int) -> dict[str, Any]:
+    return _map_cadence(step, order, distance=False)
+
+
 def _map_dist_open(step: WorkoutStep, order: int) -> dict[str, Any]:
     return _executable_step(
         step_order=order,
@@ -367,6 +388,8 @@ _MAPPERS = {
     "time_hr":   _map_time_hr,
     "dist_pace": _map_dist_pace,
     "time_pace": _map_time_pace,
+    "dist_cadence": _map_dist_cadence,
+    "time_cadence": _map_time_cadence,
     "dist_open": _map_dist_open,
     "time_step": _map_time_step,
     "open_step": _map_open_step,

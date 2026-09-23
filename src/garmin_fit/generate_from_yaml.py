@@ -239,6 +239,22 @@ def generate_step_code(step, idx, yaml_to_fit=None):
 
         return code, imports_needed, idx + 1
 
+    elif step_type in {"dist_cadence", "time_cadence"}:
+        duration_key = "km" if step_type == "dist_cadence" else "seconds"
+        function_name = step_type
+        duration = _step_value(step, duration_key)
+        low = _step_value(step, "cad_low")
+        high = _step_value(step, "cad_high")
+        intensity = _step_value(step, "intensity")
+        imports_needed.add(function_name)
+        args = f"{idx}, {duration}, {low}, {high}"
+        if intensity and intensity != "active":
+            int_code = _format_intensity(intensity)
+            imports_needed.add(int_code)
+            args += f", {int_code}"
+        code = f"        {function_name}({args}),"
+        return code, imports_needed, idx + 1
+
     elif step_type == "open_step":
         intensity = _step_value(step, "intensity") or "active"
         int_code = _format_intensity(intensity)

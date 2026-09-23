@@ -136,6 +136,33 @@ BLOCK_DEFS: dict[str, BlockDef] = {
         field_labels={"seconds": "Длительность (сек)", "hr_low": "Пульс от", "hr_high": "Пульс до"},
         defaults={"seconds": 300, "hr_low": 150, "hr_high": 165},
     ),
+    "pace_km": BlockDef(
+        key="pace_km", label="Отрезок по темпу", step_type="dist_pace", intensity="active",
+        fields=("km", "pace_fast", "pace_slow"),
+        field_labels={"km": "Расстояние (км)", "pace_fast": "Быстрый темп (мм:сс/км)",
+                      "pace_slow": "Медленный темп (мм:сс/км)"},
+        defaults={"km": 1.0, "pace_fast": "5:00", "pace_slow": "5:30"},
+    ),
+    "pace_min": BlockDef(
+        key="pace_min", label="Время по темпу", step_type="time_pace", intensity="active",
+        fields=("seconds", "pace_fast", "pace_slow"),
+        field_labels={"seconds": "Длительность (сек)", "pace_fast": "Быстрый темп (мм:сс/км)",
+                      "pace_slow": "Медленный темп (мм:сс/км)"},
+        defaults={"seconds": 300, "pace_fast": "5:00", "pace_slow": "5:30"},
+    ),
+    "cadence_km": BlockDef(
+        key="cadence_km", label="Отрезок по частоте шагов", step_type="dist_cadence",
+        intensity="active", fields=("km", "cad_low", "cad_high"),
+        field_labels={"km": "Расстояние (км)", "cad_low": "Шагов/мин от", "cad_high": "Шагов/мин до"},
+        defaults={"km": 1.0, "cad_low": 170, "cad_high": 180},
+    ),
+    "cadence_min": BlockDef(
+        key="cadence_min", label="Время по частоте шагов", step_type="time_cadence",
+        intensity="active", fields=("seconds", "cad_low", "cad_high"),
+        field_labels={"seconds": "Длительность (сек)", "cad_low": "Шагов/мин от",
+                      "cad_high": "Шагов/мин до"},
+        defaults={"seconds": 300, "cad_low": 170, "cad_high": 180},
+    ),
     "recovery": BlockDef(
         key="recovery", label="Восстановление", step_type="dist_open", intensity="recovery",
         fields=("km",), field_labels={"km": "Расстояние (км)"},

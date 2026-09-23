@@ -24,12 +24,14 @@ from .workout_utils import (
     REC,
     WU,
     build_yaml_to_fit_index,
+    dist_cadence,
     dist_hr,
     dist_open,
     dist_pace,
     open_step,
     repeat_step,
     save_workout,
+    time_cadence,
     time_hr,
     time_pace,
     time_step,
@@ -109,6 +111,12 @@ def build_workout_steps(workout: Workout):
             idx += 1
         elif step_type == "time_hr":
             steps.append(time_hr(idx, step.seconds, step.hr_low, step.hr_high, intensity))
+            idx += 1
+        elif step_type == "dist_cadence":
+            steps.append(dist_cadence(idx, step.km, step.cad_low, step.cad_high, intensity))
+            idx += 1
+        elif step_type == "time_cadence":
+            steps.append(time_cadence(idx, step.seconds, step.cad_low, step.cad_high, intensity))
             idx += 1
         elif step_type == "open_step":
             steps.append(open_step(idx, intensity))

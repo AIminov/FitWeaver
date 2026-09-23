@@ -285,7 +285,7 @@ def validate_plan_data_detailed(
                     severity="error",
                 )
 
-            if step_type in {"dist_hr", "dist_pace", "dist_open"}:
+            if step_type in {"dist_hr", "dist_pace", "dist_cadence", "dist_open"}:
                 km = step.get("km")
                 if not _is_number(km) or km <= 0:
                     _issue(
@@ -296,7 +296,7 @@ def validate_plan_data_detailed(
                         severity="error",
                     )
 
-            if step_type in {"time_hr", "time_pace", "time_step"}:
+            if step_type in {"time_hr", "time_pace", "time_cadence", "time_step"}:
                 seconds = step.get("seconds")
                 if not _is_number(seconds) or seconds <= 0:
                     _issue(
@@ -370,6 +370,17 @@ def validate_plan_data_detailed(
                             category="pace_format_issue",
                             severity="error",
                         )
+
+            if step_type in {"dist_cadence", "time_cadence"}:
+                cad_low = step.get("cad_low")
+                cad_high = step.get("cad_high")
+                if (not _is_number(cad_low) or not _is_number(cad_high)
+                        or cad_low < 30 or cad_high > 250 or cad_low >= cad_high):
+                    _issue(
+                        errors, path=s_prefix,
+                        detail=f"invalid cadence range {cad_low}-{cad_high} spm",
+                        category="invalid_value", severity="error",
+                    )
 
             if step_type == "repeat":
                 back_to_offset = step.get("back_to_offset")

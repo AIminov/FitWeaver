@@ -165,6 +165,38 @@ class TimePaceStep(BaseModel):
         return self
 
 
+class DistCadenceStep(BaseModel):
+    model_config = _EXTRA_ALLOW
+
+    type: Literal["dist_cadence"]
+    km: float = Field(gt=0)
+    cad_low: int = Field(ge=30, le=250)
+    cad_high: int = Field(ge=30, le=250)
+    intensity: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_cadence_ordering(self) -> DistCadenceStep:
+        if self.cad_low >= self.cad_high:
+            raise ValueError("cad_low must be less than cad_high")
+        return self
+
+
+class TimeCadenceStep(BaseModel):
+    model_config = _EXTRA_ALLOW
+
+    type: Literal["time_cadence"]
+    seconds: int = Field(gt=0)
+    cad_low: int = Field(ge=30, le=250)
+    cad_high: int = Field(ge=30, le=250)
+    intensity: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_cadence_ordering(self) -> TimeCadenceStep:
+        if self.cad_low >= self.cad_high:
+            raise ValueError("cad_low must be less than cad_high")
+        return self
+
+
 class DistOpenStep(BaseModel):
     model_config = _EXTRA_ALLOW
 
@@ -222,6 +254,8 @@ WorkoutStepUnion = Annotated[
         TimeHrStep,
         DistPaceStep,
         TimePaceStep,
+        DistCadenceStep,
+        TimeCadenceStep,
         DistOpenStep,
         TimeStepStep,
         OpenStep,
