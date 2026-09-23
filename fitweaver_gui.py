@@ -4,6 +4,7 @@
 import calendar
 import datetime
 import json
+import logging
 import os
 import re
 import shutil
@@ -152,20 +153,15 @@ class App(_AppBase):
         self.from_var  = tk.StringVar()
         self.to_var    = tk.StringVar()
         self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
-        self.dry_run   = tk.BooleanVar(value=True)
         self._shell_status_var = tk.StringVar(value="Готово")
         self._yaml_status_var = tk.StringVar(value="План не выбран")
         self._yaml_loaded = False
         self._yaml_ready = False
         self._yaml_validation_running = False
-        self._fit_ready = False
-        self._garmin_applied = False
         self._operation_active = False
         self._operation_label = ""
         self._operation_button_states: dict[object, str] = {}
         self._quick_action_buttons: dict[str, ttk.Button] = {}
-        self._next_step_var = tk.StringVar(value="Создайте или выберите Garmin-профиль")
-        self._next_step_btn: ttk.Button | None = None
 
         # LLM settings ("own" mode — direct connection to a local LLM)
         self.llm_url     = tk.StringVar(value="http://192.168.1.107:8080")
@@ -183,19 +179,20 @@ class App(_AppBase):
         # everything) -- machine-wide preference, same tier as llm_conn_mode.
         self.ui_mode = tk.StringVar(value="simple")   # "simple" | "expert"
         self._llm_conn_expanded = False  # simple mode: connection details collapsed by default
-        self._period_expanded = False  # simple mode: Garmin date/dry-run options collapsed
+        self._period_expanded = False  # simple mode: Garmin date options collapsed
         self._log_expanded = False  # simple mode: raw command output collapsed by default
 
         self.workouts: list[dict] = []
         self.cal_month = datetime.date.today().replace(day=1)
+        self._gc_calendar_month = datetime.date.today().replace(day=1)
+        self._gc_scheduled_workouts: list[dict[str, str]] = []
         self._store = None  # PlanStore | None — internal staging layer, YAML stays canonical
         self._active_profile_email: str | None = None
         self._profile_status_var = tk.StringVar(value="Профиль не выбран")
         self._selected_workout: dict | None = None
         self._builder_edit_workout_id: int | None = None
 
-        # Visual builder draft state (pre-commit, plain Python — no PlanStore
-        # writes happen until "Добавить в план")
+        # Visual builder draft stays in memory until saved to a plan or file.
         self._builder_steps: list = []
         self._builder_selected_index: int | None = None
         self._builder_range_start: int | None = None
@@ -211,6 +208,14 @@ class App(_AppBase):
         self._active_toasts: list[tk.Toplevel] = []
 
         self._setup_style()
+        self._gui_log_path = None
+        try:
+            from garmin_fit.logging_utils import setup_file_logging
+
+            self._gui_log_path = setup_file_logging(
+                prefix="gui", run_id=datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+        except OSError:
+            pass
         self._build_ui()
         self.yaml_path.trace_add("write", lambda *_: self._on_yaml_path_change())
         self._update_yaml_context()
@@ -443,6 +448,9 @@ class App(_AppBase):
         email = self._active_profile_email
         if hasattr(self, "_top_profile_var"):
             self._top_profile_var.set(f"Профиль Garmin: {email or 'не выбран'}")
+        if hasattr(self, "_builder_send_garmin_btn"):
+            self._builder_update_action_availability(
+                str(self._builder_save_yaml_btn.cget("state")) == "normal")
         if not email:
             self._profile_status_var.set("Профиль не выбран")
             return
@@ -616,72 +624,12 @@ class App(_AppBase):
                    command=lambda: self._check_for_updates(manual=True)).pack(
                        side="left", padx=(8, 0))
 
-        plan_block = ttk.Frame(header)
-        plan_block.pack(side="left", fill="x", expand=True)
-        ttk.Label(plan_block, text="Текущий план", style="Muted.TLabel").pack(anchor="w")
-        plan_row = ttk.Frame(plan_block)
-        plan_row.pack(fill="x")
-        ttk.Entry(plan_row, textvariable=self.yaml_path, width=55).pack(
-            side="left", fill="x", expand=True, padx=(0, 4))
-        ttk.Button(plan_row, text="Обзор…", command=self._browse_yaml).pack(side="left", padx=2)
-        ttk.Button(plan_row, text="Обновить", command=self._reload_yaml).pack(side="left", padx=2)
-        ttk.Label(plan_block, textvariable=self._yaml_status_var,
-                  style="Status.TLabel").pack(anchor="w", pady=(3, 0))
         self._top_profile_var = tk.StringVar(value="Профиль Garmin: не выбран")
-        ttk.Label(plan_block, textvariable=self._top_profile_var,
+        ttk.Label(header, textvariable=self._top_profile_var,
                   style="Muted.TLabel").pack(anchor="w")
 
         ttk.Label(header, textvariable=self._shell_status_var,
                   style="Muted.TLabel").pack(side="right", padx=(14, 4))
-
-        quick_actions = ttk.Frame(top, padding=(10, 0, 10, 10))
-        quick_actions.pack(fill="x")
-        ttk.Label(quick_actions, text="Быстрые действия", style="Section.TLabel").pack(
-            side="left", padx=(0, 10))
-        mode_box = ttk.Frame(top, padding=(10, 0, 10, 6))
-        mode_box.pack(fill="x")
-        ttk.Label(mode_box, text="Garmin Connect:", style="Section.TLabel").pack(
-            side="left", padx=(0, 10))
-        self._garmin_mode_badge = ttk.Label(
-            mode_box, text="ПРЕДПРОСМОТР — изменения не применяются",
-            style="Warning.TLabel")
-        self._garmin_mode_badge.pack(side="left", padx=(0, 10))
-        ttk.Radiobutton(
-            mode_box, text="Предпросмотр (ничего не менять)",
-            variable=self.dry_run, value=True,
-            command=self._on_dry_run_change).pack(side="left", padx=(0, 8))
-        ttk.Radiobutton(
-            mode_box, text="Применить в Garmin",
-            variable=self.dry_run, value=False,
-            command=self._on_dry_run_change).pack(side="left")
-        self._quick_action_buttons["validate"] = ttk.Button(
-            quick_actions, text="Проверить YAML", command=self._cmd_validate_yaml)
-        self._quick_action_buttons["validate"].pack(side="left", padx=2)
-        self._quick_action_buttons["build"] = ttk.Button(
-            quick_actions, text="Собрать FIT", style="Primary.TButton", command=self._cmd_build)
-        self._quick_action_buttons["build"].pack(side="left", padx=2)
-        self._quick_action_buttons["upload"] = ttk.Button(
-            quick_actions, text="Загрузить в Garmin", style="Success.TButton", command=self._cmd_upload)
-        self._quick_action_buttons["upload"].pack(side="left", padx=2)
-        self._quick_action_buttons["delete"] = ttk.Button(
-            quick_actions, text="Удалить из Garmin", style="Danger.TButton", command=self._cmd_delete)
-        self._quick_action_buttons["delete"].pack(side="left", padx=2)
-        self._quick_action_hint_var = tk.StringVar(value="")
-        ttk.Label(quick_actions, textvariable=self._quick_action_hint_var,
-                  style="Muted.TLabel").pack(side="left", padx=(10, 0))
-        self._update_garmin_mode_ui()
-        next_step = ttk.Frame(top, padding=(10, 0, 10, 8))
-        next_step.pack(fill="x")
-        ttk.Label(next_step, text="ПРОЦЕСС", style="Section.TLabel").pack(side="left", padx=(0, 10))
-        self._stepper_labels = []
-        for index, title in enumerate(("Профиль", "План", "Проверен", "FIT", "Garmin"), start=1):
-            label = ttk.Label(next_step, text=f"{index} {title}", style="Muted.TLabel")
-            label.pack(side="left", padx=(0 if index == 1 else 8, 8))
-            self._stepper_labels.append(label)
-        ttk.Label(next_step, textvariable=self._next_step_var,
-                  style="Status.TLabel").pack(side="left", fill="x", expand=True)
-        self._next_step_btn = ttk.Button(next_step, text="Открыть")
-        self._next_step_btn.pack(side="right")
         ttk.Separator(self, orient="horizontal").pack(fill="x")
 
         # Horizontal split: sidebar | notebook | log panel. A real ttk.PanedWindow
@@ -718,15 +666,29 @@ class App(_AppBase):
         right = ttk.Frame(body, padding=(10, 8))
         self._build_right(right)
 
-        # Log panel: always visible regardless of active tab, unlike the old
-        # Calendar-tab-only version -- long command output needs its own room.
-        log_panel = ttk.Frame(body, width=380, padding=(10, 8))
-        log_panel.pack_propagate(False)
-        self._build_log_panel(log_panel)
-
         body.add(sidebar_outer, weight=0)
         body.add(right, weight=3)
-        body.add(log_panel, weight=1)
+
+        self._footer = ttk.Frame(self, padding=(10, 4))
+        self._footer.pack(fill="x", side="bottom")
+        self._result_var = tk.StringVar(value="Здесь появится результат последней операции")
+        self._result_action_buttons = {
+            "open_fit": ttk.Button(self._footer, text="Открыть FIT",
+                                    command=self._open_fit_folder, state="disabled"),
+            "go_garmin": ttk.Button(self._footer, text="Garmin Connect",
+                                     command=lambda: self._nb.select(3), state="disabled"),
+        }
+        ttk.Label(self._footer, textvariable=self._result_var,
+                  style="Status.TLabel", wraplength=760, justify="left").pack(
+                      side="left", fill="x", expand=True)
+        for button in self._result_action_buttons.values():
+            button.pack(side="left", padx=(0, 4))
+        self._log_toggle_btn = ttk.Button(
+            self._footer, text="Подробности", command=self._toggle_log)
+        self._log_toggle_btn.pack(side="right")
+        self._log_panel = ttk.Frame(self, padding=(10, 4))
+        self._build_log_panel(self._log_panel)
+        self._apply_log_visibility()
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     def _build_sidebar(self, p):
@@ -892,10 +854,10 @@ class App(_AppBase):
         llm_tab     = ttk.Frame(self._nb, padding=(6, 6))
         builder_tab = ttk.Frame(self._nb, padding=(6, 6))
         garmin_tab  = ttk.Frame(self._nb, padding=(6, 6))
-        self._nb.add(cal_tab,     text="📅  Календарь")
-        self._nb.add(llm_tab,     text="🤖  LLM Генератор")
-        self._nb.add(builder_tab, text="🧱  Конструктор")
-        self._nb.add(garmin_tab,  text="🏃  Garmin Connect")
+        self._nb.add(cal_tab,     text="План")
+        self._nb.add(llm_tab,     text="LLM")
+        self._nb.add(builder_tab, text="Конструктор")
+        self._nb.add(garmin_tab,  text="Garmin Connect")
 
         self._build_calendar_tab(cal_tab)
         self._build_llm_tab(llm_tab)
@@ -917,9 +879,30 @@ class App(_AppBase):
     # ── Calendar tab ──────────────────────────────────────────────────────────
     def _build_calendar_tab(self, parent):
         self._build_page_header(
-            parent, "Календарь тренировок", "Просмотр плана, дат и недельного объёма")
-        ttk.Label(parent, text="Подсказка: перетащите тренировку на другой день; Ctrl+перетаскивание создаёт копию.",
-                  style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
+            parent, "Локальный план", "Тренировки и даты из выбранного YAML-файла")
+        plan_row = ttk.Frame(parent)
+        plan_row.pack(fill="x", pady=(0, 4))
+        ttk.Label(plan_row, text="YAML:", style="Muted.TLabel").pack(side="left")
+        ttk.Entry(plan_row, textvariable=self.yaml_path).pack(
+            side="left", fill="x", expand=True, padx=(6, 4))
+        ttk.Button(plan_row, text="Обзор…", command=self._browse_yaml).pack(side="left", padx=2)
+        ttk.Button(plan_row, text="Обновить", command=self._reload_yaml).pack(side="left", padx=2)
+        ttk.Label(parent, textvariable=self._yaml_status_var,
+                  style="Status.TLabel").pack(anchor="w", pady=(0, 4))
+        actions = ttk.Frame(parent)
+        actions.pack(fill="x", pady=(0, 6))
+        self._quick_action_buttons["validate"] = ttk.Button(
+            actions, text="Проверить YAML", command=self._cmd_validate_yaml)
+        self._quick_action_buttons["validate"].pack(side="left", padx=(0, 4))
+        self._quick_action_buttons["build"] = ttk.Button(
+            actions, text="Собрать FIT", style="Primary.TButton", command=self._cmd_build)
+        self._quick_action_buttons["build"].pack(side="left", padx=4)
+        self._quick_action_buttons["upload"] = ttk.Button(
+            actions, text="Отправить план в Garmin", style="Success.TButton",
+            command=self._cmd_upload)
+        self._quick_action_buttons["upload"].pack(side="left", padx=4)
+        ttk.Label(actions, text="Перетащите тренировку, чтобы изменить её дату.",
+                  style="Muted.TLabel").pack(side="left", padx=(12, 0))
         nav = ttk.Frame(parent)
         nav.pack(fill="x", pady=(0, 6))
         ttk.Button(nav, text="◀", command=self._prev_month, width=3).pack(side="left")
@@ -952,30 +935,14 @@ class App(_AppBase):
 
         self._draw_calendar()
 
-    # ── Log panel (side pane, visible regardless of active tab) ────────────────
+    # ── Detailed log drawer ───────────────────────────────────────────────────
     def _build_log_panel(self, parent):
         log_hdr = ttk.Frame(parent)
         log_hdr.pack(fill="x")
-        ttk.Label(log_hdr, text="ВЫВОД КОМАНДЫ", style="Section.TLabel").pack(side="left")
-        self._log_toggle_btn = ttk.Button(log_hdr, text="Показать подробности",
-                                          command=self._toggle_log, width=22)
-        self._log_toggle_btn.pack(side="right", padx=(4, 0))
+        ttk.Label(log_hdr, text="ПОДРОБНЫЙ ЖУРНАЛ", style="Section.TLabel").pack(side="left")
+        ttk.Button(log_hdr, text="Открыть файл", command=self._open_log_file).pack(
+            side="right", padx=(4, 0))
         ttk.Button(log_hdr, text="Очистить", command=self._clear_log, width=8).pack(side="right")
-        self._result_var = tk.StringVar(value="Здесь появится результат последней операции")
-        ttk.Label(parent, textvariable=self._result_var, style="Status.TLabel",
-                  wraplength=360, justify="left").pack(fill="x", pady=(4, 2))
-        result_actions = ttk.Frame(parent)
-        result_actions.pack(fill="x", pady=(0, 4))
-        self._result_action_buttons = {
-            "open_fit": ttk.Button(result_actions, text="Открыть папку FIT",
-                                    command=self._open_fit_folder, state="disabled"),
-            "go_garmin": ttk.Button(result_actions, text="Перейти к Garmin",
-                                     command=lambda: self._nb.select(3), state="disabled"),
-            "apply": ttk.Button(result_actions, text="Перейти к применению",
-                                 command=self._switch_to_apply_mode, state="disabled"),
-        }
-        for button in self._result_action_buttons.values():
-            button.pack(side="left", padx=(0, 4))
         self._log_body = ttk.Frame(parent)
         self._log_body.pack(fill="both", expand=True)
         self._log_w = scrolledtext.ScrolledText(
@@ -990,16 +957,16 @@ class App(_AppBase):
         self._apply_log_visibility()
 
     def _apply_log_visibility(self) -> None:
-        if not hasattr(self, "_log_body"):
+        if not hasattr(self, "_log_panel"):
             return
-        show = self.ui_mode.get() == "expert" or self._log_expanded
+        show = self._log_expanded
         if show:
-            self._log_body.pack(fill="both", expand=True)
+            self._log_panel.pack(fill="x", before=self._footer)
         else:
-            self._log_body.pack_forget()
+            self._log_panel.pack_forget()
         if hasattr(self, "_log_toggle_btn"):
             self._log_toggle_btn.configure(
-                text="Скрыть подробности" if show else "Показать подробности")
+                text="Скрыть журнал" if show else "Подробности")
 
     # ── LLM tab ───────────────────────────────────────────────────────────────
     def _build_llm_tab(self, parent):
@@ -1425,8 +1392,6 @@ class App(_AppBase):
     def _on_yaml_path_change(self) -> None:
         self._yaml_loaded = False
         self._yaml_ready = False
-        self._fit_ready = False
-        self._garmin_applied = False
         self._update_yaml_context()
 
     def _update_yaml_context(self) -> None:
@@ -1441,97 +1406,26 @@ class App(_AppBase):
             self._set_yaml_status("Файл выбран · нажмите «Обновить» для загрузки", ready=False)
         else:
             self._update_yaml_action_availability()
-        self._refresh_next_step()
-
-    def _refresh_next_step(self) -> None:
-        if self._next_step_btn is None:
-            return
-        if self._operation_active:
-            text, label, command = "Выполняется текущая операция…", "", None
-        elif not self._active_profile_email:
-            text, label, command = "Создайте или выберите Garmin-профиль", "Создать профиль", self._create_profile
-        elif not self.yaml_path.get().strip():
-            text, label, command = "Выберите YAML-план для работы", "Выбрать YAML", self._browse_yaml
-        elif not self._yaml_ready:
-            text, label, command = "Загрузите выбранный YAML-план", "Загрузить план", self._reload_yaml
-        else:
-            text, label, command = "План готов к сборке FIT", "Собрать FIT", self._cmd_build
-        self._next_step_var.set(text)
-        self._next_step_btn.configure(text=label or "Готово", command=command,
-                                      state="normal" if command else "disabled")
-        self._refresh_stepper()
+        self._update_yaml_action_availability()
 
     def _set_yaml_status(self, text: str, *, ready: bool) -> None:
         self._yaml_ready = ready
         self._yaml_status_var.set(text)
         self._update_yaml_action_availability()
-        self._refresh_stepper()
 
     def _update_yaml_action_availability(self) -> None:
-        if not hasattr(self, "_quick_action_buttons"):
+        if not self._quick_action_buttons:
             return
         has_file = bool(self.yaml_path.get().strip()) and Path(self.yaml_path.get()).is_file()
         states = {
             "validate": "normal" if has_file else "disabled",
             "build": "normal" if self._yaml_ready else "disabled",
             "upload": "normal" if self._yaml_ready and self._active_profile_email else "disabled",
-            "delete": "normal" if self._active_profile_email else "disabled",
         }
         for name, state in states.items():
-            self._quick_action_buttons[name].configure(state=state)
-        if hasattr(self, "_quick_action_hint_var"):
-            if not self._active_profile_email:
-                hint = "Следующий шаг: выберите профиль Garmin"
-            elif not has_file:
-                hint = "Следующий шаг: выберите YAML-план"
-            elif not self._yaml_loaded:
-                hint = "Следующий шаг: нажмите «Обновить»"
-            elif not self._yaml_ready:
-                hint = "Следующий шаг: дождитесь успешной проверки YAML"
-            else:
-                hint = ("Garmin: режим предпросмотра"
-                        if self.dry_run.get() else "Garmin: изменения будут применены")
-            self._quick_action_hint_var.set(hint)
-        self._update_garmin_mode_ui()
-
-    def _on_dry_run_change(self) -> None:
-        """Refresh action labels immediately when the Garmin mode changes."""
-        self._update_garmin_mode_ui()
-        self._refresh_next_step()
-
-    def _update_garmin_mode_ui(self) -> None:
-        if not hasattr(self, "_garmin_mode_badge"):
-            return
-        preview = self.dry_run.get()
-        self._garmin_mode_badge.configure(
-            text=("ПРЕДПРОСМОТР — изменения не применяются" if preview
-                  else "ПРИМЕНЕНИЕ — изменения будут внесены"),
-            style="Warning.TLabel" if preview else "Danger.TLabel",
-        )
-        if hasattr(self, "_quick_action_buttons"):
-            if "upload" in self._quick_action_buttons:
-                self._quick_action_buttons["upload"].configure(
-                    text="Предпросмотр загрузки" if preview else "Загрузить в Garmin")
-            if "delete" in self._quick_action_buttons:
-                self._quick_action_buttons["delete"].configure(
-                    text="Предпросмотр удаления" if preview else "Удалить из Garmin")
-
-    def _refresh_stepper(self) -> None:
-        if not hasattr(self, "_stepper_labels"):
-            return
-        steps = [
-            bool(self._active_profile_email),
-            bool(self._yaml_loaded),
-            bool(self._yaml_ready),
-            bool(self._fit_ready),
-            bool(self._garmin_applied),
-        ]
-        if self.dry_run.get() and steps[4]:
-            steps[4] = False
-        titles = ("Профиль", "План", "Проверен", "FIT", "Garmin")
-        for label, title, done in zip(self._stepper_labels, titles, steps):
-            label.configure(text=f"✓ {title}" if done else title,
-                            style="Status.TLabel" if done else "Muted.TLabel")
+            button = self._quick_action_buttons.get(name)
+            if button is not None:
+                button.configure(state=state)
 
     def _browse_yaml(self):
         path = filedialog.askopenfilename(
@@ -1602,6 +1496,8 @@ class App(_AppBase):
     # ── Log ───────────────────────────────────────────────────────────────────
     def _log(self, text):
         stripped = text.strip()
+        level = logging.ERROR if stripped.startswith(("[ERR]", "[FAIL]")) else logging.INFO
+        logging.getLogger("garmin_fit.gui").log(level, stripped)
         if stripped.startswith(("[ERR]", "[FAIL]")):
             self._shell_status_var.set("Ошибка")
             if hasattr(self, "_result_var"):
@@ -1649,7 +1545,7 @@ class App(_AppBase):
             except tk.TclError:
                 continue
         self._shell_status_var.set(label)
-        self._refresh_next_step()
+        self._update_yaml_action_availability()
         return True
 
     def _end_operation(self, success: bool | None = None) -> None:
@@ -1667,7 +1563,7 @@ class App(_AppBase):
             self._shell_status_var.set("Ошибка")
         else:
             self._shell_status_var.set("Готово")
-        self._refresh_next_step()
+        self._update_yaml_action_availability()
 
     # ── Toast notifications ────────────────────────────────────────────────
     # Piggybacks on the existing "[OK]"/"[ERR]"/"[WARN]"/"[FAIL]" prefix
@@ -1735,9 +1631,28 @@ class App(_AppBase):
         self._log_w.delete("1.0", "end")
         self._log_w.config(state="disabled")
 
+    def _open_log_file(self) -> None:
+        if not self._gui_log_path or not Path(self._gui_log_path).exists():
+            self._log("[WARN] Файл журнала ещё не создан")
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(str(self._gui_log_path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(self._gui_log_path)])
+            else:
+                subprocess.Popen(["xdg-open", str(self._gui_log_path)])
+        except OSError as exc:
+            self._log(f"[ERR] Не удалось открыть журнал: {exc}")
+
     def _set_result_actions(self, *enabled: str) -> None:
         for name, button in getattr(self, "_result_action_buttons", {}).items():
-            button.configure(state="normal" if name in enabled else "disabled")
+            if name in enabled:
+                button.configure(state="normal")
+                button.pack(side="left", padx=(0, 4))
+            else:
+                button.configure(state="disabled")
+                button.pack_forget()
 
     def _open_fit_folder(self) -> None:
         output_dir = PROJECT_ROOT / "Output_fit"
@@ -1751,10 +1666,6 @@ class App(_AppBase):
                 subprocess.Popen(["xdg-open", str(output_dir)])
         except OSError as exc:
             self._log(f"[ERR] Не удалось открыть папку FIT: {exc}")
-
-    def _switch_to_apply_mode(self) -> None:
-        self.dry_run.set(False)
-        self._on_dry_run_change()
 
     # ── CLI runner ────────────────────────────────────────────────────────────
     def _cli_command(self, args):
@@ -1806,21 +1717,11 @@ class App(_AppBase):
                 self._result_var.set("YAML не прошёл проверку. Подробности — в логе ниже.")
                 self._set_result_actions()
         elif args and args[0] == "run" and ok:
-            self._fit_ready = True
             self._result_var.set("FIT-файлы собраны. Их можно открыть в папке Output_fit.")
             self._set_result_actions("open_fit", "go_garmin")
-            self._refresh_stepper()
-        elif args and args[0] == "garmin-calendar" and ok and "--dry-run" not in args:
-            self._garmin_applied = True
+        elif args and args[0] == "garmin-calendar" and ok:
             self._result_var.set("Изменения применены в Garmin Connect.")
             self._set_result_actions("go_garmin")
-            self._refresh_stepper()
-        if args and args[0] in {"garmin-calendar", "garmin-calendar-delete"} and "--dry-run" in args:
-            if ok:
-                self._result_var.set("Предпросмотр завершён: изменения НЕ применены.")
-                self._set_result_actions("apply", "go_garmin")
-                self._log("[OK] Это был предпросмотр: изменения НЕ применены. "
-                          "Переключите режим на «Применить в Garmin», чтобы выполнить действие.")
 
     def _append_garmin_args(self, args):
         if self.email_var.get(): args += ["--email",     self.email_var.get()]
@@ -1831,7 +1732,6 @@ class App(_AppBase):
 
     # ── CLI commands ──────────────────────────────────────────────────────────
     def _cmd_build(self):
-        self._fit_ready = False
         args = ["run"]
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
@@ -1841,43 +1741,38 @@ class App(_AppBase):
         if not self._active_profile_email:
             messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
             return
-        if not self.dry_run.get():
-            count = len(self.workouts)
-            period = f"{self.from_var.get() or 'начало не задано'} — {self.to_var.get() or 'конец не задан'}"
-            if not messagebox.askyesno(
-                    "Применить изменения в Garmin",
-                    f"Будет изменён календарь Garmin Connect.\n\n"
-                    f"План: {Path(self.yaml_path.get()).name}\n"
-                    f"Профиль: {self._active_profile_email}\n"
-                    f"Период: {period}\n"
-                    f"Тренировок в плане: {count}\n\n"
-                    "Режим: ПРИМЕНИТЬ — изменения будут внесены.\nПродолжить?",
-                    icon="warning", parent=self):
-                return
+        count = len(self.workouts)
+        period = f"{self.from_var.get() or 'начало не задано'} — {self.to_var.get() or 'конец не задан'}"
+        if not messagebox.askyesno(
+                "Отправить план в Garmin Connect",
+                f"Сейчас будут отправлены реальные изменения.\n\n"
+                f"План: {Path(self.yaml_path.get()).name}\n"
+                f"Профиль: {self._active_profile_email}\n"
+                f"Период: {period}\n"
+                f"Тренировок в плане: {count}\n\nПродолжить?",
+                icon="warning", parent=self):
+            return
         args = ["garmin-calendar"]
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
         self._append_garmin_args(args)
-        if self.dry_run.get():
-            args += ["--dry-run"]
         self._run(args)
 
     def _cmd_delete(self):
         if not self._active_profile_email:
             messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
             return
-        mode = "ПРЕДПРОСМОТР" if self.dry_run.get() else "ПРИМЕНИТЬ"
-        if not self.dry_run.get() and not messagebox.askyesno(
+        if not messagebox.askyesno(
                 "Удалить тренировки из Garmin",
                 f"Профиль: {self._active_profile_email}\n"
                 f"Период: {self.from_var.get() or 'начало не задано'} — "
                 f"{self.to_var.get() or 'конец не задан'}\n\n"
-                f"Режим: {mode} — удаление необратимо.\nПродолжить?",
+                "Удаление необратимо.\nПродолжить?",
                 icon="warning", parent=self):
             return
         args = ["garmin-calendar-delete"]
         self._append_garmin_args(args)
-        args += ["--dry-run"] if self.dry_run.get() else ["--confirm"]
+        args += ["--confirm"]
         self._run(args)
 
     def _cmd_validate_yaml(self):
@@ -2184,10 +2079,20 @@ class App(_AppBase):
         self._builder_validation_lbl = tk.Label(bottom, text="Добавьте хотя бы один блок",
                                                  bg=BG, fg=MUTED, font=("Segoe UI", 9))
         self._builder_validation_lbl.pack(side="left")
-        self._builder_add_btn = ttk.Button(bottom, text="➕  Добавить в план",
-                                            style="Primary.TButton", state="disabled",
-                                            command=self._builder_commit)
-        self._builder_add_btn.pack(side="right")
+        builder_actions = ttk.Frame(bottom)
+        builder_actions.pack(side="right")
+        self._builder_add_btn = ttk.Button(builder_actions, text="Добавить в локальный план",
+                                           style="Primary.TButton", state="disabled",
+                                           command=self._builder_commit)
+        self._builder_add_btn.pack(side="left", padx=3)
+        self._builder_save_yaml_btn = ttk.Button(
+            builder_actions, text="Сохранить YAML", state="disabled",
+            command=self._builder_export_yaml)
+        self._builder_save_yaml_btn.pack(side="left", padx=3)
+        self._builder_send_garmin_btn = ttk.Button(
+            builder_actions, text="Отправить в Garmin", state="disabled",
+            command=self._builder_send_to_garmin)
+        self._builder_send_garmin_btn.pack(side="left", padx=3)
 
         self._builder_render_list()
         self._builder_render_editor()
@@ -2223,7 +2128,7 @@ class App(_AppBase):
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
         self._builder_edit_workout_id = None
-        self._builder_add_btn.config(text="➕  Добавить в план", command=self._builder_commit)
+        self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
         _label, factory = TEMPLATES[key]
         self._builder_steps = factory()
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
@@ -2237,7 +2142,7 @@ class App(_AppBase):
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
-        self._builder_add_btn.config(text="➕  Добавить в план", command=self._builder_commit)
+        self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
 
     # ── Personal template library (per-profile, separate from the 3
     #    built-in TEMPLATES) ──────────────────────────────────────────────
@@ -2282,7 +2187,7 @@ class App(_AppBase):
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
         self._builder_edit_workout_id = None
-        self._builder_add_btn.config(text="➕  Добавить в план", command=self._builder_commit)
+        self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
         from garmin_fit.plan_domain import step_from_data
         from garmin_fit.profile_store import list_user_templates
         steps_data = list_user_templates(self._active_profile_email).get(name, [])
@@ -2535,27 +2440,168 @@ class App(_AppBase):
             self._builder_validation_lbl.config(
                 text="Исправьте ошибки в полях блока", fg=RED)
             self._builder_add_btn.config(state="disabled")
+            self._builder_update_action_availability(False)
             return
         filename = self._builder_filename_var.get().strip()
         if not self._builder_steps:
             self._builder_validation_lbl.config(text="Добавьте хотя бы один блок", fg=MUTED)
             self._builder_add_btn.config(state="disabled")
+            self._builder_update_action_availability(False)
             return
         if not filename:
             self._builder_validation_lbl.config(text="Укажите имя тренировки", fg=YELLOW)
             self._builder_add_btn.config(state="disabled")
+            self._builder_update_action_availability(False)
             return
         errors, warnings = validate_draft(filename, filename, self._builder_steps)
         if errors:
             self._builder_validation_lbl.config(text=f"Ошибка: {errors[0]}", fg=RED)
             self._builder_add_btn.config(state="disabled")
+            self._builder_update_action_availability(False)
         elif warnings:
             self._builder_validation_lbl.config(
-                text=f"Готово, {len(warnings)} предупреждений", fg=YELLOW)
+                text=(f"Готово, {len(warnings)} предупреждений"
+                      if self._store is not None else
+                      f"Готово · {len(warnings)} предупреждений; сохраните YAML или отправьте в Garmin"),
+                fg=YELLOW)
             self._builder_add_btn.config(state="normal")
+            self._builder_update_action_availability(True)
         else:
-            self._builder_validation_lbl.config(text="Готово к добавлению ✓", fg=GREEN)
+            self._builder_validation_lbl.config(
+                text=("Готово к добавлению ✓" if self._store is not None else
+                      "Готово · сохраните YAML или отправьте в Garmin"), fg=GREEN)
             self._builder_add_btn.config(state="normal")
+            self._builder_update_action_availability(True)
+
+    def _builder_update_action_availability(self, valid: bool) -> None:
+        if not hasattr(self, "_builder_save_yaml_btn"):
+            return
+        self._builder_add_btn.configure(
+            state="normal" if valid and self._store is not None else "disabled")
+        self._builder_save_yaml_btn.configure(state="normal" if valid else "disabled")
+        self._builder_send_garmin_btn.configure(
+            state="normal" if valid and self._active_profile_email else "disabled")
+
+    def _builder_current_workout(self):
+        from garmin_fit.plan_domain import Workout
+
+        filename = self._builder_filename_var.get().strip()
+        if not filename or not self._builder_steps:
+            return None
+        return Workout(
+            filename=filename,
+            name=filename,
+            desc="",
+            type_code="mixed",
+            steps=list(self._builder_steps),
+        )
+
+    def _builder_export_yaml(self) -> None:
+        from garmin_fit.plan_domain import WorkoutPlan, plan_to_data
+        from garmin_fit.workout_builder import validate_draft
+
+        workout = self._builder_current_workout()
+        if workout is None:
+            return
+        errors, _warnings = validate_draft(workout.filename, workout.name, workout.steps)
+        if errors:
+            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
+            return
+        path = filedialog.asksaveasfilename(
+            title="Сохранить тренировку в YAML",
+            defaultextension=".yaml",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
+            initialdir=PROJECT_ROOT / "Plan",
+            initialfile=f"{Path(workout.filename).stem}.yaml",
+        )
+        if not path:
+            return
+        data = plan_to_data(WorkoutPlan(workouts=[workout]))
+        Path(path).write_text(
+            yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self._result_var.set(f"YAML сохранён: {Path(path).name}")
+        self._log(f"[OK] YAML тренировки сохранён: {path}")
+
+    def _builder_send_to_garmin(self) -> None:
+        from garmin_fit.garmin_step_mapper import extract_date_from_filename
+        from garmin_fit.workout_builder import validate_draft
+
+        workout = self._builder_current_workout()
+        if workout is None:
+            return
+        if not self._active_profile_email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
+            return
+        errors, _warnings = validate_draft(workout.filename, workout.name, workout.steps)
+        if errors:
+            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
+            return
+        year_str = self.year_var.get().strip()
+        year = int(year_str) if year_str.isdigit() else None
+        scheduled_date = extract_date_from_filename(workout.filename, year=year)
+        if not scheduled_date:
+            scheduled_date = simpledialog.askstring(
+                "Дата тренировки", "Дата для календаря Garmin (ГГГГ-ММ-ДД):", parent=self)
+        if not scheduled_date:
+            return
+        try:
+            scheduled_date = datetime.date.fromisoformat(scheduled_date).isoformat()
+        except ValueError:
+            messagebox.showerror(
+                "Неверная дата", "Введите дату в формате ГГГГ-ММ-ДД.", parent=self)
+            return
+        if not messagebox.askyesno(
+                "Отправить тренировку в Garmin Connect",
+                f"Будет загружена и назначена реальная тренировка.\n\n"
+                f"Тренировка: {workout.name}\nДата: {scheduled_date}\n"
+                f"Профиль: {self._active_profile_email}\n\nПродолжить?",
+                icon="warning", parent=self):
+            return
+        if not self._begin_operation("Отправка тренировки в Garmin"):
+            return
+        self._result_var.set("Отправляю тренировку и назначаю её на выбранную дату…")
+
+        def worker():
+            try:
+                from garmin_fit.garmin_calendar_export import GarminCalendarExporter
+                from garmin_fit.workflow import _connect_garmin_cli_client
+
+                client = _connect_garmin_cli_client(
+                    email=self.email_var.get() or None,
+                    password=self.pass_var.get() or None,
+                    prompt_mfa=self._gui_mfa_prompt,
+                )
+                result = GarminCalendarExporter(client).upload_and_schedule(
+                    workout, date=scheduled_date)
+                if result.error:
+                    if result.workout_id:
+                        message = (
+                            f"Тренировка загружена (ID {result.workout_id}), "
+                            f"но назначить её на {scheduled_date} не удалось: {result.error}"
+                        )
+                    else:
+                        message = f"Не удалось отправить тренировку: {result.error}"
+                    success = False
+                else:
+                    message = f"Тренировка отправлена и назначена на {scheduled_date}."
+                    success = True
+                self.after(0, self._result_var.set, message)
+                self.after(0, self._log, f"{'[OK]' if success else '[ERR]'} {message}")
+                self.after(0, self._record_gc_operation,
+                           "Отправка из конструктора", success, message)
+                self.after(0, self._end_operation, success)
+                if success:
+                    self.after(0, self._nb.select, 3)
+                    self.after(0, self._gc_calendar_load)
+            except Exception as exc:
+                message = self._gc_friendly_error(exc)
+                self.after(0, self._result_var.set, f"Ошибка отправки: {message}")
+                self.after(0, self._log, f"[ERR] Отправка из конструктора: {message}")
+                self.after(0, self._record_gc_operation,
+                           "Отправка из конструктора", False, message)
+                self.after(0, self._end_operation, False)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _builder_commit(self):
         from garmin_fit.workout_builder import validate_draft
@@ -2607,9 +2653,36 @@ class App(_AppBase):
     # ── Garmin Connect tab ────────────────────────────────────────────────────
     def _build_garmin_tab(self, parent):
         self._build_page_header(
-            parent, "Garmin Connect", "Просмотр и управление тренировками в аккаунте Garmin")
-        # Top bar
-        bar = ttk.Frame(parent)
+            parent, "Garmin Connect", "Календарь аккаунта и сохранённые тренировки")
+
+        self._gc_views = ttk.Notebook(parent)
+        self._gc_views.pack(fill="both", expand=True)
+        calendar_tab = ttk.Frame(self._gc_views, padding=(6, 6))
+        library_tab = ttk.Frame(self._gc_views, padding=(6, 6))
+        self._gc_views.add(calendar_tab, text="Календарь Garmin")
+        self._gc_views.add(library_tab, text="Библиотека тренировок")
+
+        calendar_bar = ttk.Frame(calendar_tab)
+        calendar_bar.pack(fill="x", pady=(0, 6))
+        ttk.Button(calendar_bar, text="◀", command=self._gc_calendar_prev, width=3).pack(side="left")
+        self._gc_calendar_month_lbl = tk.Label(
+            calendar_bar, text="", bg=BG, fg=PURPLE, font=("Segoe UI", 12, "bold"))
+        self._gc_calendar_month_lbl.pack(side="left", padx=10)
+        ttk.Button(calendar_bar, text="▶", command=self._gc_calendar_next, width=3).pack(side="left")
+        ttk.Button(calendar_bar, text="Обновить календарь",
+                   style="Primary.TButton", command=self._gc_calendar_load).pack(
+                       side="left", padx=(14, 8))
+        self._gc_calendar_status_var = tk.StringVar(value="Нажмите «Обновить календарь Garmin»")
+        ttk.Label(calendar_bar, textvariable=self._gc_calendar_status_var,
+                  style="Muted.TLabel").pack(side="left", padx=4)
+        self._gc_calendar_frame = tk.Frame(calendar_tab, bg=BG2)
+        self._gc_calendar_frame.pack(fill="both", expand=True)
+        self._gc_calendar_detail_var = tk.StringVar(value="")
+        ttk.Label(calendar_tab, textvariable=self._gc_calendar_detail_var,
+                  style="Status.TLabel").pack(fill="x", pady=(4, 0))
+        self._gc_calendar_render()
+
+        bar = ttk.Frame(library_tab)
         bar.pack(fill="x", pady=(0, 6))
         self._gc_check_btn = ttk.Button(
             bar, text="✓  Проверить подключение", command=self._gc_check_connection)
@@ -2634,10 +2707,9 @@ class App(_AppBase):
                                    bg=BG, fg=MUTED, font=("Segoe UI", 9))
         self._gc_status.pack(side="left")
 
-        ttk.Separator(parent).pack(fill="x", pady=(0, 6))
+        ttk.Separator(library_tab).pack(fill="x", pady=(0, 6))
 
-        # Scrollable list
-        container = ttk.Frame(parent)
+        container = ttk.Frame(library_tab)
         container.pack(fill="both", expand=True)
 
         self._gc_canvas = tk.Canvas(container, bg=BG2, highlightthickness=0)
@@ -2654,8 +2726,7 @@ class App(_AppBase):
         self._gc_canvas.bind("<Configure>", self._gc_on_canvas_resize)
         self._gc_canvas.bind("<MouseWheel>", self._gc_scroll)
 
-        # Bottom summary
-        self._gc_summary = tk.Label(parent, text="", bg=BG3, fg=MUTED,
+        self._gc_summary = tk.Label(library_tab, text="", bg=BG3, fg=MUTED,
                                     font=("Segoe UI", 9), anchor="w", padx=8, pady=3)
         self._gc_summary.pack(fill="x", side="bottom", pady=(4, 0))
 
@@ -2664,7 +2735,7 @@ class App(_AppBase):
         self._gc_checks:   dict[str, tk.BooleanVar] = {}
         self._gc_month_ids: dict[str, list[str]] = {}
 
-        history_box = ttk.LabelFrame(parent, text="Последние операции", padding=4)
+        history_box = ttk.LabelFrame(library_tab, text="Последние операции", padding=4)
         history_box.pack(fill="x", side="bottom", pady=(4, 0))
         self._gc_history_tree = ttk.Treeview(
             history_box, columns=("time", "action", "result"),
@@ -2676,6 +2747,118 @@ class App(_AppBase):
         self._gc_history_tree.column("action", width=180, stretch=True)
         self._gc_history_tree.column("result", width=210, stretch=True)
         self._gc_history_tree.pack(fill="x")
+
+    def _gc_calendar_shift(self, months: int) -> None:
+        year = self._gc_calendar_month.year
+        month = self._gc_calendar_month.month + months
+        if month < 1:
+            year -= 1
+            month = 12
+        elif month > 12:
+            year += 1
+            month = 1
+        self._gc_calendar_month = self._gc_calendar_month.replace(year=year, month=month, day=1)
+        self._gc_scheduled_workouts = []
+        self._gc_calendar_detail_var.set("")
+        self._gc_calendar_render()
+        if self._active_profile_email:
+            self._gc_calendar_load()
+        else:
+            self._gc_calendar_status_var.set("Выберите профиль Garmin, чтобы загрузить календарь")
+
+    def _gc_calendar_prev(self) -> None:
+        self._gc_calendar_shift(-1)
+
+    def _gc_calendar_next(self) -> None:
+        self._gc_calendar_shift(1)
+
+    def _gc_calendar_render(self) -> None:
+        if not hasattr(self, "_gc_calendar_frame"):
+            return
+        for child in self._gc_calendar_frame.winfo_children():
+            child.destroy()
+        month = self._gc_calendar_month
+        self._gc_calendar_month_lbl.config(text=f"{MONTHS_RU[month.month - 1]} {month.year}")
+        by_date: dict[str, list[dict[str, str]]] = {}
+        for event in self._gc_scheduled_workouts:
+            by_date.setdefault(event["date"], []).append(event)
+        for col, day_name in enumerate(DAYS_RU):
+            tk.Label(self._gc_calendar_frame, text=day_name, bg=BG2, fg=ACCENT,
+                     font=("Segoe UI", 9, "bold"), pady=4).grid(
+                         row=0, column=col, sticky="ew", padx=1, pady=1)
+            self._gc_calendar_frame.columnconfigure(col, weight=1, uniform="gc_day")
+        weeks = calendar.monthcalendar(month.year, month.month)
+        for row_index, week in enumerate(weeks, start=1):
+            self._gc_calendar_frame.rowconfigure(row_index, weight=1, uniform="gc_week")
+            for col, day in enumerate(week):
+                cell = tk.Frame(self._gc_calendar_frame, bg=BG3 if day else BG2)
+                cell.grid(row=row_index, column=col, sticky="nsew", padx=1, pady=1)
+                if not day:
+                    continue
+                event_date = datetime.date(month.year, month.month, day).isoformat()
+                tk.Label(cell, text=str(day), bg=BG3, fg=FG,
+                         font=("Segoe UI", 8, "bold"), anchor="nw", padx=4).pack(fill="x")
+                for event in by_date.get(event_date, []):
+                    name = event["name"]
+                    color = WORKOUT_COLORS.get(self._infer_type(name), DEFAULT_WO_COLOR)
+                    chip = tk.Label(cell, text=name, bg=color, fg=BG,
+                                    font=("Segoe UI", 8, "bold"), anchor="w",
+                                    padx=4, pady=2, wraplength=145, justify="left")
+                    chip.pack(fill="x", padx=2, pady=1)
+                    chip.bind("<Button-1>", lambda _e, item=event: self._gc_calendar_show_event(item))
+
+    def _gc_calendar_show_event(self, event: dict[str, str]) -> None:
+        self._gc_calendar_detail_var.set(
+            f"Garmin Connect · {event['date']} · {event['name']}"
+        )
+
+    def _gc_calendar_load(self) -> None:
+        if not self._active_profile_email:
+            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
+            return
+        month = self._gc_calendar_month
+        if not self._begin_operation("Загрузка календаря Garmin"):
+            return
+        self._gc_calendar_status_var.set("Загружаю события Garmin Connect…")
+
+        def worker():
+            try:
+                from garmin_fit.garmin_calendar_view import normalize_scheduled_workouts
+                from garmin_fit.workflow import _connect_garmin_cli_client
+
+                client = _connect_garmin_cli_client(
+                    email=self.email_var.get() or None,
+                    password=self.pass_var.get() or None,
+                    prompt_mfa=self._gui_mfa_prompt,
+                )
+                get_month = getattr(client, "get_scheduled_workouts", None)
+                if not callable(get_month):
+                    raise RuntimeError(
+                        "Установленная версия garminconnect не поддерживает чтение календаря. "
+                        "Обновите Garmin-компонент приложения."
+                    )
+                events = normalize_scheduled_workouts(get_month(month.year, month.month))
+                stamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+                self.after(0, self._gc_calendar_set_events, events, stamp)
+                self.after(0, self._record_gc_operation,
+                           "Календарь Garmin", True, f"Получено событий: {len(events)}")
+                self.after(0, self._end_operation, True)
+            except Exception as exc:
+                detail = self._gc_friendly_error(exc)
+                self.after(0, self._gc_calendar_status_var.set, f"Не удалось загрузить: {detail}")
+                self.after(0, self._record_gc_operation, "Календарь Garmin", False, detail)
+                self.after(0, self._log, f"[ERR] Календарь Garmin: {detail}")
+                self.after(0, self._end_operation, False)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _gc_calendar_set_events(self, events: list[dict[str, str]], stamp: str) -> None:
+        self._gc_scheduled_workouts = events
+        self._gc_calendar_render()
+        self._gc_calendar_status_var.set(
+            f"{len(events)} тренировок · обновлено {stamp} · источник: Garmin Connect"
+        )
+        self._result_var.set(f"Календарь Garmin обновлён: {len(events)} тренировок")
 
     def _refresh_gc_history(self) -> None:
         if not hasattr(self, "_gc_history_tree"):
@@ -2842,9 +3025,9 @@ class App(_AppBase):
         total     = len(workouts)
         fitweaver = sum(1 for w in workouts if w.get("_date"))
         self._gc_status.config(
-            text=f"✅ {total} тренировок ({fitweaver} с датой FitWeaver)", fg=GREEN)
+            text=f"✅ {total} тренировок · {fitweaver} с датой в имени", fg=GREEN)
         self._gc_summary.config(
-            text=f"Всего: {total}  |  FitWeaver: {fitweaver}  |  Без даты: {len(no_date)}")
+            text=f"Сохранено: {total}  |  Дата указана в имени: {fitweaver}  |  Без метки даты: {len(no_date)}")
 
     def _gc_render_month(self, month_key: str, workouts: list[dict]):
         ids = [str(wo.get("workoutId") or wo.get("id") or "") for wo in workouts]
@@ -2853,11 +3036,11 @@ class App(_AppBase):
         if month_key != "no_date":
             try:
                 dt = datetime.date.fromisoformat(month_key + "-01")
-                label = f"{MONTHS_RU[dt.month - 1]} {dt.year}  ({len(workouts)})"
+                label = f"В имени: {MONTHS_RU[dt.month - 1]} {dt.year}  ({len(workouts)})"
             except ValueError:
                 label = f"{month_key}  ({len(workouts)})"
         else:
-            label = f"Без даты  ({len(workouts)})"
+            label = f"Без метки даты в имени  ({len(workouts)})"
 
         hdr = tk.Frame(self._gc_list_frame, bg=BG3)
         hdr.pack(fill="x", pady=(10, 2), padx=4)
