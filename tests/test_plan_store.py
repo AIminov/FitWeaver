@@ -225,6 +225,38 @@ class PlanStoreTests(unittest.TestCase):
         on_disk = yaml.safe_load(self.yaml_path.read_text(encoding="utf-8"))
         self.assertEqual(on_disk["workouts"][0]["steps"][0]["km"], 2.5)
 
+    def test_replace_workout_steps_can_rename_and_write_yaml_atomically(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        steps = [deepcopy(step) for step in store.get_plan().workouts[0].steps]
+        steps[0].km = 2.5
+        new_filename = "W15_04-15_Wed_Intervals_Renamed"
+
+        store.replace_workout_steps(workout_id, steps, filename=new_filename)
+
+        saved_workout = store.get_plan().workouts[0]
+        self.assertEqual(saved_workout.filename, new_filename)
+        self.assertEqual(saved_workout.name, new_filename)
+        self.assertEqual(saved_workout.steps[0].km, 2.5)
+        on_disk = yaml.safe_load(self.yaml_path.read_text(encoding="utf-8"))
+        self.assertEqual(on_disk["workouts"][0]["filename"], new_filename)
+        self.assertEqual(on_disk["workouts"][0]["steps"][0]["km"], 2.5)
+
+    def test_replace_workout_steps_rejects_renaming_to_another_workout(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_ids = self._workout_ids(store)
+        before = yaml.safe_load(self.yaml_path.read_text(encoding="utf-8"))
+        steps = [deepcopy(step) for step in store.get_plan().workouts[0].steps]
+        duplicate_filename = store.get_plan().workouts[1].filename
+
+        with self.assertRaisesRegex(ValueError, "filename already exists"):
+            store.replace_workout_steps(
+                workout_ids[0], steps, filename=duplicate_filename)
+
+        self.assertEqual(yaml.safe_load(self.yaml_path.read_text(encoding="utf-8")), before)
+
     def test_insert_step_before_repeat_offset_shifts_it_right(self):
         store = self._open_store()
         store.load_from_yaml(self.yaml_path)

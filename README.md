@@ -28,7 +28,7 @@ python fitweaver_gui.py
 
 | Tab | Features |
 |-----|----------|
-| **Plan** | Calendar from the local YAML plan; validate it and send the plan to Garmin Connect |
+| **Plan** | Calendar from the local YAML plan; choose a workout and select “Edit workout” to open it in the builder. “Save to YAML” updates the selected file; drag a workout to change its date |
 | **LLM** | Connect a model, paste plan text, and save generated YAML into the local plan |
 | **Builder** | Create a workout from blocks and templates; save a standalone YAML, add it to the open plan, or send it directly to Garmin |
 | **Garmin Connect** | Calendar of actual scheduled workouts and workout library; view and delete workouts |

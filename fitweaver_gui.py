@@ -909,7 +909,9 @@ class App(_AppBase):
             actions, text="Отправить план в Garmin", style="Success.TButton",
             command=self._cmd_upload)
         self._quick_action_buttons["upload"].pack(side="left", padx=4)
-        ttk.Label(actions, text="Перетащите тренировку, чтобы изменить её дату.",
+        ttk.Label(actions,
+                  text="Нажмите тренировку → «Изменить тренировку»; сохранение обновит YAML. "
+                       "Перетащите её, чтобы изменить дату.",
                   style="Muted.TLabel").pack(side="left", padx=(12, 0))
         nav = ttk.Frame(parent)
         nav.pack(fill="x", pady=(0, 6))
@@ -937,7 +939,7 @@ class App(_AppBase):
                  bg=BG3, fg=FG, font=("Segoe UI", 9),
                  anchor="w", padx=8, pady=4).pack(side="left", fill="x", expand=True)
         self._edit_selected_btn = ttk.Button(
-            detail_bar, text="Редактировать в конструкторе", state="disabled",
+            detail_bar, text="Изменить тренировку", state="disabled",
             command=self._edit_selected_workout)
         self._edit_selected_btn.pack(side="right")
 
@@ -1402,7 +1404,7 @@ class App(_AppBase):
         self._builder_render_list()
         self._builder_render_editor()
         self._builder_add_btn.config(
-            text="Сохранить изменения", command=self._builder_save_edit
+            text="Сохранить в YAML", command=self._builder_save_edit
         )
         self._nb.select(2)
 
@@ -2667,15 +2669,25 @@ class App(_AppBase):
             messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
             return
         try:
-            self._store.replace_workout_steps(workout_id, self._builder_steps)
+            self._store.replace_workout_steps(
+                workout_id, self._builder_steps, filename=filename)
         except Exception as exc:
             messagebox.showerror("Не удалось сохранить", str(exc), parent=self)
             return
         from garmin_fit.plan_domain import plan_to_data
         self.workouts = self._parse_workouts(plan_to_data(self._store.get_plan()))
+        updated_workout = next(
+            (item for item in self.workouts if item.get("filename") == filename), None)
+        if updated_workout and updated_workout.get("date"):
+            self.cal_month = datetime.date.fromisoformat(
+                updated_workout["date"]).replace(day=1)
         self._draw_calendar()
-        self._log(f"[OK] Изменения сохранены: «{filename}»")
         self._builder_clear()
+        if updated_workout is not None:
+            self._show_detail(updated_workout)
+        self._nb.select(0)
+        self._result_var.set(f"Тренировка сохранена в YAML: {filename}")
+        self._log(f"[OK] Изменения сохранены в {self.yaml_path.get()}: «{filename}»")
 
     # ── Garmin Connect tab ────────────────────────────────────────────────────
     def _build_garmin_tab(self, parent):
