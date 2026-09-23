@@ -3000,10 +3000,11 @@ class App(_AppBase):
 
     def _gc_calendar_show_event(self, event: dict[str, str]) -> None:
         self._gc_selected_event = event
-        self._gc_calendar_detail_var.set(
-            f"Garmin Connect · {event['date']} · {event['name']}"
-        )
         editable = bool(event.get("schedule_id"))
+        detail = f"Garmin Connect · {event['date']} · {event['name']}"
+        if not editable:
+            detail += " · Garmin не передал ID записи; обновите календарь, чтобы редактировать"
+        self._gc_calendar_detail_var.set(detail)
         self._gc_edit_event_btn.configure(
             state="normal" if editable else "disabled")
 

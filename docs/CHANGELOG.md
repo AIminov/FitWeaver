@@ -2,6 +2,10 @@
 
 ## 2026-09-23 - Garmin calendar editing and cadence targets
 
+### Fixed
+- The Garmin calendar now recognizes schedule IDs exposed as `scheduleId` or `id` by some
+  response shapes. Selecting an event without a schedule ID explains why editing is unavailable.
+
 ### Added
 - Garmin Connect calendar events with a schedule ID can be opened in the builder and saved back.
   The app uploads and schedules the edited copy before removing the old calendar assignment;

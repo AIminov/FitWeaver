@@ -7,6 +7,11 @@ from datetime import date
 from typing import Any
 
 _DATE_KEYS = ("calendarDate", "scheduledDate", "workoutDate", "date")
+_SCHEDULE_ID_KEYS = (
+    "workoutScheduleId",
+    "scheduledWorkoutId",
+    "scheduleId",
+)
 _COLLECTION_KEYS = (
     "scheduledWorkouts",
     "workoutSchedules",
@@ -63,10 +68,18 @@ def normalize_scheduled_workouts(payload: Any) -> list[dict[str, str]]:
             (_iso_date(value.get(key)) for key in _DATE_KEYS if _iso_date(value.get(key))),
             inherited_date,
         )
-        schedule_id = value.get("workoutScheduleId") or value.get("scheduledWorkoutId")
+        schedule_id = next(
+            (value.get(key) for key in _SCHEDULE_ID_KEYS if value.get(key) is not None),
+            None,
+        )
         nested_workout = value.get("workout")
         workout_id = value.get("workoutId")
         is_workout = bool(schedule_id or workout_id) or isinstance(nested_workout, Mapping)
+        # Some calendar responses identify the schedule row only as `id`.
+        # Use it only after the row is known to represent a workout, so an
+        # unrelated calendar event ID cannot enable Garmin workout editing.
+        if not schedule_id and is_workout:
+            schedule_id = value.get("id")
 
         if current_date and is_workout:
             name = _name(value)
