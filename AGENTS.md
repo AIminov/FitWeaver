@@ -18,6 +18,16 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-23 — сравнение интерфейса Garmin8.8 и my_g, план упрощения
+Сравнены `C:\Users\Amir\Downloads\Garmin8.8\Garmin8.8` (код v10.4.1) и `C:\my_g`
+(код v10.5.0). Имя каталога Garmin8.8 не соответствует версии проекта. В обеих версиях
+календарь строится из локального YAML, а Garmin Connect показывает библиотеку тренировок;
+чтения назначенных событий календаря в GUI не найдено. Подготовлен
+`docs/GUI_REDESIGN_PLAN.md`: четыре рабочих раздела, отдельные источники календаря,
+удаление dry-run из GUI, упрощение настроек и понятные результаты/логи. На первом этапе
+реализации нужно проверить доступность чтения событий Garmin Calendar. Код интерфейса не
+менялся; существующая пользовательская правка `fitweaver_gui.py` оставлена без изменений.
+
 ### 2026-09-04 — переключение LAN Qwen на IQ4_XS
 Подтверждена загруженная модель `/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf`.
 Рабочие defaults GUI/CLI/API/benchmark/workflow и пример конфигурации переключены с IQ3_XXS
@@ -69,6 +79,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 отклонила результат. Визуальный Computer Use smoke невозможен: native pipe helper недоступен.
 
 ### Next tasks
+- Согласовать и реализовать план упрощения интерфейса из `docs/GUI_REDESIGN_PLAN.md`;
+  сначала проверить API чтения назначенных событий Garmin Calendar.
 - Проверить новый exe на этом интервал-сегменте и убедиться, что ошибка отображается явно.
 - Повторить генерацию через новый `dist/FitWeaver.exe` на полном Markdown-плане пользователя.
 - При повторном YAML без `steps` выбрать более качественную квантизацию/модель или включить
