@@ -33,7 +33,8 @@ python fitweaver_gui.py
 | **Builder** | Create a workout from blocks and templates; save a standalone YAML, add it to the open plan, or send it directly to Garmin |
 | **Garmin Connect** | Calendar of actual scheduled workouts and workout library; view and delete workouts |
 
-Profile and connection settings live in the sidebar. The latest operation result appears at the bottom;
+The Garmin profile selector lives in the sidebar; password, heart-rate settings, and sign-out are
+under profile settings, while service commands are available in Expert mode. The latest operation result appears at the bottom;
 expand the detailed journal or open it as a file when needed. GUI actions that change Garmin Connect
 require explicit confirmation. The `--dry-run` option remains available in the CLI only.
 Session state (email, YAML path, LLM settings) is saved between runs.

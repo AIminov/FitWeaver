@@ -179,6 +179,7 @@ class App(_AppBase):
         # everything) -- machine-wide preference, same tier as llm_conn_mode.
         self.ui_mode = tk.StringVar(value="simple")   # "simple" | "expert"
         self._llm_conn_expanded = False  # simple mode: connection details collapsed by default
+        self._profile_settings_expanded = False
         self._period_expanded = False  # simple mode: Garmin date options collapsed
         self._log_expanded = False  # simple mode: raw command output collapsed by default
 
@@ -722,11 +723,18 @@ class App(_AppBase):
         self._profile_combo.bind("<Return>", self._on_email_change)
         ttk.Label(p, textvariable=self._profile_status_var,
                   style="Status.TLabel", wraplength=215, justify="left").pack(anchor="w")
-        ttk.Button(p, text="⚙  Настроить HR-профиль",
+
+        self._profile_settings_toggle_btn = ttk.Button(
+            p, text="▸  Настройки профиля", command=self._toggle_profile_settings)
+        self._profile_settings_toggle_btn.pack(fill="x", pady=(4, 0))
+        self._profile_settings_frame = ttk.Frame(p)
+        ttk.Button(self._profile_settings_frame, text="⚙  Настроить HR-профиль",
                    command=self._edit_hr_profile).pack(fill="x", pady=(4, 2))
-        ttk.Label(p, text="Пароль:", style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
-        ttk.Button(p, text="⌫  Выйти из Garmin",
+        ttk.Label(self._profile_settings_frame, text="Пароль (если потребуется вход):",
+                  style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(self._profile_settings_frame, textvariable=self.pass_var,
+                  show="•").pack(fill="x", pady=(0, 4))
+        ttk.Button(self._profile_settings_frame, text="⌫  Выйти из Garmin",
                    command=self._clear_garmin_auth).pack(fill="x", pady=(2, 0))
 
         self._period_toggle_btn = ttk.Button(
@@ -1094,6 +1102,10 @@ class App(_AppBase):
         self._period_expanded = not self._period_expanded
         self._on_ui_mode_change()
 
+    def _toggle_profile_settings(self):
+        self._profile_settings_expanded = not self._profile_settings_expanded
+        self._on_ui_mode_change()
+
     def _on_ui_mode_change(self):
         simple = self.ui_mode.get() == "simple"
 
@@ -1106,6 +1118,21 @@ class App(_AppBase):
             else:
                 self._advanced_hline.pack(fill="x", pady=6)
                 self._advanced_actions_frame.pack(fill="x")
+
+        if hasattr(self, "_profile_settings_frame"):
+            if simple:
+                self._profile_settings_toggle_btn.pack(
+                    fill="x", pady=(4, 0), before=self._period_toggle_btn)
+                self._profile_settings_toggle_btn.configure(
+                    text=("▾  Настройки профиля" if self._profile_settings_expanded
+                          else "▸  Настройки профиля"))
+                if self._profile_settings_expanded:
+                    self._profile_settings_frame.pack(fill="x", before=self._period_toggle_btn)
+                else:
+                    self._profile_settings_frame.pack_forget()
+            else:
+                self._profile_settings_toggle_btn.pack_forget()
+                self._profile_settings_frame.pack(fill="x", before=self._period_toggle_btn)
 
         if simple:
             self._llm_conn_expanded = False
