@@ -499,6 +499,35 @@ def normalize_pace_value(value: Any) -> Any:
     return f"{minutes}:{seconds:02d}"
 
 
+def _widen_equal_pace_bounds(step: dict[str, Any]) -> tuple[str, str] | None:
+    """Expand an identical numeric pace range by +/- 10 seconds per km."""
+    pace_fast = step.get("pace_fast")
+    pace_slow = step.get("pace_slow")
+    if pace_fast != pace_slow or not isinstance(pace_fast, str):
+        return None
+    if pace_fast in PACE_CONSTANT_VALUES:
+        return None
+
+    match = PACE_RE.fullmatch(pace_fast)
+    if not match:
+        return None
+
+    center_seconds = int(match.group(1)) * 60 + int(match.group(2))
+    fast_seconds = center_seconds - 10
+    slow_seconds = center_seconds + 10
+    # Pace schema values require at least one minute per kilometer.
+    if fast_seconds < 60:
+        return None
+
+    def format_pace(total_seconds: int) -> str:
+        minutes, seconds = divmod(total_seconds, 60)
+        return f"{minutes}:{seconds:02d}"
+
+    expanded = (format_pace(fast_seconds), format_pace(slow_seconds))
+    step["pace_fast"], step["pace_slow"] = expanded
+    return expanded
+
+
 def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
     """
     Apply safe deterministic repairs to parsed YAML data.
@@ -608,6 +637,13 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                     notes.append(
                         f"{s_prefix}: normalized {field_name} '{original_value}' -> '{normalized_value}'"
                     )
+
+            expanded_paces = _widen_equal_pace_bounds(step)
+            if expanded_paces is not None:
+                notes.append(
+                    f"{s_prefix}: widened equal pace bounds to {expanded_paces[0]}-"
+                    f"{expanded_paces[1]} min/km (10 sec/km each side)"
+                )
 
             for field_name in ("seconds", "hr_low", "hr_high", "back_to_offset", "count"):
                 coerced = _coerce_int(step.get(field_name))

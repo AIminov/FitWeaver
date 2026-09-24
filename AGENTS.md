@@ -18,6 +18,12 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-24 — исправление равных границ темпа
+`repair_plan_data` теперь расширяет одинаковые числовые `pace_fast`/`pace_slow` на ±10 сек/км:
+например, `5:00–5:00` становится `4:50–5:10`. Нормализация работает для `dist_pace` и
+`time_pace`, добавляет заметку о ремонте и не меняет неравные диапазоны или символические
+константы. Проверка `tests/test_plan_processing.py`: 16 passed; `git diff --check` чистый.
+
 ### 2026-09-24 — Ollama: golden-набор и исправление промпта
 Прочитаны 10 пар исходного текста и YAML из `C:\Users\Amir\Downloads\fitweaver_golden_dataset\fitweaver_golden_dataset`.
 В Ollama проверены `qwen2.5-coder:3b`, `gemma3:4b` и `gemma3:270m`; общий лимит финального

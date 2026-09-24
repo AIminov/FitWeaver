@@ -113,6 +113,29 @@ class PlanProcessingTests(unittest.TestCase):
         self.assertEqual(drill["name"], "Bounds")
         self.assertTrue(any("aligned filename/name" in note for note in notes))
 
+    def test_repair_plan_data_widens_equal_numeric_pace_bounds(self):
+        data = {
+            "workouts": [
+                {
+                    "steps": [
+                        {"type": "dist_pace", "km": 1, "pace_fast": "5:00", "pace_slow": "5:00"},
+                        {"type": "time_pace", "seconds": 300, "pace_fast": "5:00", "pace_slow": "5:00"},
+                        {"type": "dist_pace", "km": 1, "pace_fast": "4:50", "pace_slow": "5:00"},
+                        {"type": "dist_pace", "km": 1, "pace_fast": "EASY_F", "pace_slow": "EASY_F"},
+                    ]
+                }
+            ]
+        }
+
+        repaired, notes = repair_plan_data(data)
+        steps = repaired["workouts"][0]["steps"]
+
+        self.assertEqual((steps[0]["pace_fast"], steps[0]["pace_slow"]), ("4:50", "5:10"))
+        self.assertEqual((steps[1]["pace_fast"], steps[1]["pace_slow"]), ("4:50", "5:10"))
+        self.assertEqual((steps[2]["pace_fast"], steps[2]["pace_slow"]), ("4:50", "5:00"))
+        self.assertEqual((steps[3]["pace_fast"], steps[3]["pace_slow"]), ("EASY_F", "EASY_F"))
+        self.assertEqual(sum("widened equal pace bounds" in note for note in notes), 2)
+
     def test_repair_plan_data_recomputes_calendar_week_from_date(self):
         data = {
             "workouts": [
