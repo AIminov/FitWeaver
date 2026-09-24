@@ -6,11 +6,14 @@ Includes normalization, repair, structured validation, and retry feedback.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
@@ -119,6 +122,7 @@ class UnifiedLLMClient:
         api_type: str = "ollama",
         openai_mode: str = "auto",
         request_timeout_sec: int = 300,
+        trace_callback: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.model = model
         self.api_type = api_type
@@ -137,6 +141,32 @@ class UnifiedLLMClient:
         if request_timeout_sec <= 0:
             raise ValueError("request_timeout_sec must be positive")
         self.request_timeout_sec = request_timeout_sec
+        self.trace_callback = trace_callback
+        self.trace_context: dict[str, Any] = {}
+        self._trace_sequence = 0
+        self._trace_fields: dict[str, Any] = {}
+        self._last_call_metrics: dict[str, Any] = {}
+
+    def set_trace_context(self, **context: Any) -> None:
+        """Set non-sensitive fields attached to subsequent trace events."""
+        self.trace_context = {key: value for key, value in context.items() if value is not None}
+
+    def _emit_trace(self, event: str, **fields: Any) -> None:
+        if self.trace_callback is None:
+            return
+        self._trace_sequence += 1
+        payload = {
+            "sequence": self._trace_sequence,
+            "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "event": event,
+            **self.trace_context,
+            **self._trace_fields,
+            **fields,
+        }
+        try:
+            self.trace_callback(payload)
+        except Exception as exc:
+            logger.warning("LLM trace callback failed: %s", exc)
 
     def check_connection(self) -> bool:
         """Check if LLM server is running and model is available."""
@@ -200,15 +230,38 @@ class UnifiedLLMClient:
         user_message = self._build_source_expectations_prompt(analysis) + original_plan
         last_errors: list[str] = []
         last_categories: dict[str, list[str]] = {}
+        generation_id = uuid.uuid4().hex
+        self._emit_trace(
+            "generation_started",
+            generation_id=generation_id,
+            source_sha256=hashlib.sha256(original_plan.encode("utf-8")).hexdigest(),
+            source_chars=len(original_plan),
+            expected_workouts=analysis.expected_workouts,
+            model=self.model,
+            api_type=self.api_type,
+            openai_mode=self.openai_mode if self.api_type == "openai" else None,
+        )
 
         for attempt in range(1, max_retries + 1):
             logger.info(f"LLM attempt {attempt}/{max_retries}...")
 
-            raw_response = self._call_llm(system_prompt, user_message)
+            old_trace_fields = self._trace_fields
+            self._trace_fields = {"generation_id": generation_id, "attempt": attempt}
+            try:
+                raw_response = self._call_llm(system_prompt, user_message)
+            finally:
+                self._trace_fields = old_trace_fields
             if not raw_response:
                 logger.warning(f"Attempt {attempt}: empty response from LLM")
                 last_errors = ["Empty response from LLM"]
                 last_categories = {"llm_error": last_errors[:]}
+                self._emit_trace(
+                    "candidate_rejected",
+                    generation_id=generation_id,
+                    attempt=attempt,
+                    validation_errors=last_errors,
+                    error_categories=last_categories,
+                )
                 continue
 
             yaml_text = self._extract_yaml(raw_response)
@@ -226,11 +279,29 @@ class UnifiedLLMClient:
             self._demote_source_fact_mismatch(prepared)
             prepared.attempts = attempt
 
+            self._emit_trace(
+                "candidate_validated",
+                generation_id=generation_id,
+                attempt=attempt,
+                passed=not prepared.validation_errors and prepared.yaml_text is not None,
+                validation_errors=prepared.validation_errors,
+                error_categories=prepared.error_categories,
+                warnings=prepared.warnings,
+                repairs=prepared.repairs,
+                workout_count=(len(prepared.data.get("workouts", [])) if prepared.data else 0),
+            )
+
             for warning in prepared.warnings:
                 logger.warning(f"Validation warning: {warning}")
 
             if not prepared.validation_errors and prepared.yaml_text and prepared.data is not None:
                 logger.info(f"Valid YAML generated on attempt {attempt}")
+                self._emit_trace(
+                    "generation_finished",
+                    generation_id=generation_id,
+                    attempts=attempt,
+                    passed=True,
+                )
                 return prepared
 
             last_errors = prepared.validation_errors
@@ -249,6 +320,14 @@ class UnifiedLLMClient:
             user_message = self._build_source_expectations_prompt(analysis) + user_message
 
         logger.error(f"Failed to generate valid YAML after {max_retries} attempts")
+        self._emit_trace(
+            "generation_finished",
+            generation_id=generation_id,
+            attempts=max_retries,
+            passed=False,
+            validation_errors=last_errors,
+            error_categories=last_categories,
+        )
         return GeneratedYamlResult(
             warnings=[],
             repairs=analysis.changes,
@@ -285,7 +364,26 @@ class UnifiedLLMClient:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
-        return self._call_llm_raw(messages=messages, timeout=self.request_timeout_sec)
+        self._last_call_metrics = {}
+        self._emit_trace(
+            "llm_request",
+            system_sha256=hashlib.sha256(system_prompt.encode("utf-8")).hexdigest(),
+            user_sha256=hashlib.sha256(user_message.encode("utf-8")).hexdigest(),
+            system_chars=len(system_prompt),
+            user_chars=len(user_message),
+            timeout_sec=self.request_timeout_sec,
+        )
+        started = time.perf_counter()
+        raw_response = self._call_llm_raw(messages=messages, timeout=self.request_timeout_sec)
+        elapsed = time.perf_counter() - started
+        self._last_call_metrics["client_elapsed_sec"] = round(elapsed, 6)
+        self._emit_trace(
+            "llm_response",
+            response_received=bool(raw_response),
+            raw_response=raw_response,
+            **self._last_call_metrics,
+        )
+        return raw_response
 
     def _call_llm_raw(self, messages: list, timeout: int = 300) -> Optional[str]:
         if self.api_type == "ollama":
@@ -317,7 +415,15 @@ class UnifiedLLMClient:
                 logger.error(f"Ollama API error: {response.status_code}")
                 return None
 
-            content = response.json().get("message", {}).get("content", "")
+            response_data = response.json()
+            for key in (
+                "model", "created_at", "done_reason", "total_duration", "load_duration",
+                "prompt_eval_count", "prompt_eval_duration", "prompt_eval_cached_count",
+                "eval_count", "eval_duration",
+            ):
+                if key in response_data:
+                    self._last_call_metrics[key] = response_data[key]
+            content = response_data.get("message", {}).get("content", "")
             return content if content else None
 
         except requests.exceptions.Timeout:
@@ -370,6 +476,14 @@ class UnifiedLLMClient:
                 },
             )
             content = response.choices[0].message.content
+            usage = getattr(response, "usage", None)
+            self._last_call_metrics.update({
+                "server_model": getattr(response, "model", self.model),
+                "prompt_tokens": getattr(usage, "prompt_tokens", None),
+                "completion_tokens": getattr(usage, "completion_tokens", None),
+                "total_tokens": getattr(usage, "total_tokens", None),
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+            })
             return content if content else None
 
         except ImportError:
@@ -416,7 +530,15 @@ class UnifiedLLMClient:
                 )
                 return None
 
-            choices = json.loads(body).get("choices", [])
+            response_data = json.loads(body)
+            usage = response_data.get("usage") or {}
+            self._last_call_metrics.update({
+                "server_model": response_data.get("model", self.model),
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+                "total_tokens": usage.get("total_tokens"),
+            })
+            choices = response_data.get("choices", [])
             if not choices:
                 logger.error("OpenAI-compatible completions returned no choices")
                 return None
