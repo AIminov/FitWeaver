@@ -16,10 +16,17 @@ _Обновлено: 2026-09-24 (LLM evaluation harness)_
   отчёт показывает pass-rate, wins/ties и медианное время.
 - ✅ FIXED Документация: `docs/LLM_EVAL_HARNESS.md`. Целевые проверки: 37 tests passed,
   Ruff, py_compile и `git diff --check` чистые.
+- ✅ FIXED Новый offline scorer прогнан на всех 10 сохранённых парах Qwen3 / Unsloth IQ4_XS:
+  post-pipeline strict pass 4/10 у обеих; по кейсам 2 выигрыша у каждой и 6 ничьих.
+  Медиана записанного Ollama `total_duration`: 93.6 с / 95.3 с. Это offline score сохранённых
+  ответов, не новый live-прогон; не смешивать с предыдущими wall-clock замерами.
+  Сводки: `Build_artifacts/llm_eval/20260924T151438Z-9d09f783/summary.md`,
+  `Build_artifacts/llm_eval/20260924T151439Z-cc082034/summary.md` и
+  `Build_artifacts/llm_eval/comparison-3f9f2bb8.md`.
 - ⏳ Научить harness агрегировать повторы и показывать разброс/доверительные интервалы;
   добавить в golden-suite проверки конкретных фактов repeat/типов шагов/целей.
-- ⏳ Выполнить offline scorer на сохранённых ответах Qwen3/Unsloth и live-пары после выбора
-  общего golden-suite; саму модель и defaults не переключать без такого результата.
+- ⏳ Подготовить общий golden-suite с семантическими проверками и выполнить повторные live-пары;
+  саму модель и defaults не переключать без такого результата.
 
 ## Точность целей и проверка структуры — 2026-09-24
 
