@@ -5,6 +5,8 @@
 ### Fixed
 - The Garmin calendar now recognizes schedule IDs exposed as `scheduleId` or `id` by some
   response shapes. Selecting an event without a schedule ID explains why editing is unavailable.
+- Garmin `pace.zone` targets now import as editable pace ranges; the two m/s bounds are normalized
+  regardless of their order in the Garmin response.
 
 ### Added
 - Garmin Connect calendar events with a schedule ID can be opened in the builder and saved back.

@@ -60,10 +60,15 @@ def _convert_step(item: Mapping[str, Any]) -> WorkoutStep:
 
     if target == "heart.rate.zone":
         base.update(step_type=f"{duration_kind}_hr", hr_low=round(low), hr_high=round(high))
-    elif target == "speed":
+    elif target in {"speed", "pace.zone"}:
         if low <= 0 or high <= 0:
-            raise ValueError("У шага Garmin отсутствует диапазон темпа")
-        pace_fast, pace_slow = _pace(1000.0 / high), _pace(1000.0 / low)
+            raise ValueError(f"У цели Garmin «{target}» отсутствует диапазон темпа")
+        # Garmin's pace.zone commonly stores the faster (higher m/s) bound in
+        # targetValueOne and the slower bound in targetValueTwo. Normalize both
+        # pace.zone and speed responses so edits retain the same pace interval.
+        slower_speed, faster_speed = sorted((low, high))
+        pace_fast = _pace(1000.0 / faster_speed)
+        pace_slow = _pace(1000.0 / slower_speed)
         if duration_kind == "dist":
             base.update(step_type="dist_pace", pace_fast=pace_fast, pace_slow=pace_slow)
         else:
