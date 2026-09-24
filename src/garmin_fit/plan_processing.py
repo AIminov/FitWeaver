@@ -195,10 +195,17 @@ AMBIGUITY_PATTERNS = (
 SOURCE_WORKOUT_HEADER_RE = re.compile(
     # Accept the common one-line forms used in the GUI example and in real
     # plans: `01.05.2026 (Чт) — Интервалы` and
-    # `24.08.2026 Понедельник`.  The complete line remains the block header;
-    # date parsing later extracts the date/weekday from it.
-    r"^\s*(?:#{1,6}\s*)?(?P<header>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"
+    # `24.08.2026 Понедельник`. The explicit input format may prefix the same
+    # date header with `==== ТРЕНИРОВКА ====`.
+    r"^\s*(?:#{1,6}\s*)?(?:====\s*ТРЕНИРОВКА\s*====\s*)?"
+    r"(?P<header>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"
     r"(?:\s*\([^)]{1,24}\))?(?:\s*,?\s+[^\n]+)?)\s*$",
+    re.IGNORECASE,
+)
+# A marker-only header is also a workout boundary; its date/title may follow
+# as labeled lines, or the workout may intentionally have no date.
+SOURCE_FORMAT_WORKOUT_HEADER_RE = re.compile(
+    r"^\s*====\s*ТРЕНИРОВКА\s*====(?:\s+.*)?\s*$",
     re.IGNORECASE,
 )
 # Also detect "Тренировка N" / "Workout N" / "Тренировка N — ..." headers
@@ -391,7 +398,11 @@ def _extract_workout_blocks(text: str) -> list[str]:
                 current_lines.append("")
             continue
 
-        if SOURCE_WORKOUT_HEADER_RE.match(line) or SOURCE_WORKOUT_NUMBERED_RE.match(line):
+        if (
+            SOURCE_WORKOUT_HEADER_RE.match(line)
+            or SOURCE_FORMAT_WORKOUT_HEADER_RE.match(line)
+            or SOURCE_WORKOUT_NUMBERED_RE.match(line)
+        ):
             flush_current()
             current_header = line
             current_lines = [line]

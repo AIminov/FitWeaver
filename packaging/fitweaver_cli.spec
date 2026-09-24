@@ -18,7 +18,7 @@ SRC_DIR = REPO_ROOT / "src"
 
 block_cipher = None
 
-llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt"])
+llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md"])
 garmin_fit_submodules = collect_submodules("garmin_fit")
 
 a = Analysis(

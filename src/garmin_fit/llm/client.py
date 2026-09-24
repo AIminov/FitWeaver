@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 1          # single retry is enough; extra retries trigger thinking mode
 SUSPICIOUS_SEGMENT_RETRIES = 1  # one focused retry for missing source facts
 SEGMENT_HEADER_DATE_RE = re.compile(
-    r"^\s*(?:#{1,6}\s*)?(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
+    r"^\s*(?:#{1,6}\s*)?(?:====\s*ТРЕНИРОВКА\s*====\s*)?"
+    r"(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
     r"(?:\s*\((?P<weekday>[^)]{1,24})\))?(?:\s*,?\s+(?P<title>[^\n]+))?\s*$",
     re.IGNORECASE,
 )

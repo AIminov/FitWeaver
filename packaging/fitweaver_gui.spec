@@ -33,11 +33,11 @@ SRC_DIR = REPO_ROOT / "src"
 
 block_cipher = None
 
-# LLM prompt contract/examples read via Path(__file__).parent in
+# LLM prompt contract/examples/input-format rules read via Path(__file__).parent in
 # garmin_fit/llm/prompt.py -- read-only bundled resources, not writable
 # state, so PyInstaller's own module-relative path resolution handles them
 # correctly once they're actually included via datas=.
-llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt"])
+llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md"])
 ctk_datas = collect_data_files("customtkinter")
 
 # fitweaver_gui.py imports most of garmin_fit lazily (inside methods, e.g.

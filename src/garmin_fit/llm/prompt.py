@@ -16,6 +16,7 @@ _LLM_DIR = Path(__file__).parent
 LLM_CONTRACT_FILE = _LLM_DIR / "llm_contract.yaml"
 STRICT_EXAMPLES_FILE = _LLM_DIR / "strict_examples.yaml"
 EXAMPLES_TEXT_FILE = _LLM_DIR / "text_variations.txt"
+TRAINING_TEXT_FORMAT_FILE = _LLM_DIR / "training_text_format.md"
 
 DEFAULT_WORKOUT_KEYS_EXACT = [
     "filename",
@@ -187,6 +188,19 @@ def load_strict_examples(
     return "\n\n".join(sections)
 
 
+def load_training_text_format(source_text: str | None = None) -> str:
+    """Load the canonical input-format rules only for explicitly marked plans."""
+    source = str(source_text or "")
+    if "==== ТРЕНИРОВКА ====" not in source and "**** ШАГ ****" not in source:
+        return ""
+
+    if not TRAINING_TEXT_FORMAT_FILE.exists():
+        logger.warning("Training text format rules not found: %s", TRAINING_TEXT_FORMAT_FILE)
+        return ""
+
+    return TRAINING_TEXT_FORMAT_FILE.read_text(encoding="utf-8").strip()
+
+
 def render_llm_contract(
     contract: dict[str, Any],
     *,
@@ -329,6 +343,7 @@ def create_system_prompt(
     """
     contract = load_llm_contract()
     contract_block = render_llm_contract(contract, user_profile=user_profile)
+    training_text_format = load_training_text_format(source_text)
     examples = load_strict_examples(
         include_text_variations=include_text_variations,
         source_text=source_text,
@@ -340,6 +355,9 @@ def create_system_prompt(
         "Return only YAML. No reasoning. No markdown.",
         contract_block,
     ]
+
+    if training_text_format:
+        sections.append(training_text_format)
 
     if include_json_schema:
         schema_section = _build_json_schema_section()
