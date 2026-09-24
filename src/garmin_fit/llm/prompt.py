@@ -52,6 +52,12 @@ DEFAULT_STEP_TYPES: dict[str, dict[str, Any]] = {
         "fit_duration": "time",
         "fit_target": "open",
     },
+    "time_step": {
+        "required": ["type", "seconds"],
+        "optional": ["intensity"],
+        "fit_duration": "time",
+        "fit_target": "open",
+    },
     "time_hr": {
         "required": ["type", "seconds", "hr_low", "hr_high"],
         "optional": ["intensity"],
@@ -344,25 +350,22 @@ def create_system_prompt(
     sections.append(
         "\n".join(
             [
-                "FINAL RULES",
-                "SOURCE INTERPRETATION",
-                "- First split the input by every date header; output one workout per non-rest training block.",
-                "- Markdown prefixes (#) and leading spaces before a date header are formatting only; still treat the date as a workout boundary.",
-                "- Count the blocks before writing YAML; output exactly the expected count, never only the first block.",
-                "- Rest/off days produce no workout. Strength, sauna, stretching, plank, and other non-running notes are not separate workouts unless explicit running drills are given.",
-                "- Preserve every explicit source fact (date, distance, duration, HR, pace, repetitions); never invent missing values.",
-                "- A notation like 5x(200m + 200m jog) or 5x200m/200m jog is one repeat group: active 200m plus recovery 200m, then repeat count 5.",
-                "- Warmup, main work, recovery, and cooldown are separate steps when the source distinguishes them.",
-                "- only listed keys/enums; no invented fields or second documents",
-                "- pace(explicit)->dist_pace/time_pace; HR(explicit)->dist_hr/time_hr; cadence(explicit)->dist_cadence/time_cadence",
-                "- single upper HR cap only (e.g. \"до 130\", \"HR <= 130\")->use hr_low=80 and hr_high=cap",
-                "- time intervals->time_hr/time_pace, not dist_*",
-                "- intensity required on dist_hr/dist_pace/time_hr/time_pace/dist_cadence/time_cadence; first step=warmup, last=cooldown",
-                "- sbu_block drills: {name,seconds,reps} only — no 'type' key",
-                "- repeat: back_to_offset=index of FIRST step in repeating group (e.g. warmup@0,active@1,recovery@2,repeat→back_to_offset:1 NOT 2); no nested repeats",
-                "VALIDATE: filenames unique; filename==name; pattern W{wk}_{MM-DD}_{Day}_{Type}_{Detail}",
-                "dist/seconds>0; hr_low<hr_high; 30≤hr≤240; pace=\"MM:SS\"; no mixed hr*/pace*",
-                "sbu drill name≤12chars; repeat back_to_offset<step_idx",
+                "SOURCE RULES",
+                "- Split at each date header. Output one workout per running session; omit rest days.",
+                "- Preserve explicit facts and units. Do not add steps, distances, targets, repetitions, or durations absent from the source.",
+                "- Convert all time exactly to seconds (2 minutes=120, 15 minutes=900, 30 minutes=1800). Never use the number of minutes as seconds.",
+                "- Only running belongs in steps. Keep gym/strength, sauna, stretching, and other non-running activity in desc; never convert them to drills or running steps. Gym exercise names are not running-form drills.",
+                "- Add sbu_block only when the source explicitly names running-form drills (e.g. high knees, bounds, skips). Strides/accelerations alone are not SBU; if no drill is named, omit sbu_block entirely. Drill entries contain name, seconds, reps only; shorten names to 12 chars.",
+                "- Represent warmup, work, recovery, and cooldown as separate steps only when the source identifies them. Label intensity only when supported by the source; intensity is optional.",
+                "- Use time_* for time intervals and dist_* for distance intervals. Attach only the target stated for that step: pace, HR, or cadence.",
+                "- For an HR upper limit with no lower limit, use hr_low=80 and hr_high=the stated cap (required by Garmin's range schema). Never infer a distance from duration.",
+                "- For N work intervals, include exactly N work steps; include recovery only between intervals (N-1) unless the source says otherwise. Equal-length repeated work/recovery such as 5x(200m + 200m jog) uses active step, recovery step, then repeat count 5. A ladder with different distances is sequential steps, not one repeat. back_to_offset is the 0-based index of the first repeated step; no nested repeats.",
+                "- Write every stated interval exactly once and in source order. Never duplicate a sequence. Use repeat only when the source gives an explicit repetition count.",
+                "OUTPUT CHECK",
+                "- Emit only the exact workouts YAML schema. Each workout has only filename,name,desc,type_code,distance_km,estimated_duration_min,steps. filename=name and names are unique.",
+                "- Each step must match one allowed step type and its required fields. No mixed HR and pace targets; pace is a quoted MM:SS string; distances and seconds are positive.",
+                "- Use the date-based name only when the source contains a date. If there is no date, use the fallback N{order}_{Type}_{Details}; never invent a date or week number.",
+                "- Examples show syntax only. Never copy their dates, distances, targets, repetitions, or workout details into this answer.",
             ]
         )
     )
@@ -416,19 +419,23 @@ def _select_examples(
 
     lowered = source_text.lower()
     scored: list[tuple[int, dict[str, Any]]] = []
-    unmatched: list[dict[str, Any]] = []
     for example in examples:
         score = 0
         for token in example.get("match_any", []):
-            if str(token).lower() in lowered:
-                score += 1
+            normalized = str(token).strip().lower()
+            if normalized.isdigit() and len(normalized) < 4:
+                continue
+            if normalized and normalized in lowered:
+                # Longer matches are more informative than generic words like
+                # "пульс" or "бег" and should win example selection.
+                score += len(normalized)
         if score > 0:
             scored.append((score, example))
-        else:
-            unmatched.append(example)
 
     if not scored:
-        return examples[:max_examples]
+        # When source text is known, unrelated examples are more harmful than
+        # omitting examples: small local models tend to copy their facts.
+        return []
 
     scored.sort(key=lambda item: item[0], reverse=True)
     return [example for _, example in scored[:max_examples]]
