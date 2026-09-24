@@ -35,7 +35,6 @@ validation_rules:
 
   distances:
     - All km values must be positive and greater than zero
-    - Minimum distance 0.5 km
 
   durations:
     - All seconds must be positive and greater than zero
@@ -43,7 +42,8 @@ validation_rules:
   heart_rate:
     - hr_low must be less than hr_high
     - HR range 30 to 240 bpm
-    - Recovery 110-135, aerobic 135-150, threshold 168-172, intervals 165-180
+    - Use a HR target only when the source provides a complete numeric range or explicitly named profile zone
+    - Never infer a missing HR bound or assign a default HR range from workout type/intensity
 
   pace_format:
     - Pace values quoted strings MM:SS format

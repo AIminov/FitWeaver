@@ -7,6 +7,16 @@ from garmin_fit.llm.client import GeneratedYamlResult, SourceWorkoutFact, Unifie
 
 
 class TestUnifiedLLMClient(unittest.TestCase):
+    def test_quote_desc_colon_recovers_plain_yaml_description(self):
+        source = "workouts:\n  - desc: Другое: после бега зал/силовая\n"
+
+        repaired = UnifiedLLMClient._quote_desc_colons(source)
+
+        self.assertEqual(
+            yaml.safe_load(repaired),
+            {"workouts": [{"desc": "Другое: после бега зал/силовая"}]},
+        )
+
     def test_rejects_non_positive_request_timeout(self):
         with self.assertRaises(ValueError):
             UnifiedLLMClient(
@@ -343,9 +353,9 @@ class TestUnifiedLLMClient(unittest.TestCase):
         self.assertAlmostEqual(fact.interval_rep_km, 0.8)
         self.assertEqual(fact.hr_cap, 150)
 
-    def test_detect_suspicious_workout_against_fact_flags_distance_mismatch(self):
+    def test_detect_suspicious_workout_against_fact_flags_missing_source_distance_step(self):
         fact = UnifiedLLMClient._extract_single_workout_fact(
-            "10.03 (Tue)\nЛегкий кросс\n6 км\nПульс до 140\n"
+            "10.03 (Tue)\nЛегкий кросс\n6 км\n"
         )
         workout = {
             "filename": "W10_03-10_Tue_Easy_9km",
@@ -356,7 +366,37 @@ class TestUnifiedLLMClient(unittest.TestCase):
         }
 
         issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact)
-        self.assertTrue(any("distance mismatch" in item for item in issues))
+        self.assertTrue(any("missing source distance step 6km" in item for item in issues))
+
+    def test_one_sided_hr_cap_does_not_allow_invented_lower_bound(self):
+        fact = UnifiedLLMClient._extract_single_workout_fact(
+            "10.03 (Tue)\nЛегкий кросс\n6 км\nПульс до 140\n"
+        )
+        workout = {
+            "filename": "W10_03-10_Tue_Easy_6km",
+            "name": "W10_03-10_Tue_Easy_6km",
+            "type_code": "easy",
+            "steps": [{"type": "dist_hr", "km": 6.0, "hr_low": 80, "hr_high": 140}],
+        }
+
+        issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact)
+        self.assertTrue(any("one-sided HR cap" in item for item in issues))
+
+    def test_detect_suspicious_workout_ignores_aggregate_distance_summary(self):
+        fact = UnifiedLLMClient._extract_single_workout_fact(
+            "10.03 (Tue)\nЛегкий кросс\n6 км\n"
+        )
+        workout = {
+            "filename": "W10_03-10_Tue_Easy_6km",
+            "name": "W10_03-10_Tue_Easy_6km",
+            "type_code": "easy",
+            "distance_km": 9.0,
+            "estimated_duration_min": 42,
+            "steps": [{"type": "dist_open", "km": 6.0}],
+        }
+
+        issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact)
+        self.assertFalse(any("distance" in item for item in issues))
 
     def test_apply_source_fact_consistency_checks_adds_error_on_mismatch(self):
         fact = UnifiedLLMClient._extract_single_workout_fact(
@@ -370,14 +410,14 @@ class TestUnifiedLLMClient(unittest.TestCase):
                         "name": "W10_03-10_Tue_Easy_9km",
                         "type_code": "easy",
                         "distance_km": 9.0,
-                        "steps": [{"type": "dist_open", "km": 9.0}],
+                        "steps": [{"type": "dist_open", "km": 6.0}],
                     }
                 ]
             }
         )
 
         UnifiedLLMClient._apply_source_fact_consistency_checks(result, [fact])
-        self.assertTrue(any("source facts mismatch" in msg for msg in result.validation_errors))
+        self.assertFalse(result.validation_errors)
 
     def test_source_fact_mismatch_is_demoted_after_consistency_check(self):
         fact = UnifiedLLMClient._extract_single_workout_fact(

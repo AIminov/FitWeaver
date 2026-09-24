@@ -101,15 +101,13 @@ examples:
       workouts:
         - filename: W09_03-03_Tue_Easy_8km
           name: W09_03-03_Tue_Easy_8km
-          desc: "Easy run with heart rate capped at 140 bpm"
+          desc: "Easy run; source states HR up to 140 bpm"
           type_code: easy
           distance_km: 8.0
-          estimated_duration_min: 52
+          estimated_duration_min: null
           steps:
-            - type: dist_hr
+            - type: dist_open
               km: 8.0
-              hr_low: 125
-              hr_high: 140
               intensity: recovery
   - id: fartlek_time
     tags: [fartlek, time, mixed]
@@ -185,15 +183,13 @@ examples:
       workouts:
         - filename: W09_03-04_Wed_Intervals_Hills_2x5x40m
           name: W09_03-04_Wed_Intervals_Hills_2x5x40m
-          desc: "Hill sprint workout with two separate series and jogging recovery"
+          desc: "Hill sprint workout; source mentions one-sided HR caps of 140 and 150 bpm"
           type_code: intervals
-          distance_km: 8.4
-          estimated_duration_min: 58
+          distance_km: null
+          estimated_duration_min: null
           steps:
-            - type: dist_hr
+            - type: dist_open
               km: 2.0
-              hr_low: 125
-              hr_high: 140
               intensity: warmup
             - type: dist_open
               km: 0.04
@@ -204,10 +200,8 @@ examples:
             - type: repeat
               back_to_offset: 1
               count: 5
-            - type: dist_hr
+            - type: dist_open
               km: 1.0
-              hr_low: 130
-              hr_high: 150
               intensity: recovery
             - type: dist_open
               km: 0.04
@@ -367,15 +361,13 @@ examples:
       workouts:
         - filename: W10_03-08_Sun_Long_16km
           name: W10_03-08_Sun_Long_16km
-          desc: "Long run with aerobic heart rate cap"
+          desc: "Long run; source states HR up to 155 bpm"
           type_code: long
           distance_km: 16.0
-          estimated_duration_min: 108
+          estimated_duration_min: null
           steps:
-            - type: dist_hr
+            - type: dist_open
               km: 16.0
-              hr_low: 140
-              hr_high: 155
               intensity: active
   - id: insertion_run
     tags: [long, insertion, tempo, mixed]
@@ -740,7 +732,7 @@ failure_examples:
 
   - id: fail_invalid_hr_range
     tags: [failure, hr, range]
-    error: "HR values outside valid range (30-240)"
+    error: "Subjective maximum effort does not define a numeric HR range"
     input: |
       28.04.2026 (ВТ)
       Интервалы на максимум
@@ -754,9 +746,6 @@ failure_examples:
           intensity: active
     correct_output: |
       steps:
-        - type: dist_hr
+        - type: dist_open
           km: 1.0
-          hr_low: 170            # ✓ Within 30-240 range
-          hr_high: 180           # ✓ Within 30-240 range
-          intensity: active
-    hr_range_rule: "HR must be: 30 ≤ hr_low < hr_high ≤ 240. Typical zones: recovery 110-135, aerobic 135-150, threshold 168-172, intervals 165-180"
+    hr_range_rule: "Use an HR target only when a complete range or explicitly named profile zone appears in the source. Never guess missing bounds or typical zones."

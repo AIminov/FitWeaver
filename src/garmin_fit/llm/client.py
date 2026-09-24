@@ -217,6 +217,7 @@ class UnifiedLLMClient:
                 analysis_repairs=analysis.changes,
                 analysis_ambiguities=analysis.ambiguities,
                 expected_workout_count=analysis.expected_workouts,
+                source_text=original_plan,
                 repair_plan_data=repair_plan_data,
                 validate_plan_data_detailed=validate_plan_data_detailed,
                 group_issues_by_category=group_issues_by_category,
@@ -631,6 +632,7 @@ class UnifiedLLMClient:
         analysis_repairs: list[str],
         analysis_ambiguities: list[str],
         expected_workout_count: int,
+        source_text: str = "",
         repair_plan_data,
         validate_plan_data_detailed,
         group_issues_by_category,
@@ -638,13 +640,25 @@ class UnifiedLLMClient:
         try:
             data = yaml.safe_load(yaml_text)
         except yaml.YAMLError as exc:
-            error = f"YAML parse error: {exc}"
-            return GeneratedYamlResult(
-                repairs=analysis_repairs[:],
-                ambiguities=analysis_ambiguities[:],
-                validation_errors=[error],
-                error_categories={"schema_error": [error]},
-            )
+            repaired_text = UnifiedLLMClient._quote_desc_colons(yaml_text)
+            if repaired_text != yaml_text:
+                try:
+                    data = yaml.safe_load(repaired_text)
+                    analysis_repairs = analysis_repairs + [
+                        "quoted an unquoted description containing a colon so YAML can be parsed"
+                    ]
+                except yaml.YAMLError:
+                    data = None
+            else:
+                data = None
+            if data is None:
+                error = f"YAML parse error: {exc}"
+                return GeneratedYamlResult(
+                    repairs=analysis_repairs[:],
+                    ambiguities=analysis_ambiguities[:],
+                    validation_errors=[error],
+                    error_categories={"schema_error": [error]},
+                )
 
         if data is None:
             return GeneratedYamlResult(
@@ -655,15 +669,28 @@ class UnifiedLLMClient:
             )
 
         repaired_data, repair_notes = repair_plan_data(data)
+        from .marked_source_checks import (
+            sanitize_marked_source_targets,
+            validate_marked_source_structure,
+        )
+
+        target_repairs, target_warnings = sanitize_marked_source_targets(
+            source_text,
+            repaired_data,
+        )
+        repair_notes.extend(target_repairs)
         errors, warnings = validate_plan_data_detailed(
             repaired_data,
             enforce_filename_name_match=True,
         )
+        structure_errors = validate_marked_source_structure(source_text, repaired_data)
 
-        warning_messages = [issue.message for issue in warnings]
-        error_messages = [issue.message for issue in errors]
+        warning_messages = list(dict.fromkeys(
+            [issue.message for issue in warnings] + target_warnings
+        ))
+        error_messages = [issue.message for issue in errors] + structure_errors
 
-        if not errors:
+        if not errors and not structure_errors:
             rendered_yaml = yaml.safe_dump(
                 repaired_data,
                 allow_unicode=True,
@@ -690,7 +717,10 @@ class UnifiedLLMClient:
             repairs=analysis_repairs + repair_notes,
             ambiguities=analysis_ambiguities[:],
             validation_errors=error_messages,
-            error_categories=group_issues_by_category(errors),
+            error_categories={
+                **group_issues_by_category(errors),
+                **({"marked_source_structure": structure_errors} if structure_errors else {}),
+            },
             attempts=0,
         )
         UnifiedLLMClient._apply_expected_workout_count_check(
@@ -698,6 +728,22 @@ class UnifiedLLMClient:
             expected_workout_count=expected_workout_count,
         )
         return result
+
+    @staticmethod
+    def _quote_desc_colons(yaml_text: str) -> str:
+        """Quote plain description scalars with ``: `` that break YAML parsing."""
+        changed = False
+        output: list[str] = []
+        for line in yaml_text.splitlines():
+            match = re.match(r"^(\s*(?:-\s*)?desc:\s*)(.*)$", line)
+            if match:
+                value = match.group(2)
+                if ": " in value and not value.startswith(("'", '"', "|", ">")):
+                    value = "'" + value.replace("'", "''") + "'"
+                    line = match.group(1) + value
+                    changed = True
+            output.append(line)
+        return "\n".join(output) + ("\n" if yaml_text.endswith("\n") else "") if changed else yaml_text
 
     @staticmethod
     def _build_retry_prompt(
@@ -789,6 +835,7 @@ class UnifiedLLMClient:
             analysis_repairs=repairs,
             analysis_ambiguities=ambiguities,
             expected_workout_count=analysis.expected_workouts,
+            source_text=getattr(analysis, "text", ""),
             repair_plan_data=repair_plan_data,
             validate_plan_data_detailed=validate_plan_data_detailed,
             group_issues_by_category=group_issues_by_category,
@@ -1137,22 +1184,35 @@ class UnifiedLLMClient:
                 issues.append("unexpected workout type for interval source block")
 
         if isinstance(fact.steady_distance_km, (int, float)):
-            actual_distance = workout.get("distance_km")
-            if not isinstance(actual_distance, (int, float)):
-                issues.append("missing distance_km")
-            elif abs(float(actual_distance) - float(fact.steady_distance_km)) > 0.35:
+            step_distances = [
+                float(step.get("km"))
+                for step in steps
+                if isinstance(step, dict)
+                and str(step.get("type", "")).startswith("dist_")
+                and isinstance(step.get("km"), (int, float))
+            ]
+            if not any(
+                abs(value - float(fact.steady_distance_km)) <= 0.35
+                for value in step_distances
+            ):
                 issues.append(
-                    f"distance mismatch (expected {fact.steady_distance_km:.3g}, got {float(actual_distance):.3g})"
+                    f"missing source distance step {fact.steady_distance_km:.3g}km"
                 )
 
         if isinstance(fact.hr_cap, int):
-            hr_high_values = [
-                int(step.get("hr_high"))
+            has_hr_target = any(
+                isinstance(step, dict)
+                and (
+                    str(step.get("type", "")).endswith("_hr")
+                    or "hr_low" in step
+                    or "hr_high" in step
+                )
                 for step in steps
-                if isinstance(step, dict) and isinstance(step.get("hr_high"), (int, float))
-            ]
-            if hr_high_values and not any(abs(value - fact.hr_cap) <= 3 for value in hr_high_values):
-                issues.append(f"hr cap mismatch (expected ~{fact.hr_cap})")
+            )
+            if has_hr_target:
+                issues.append(
+                    "source contains only a one-sided HR cap; omit the HR target instead of guessing a missing bound"
+                )
 
         return issues
 
