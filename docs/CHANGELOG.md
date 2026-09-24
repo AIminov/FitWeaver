@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-24 - Simpler profile setup
+
+### Changed
+- New Garmin profiles now collect email and password together. The password stays in memory only
+  and is also available beside the profile selector; it is cleared on profile switch or exit.
+- HR setup asks only for maximum heart rate, which derives the Z1–Z5 ranges used by LLM prompts
+  and the workout builder. Resting heart rate is no longer requested or written by the GUI.
+
 ## 2026-09-23 - Garmin calendar editing and cadence targets
 
 ### Fixed

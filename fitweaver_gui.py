@@ -383,10 +383,7 @@ class App(_AppBase):
         self._refresh_profile_status()
 
     def _prompt_hr_profile(self, email: str) -> None:
-        """First-run onboarding: ask for max/resting HR so the LLM prompt can
-        use personal zones. Not required — has a Skip button — since this
-        data is low-stakes and can be hand-edited in the profile's
-        user_profile.yaml at any time."""
+        """Ask for max HR to calculate the personal HR zones used by the LLM and builder."""
         dialog = tk.Toplevel(self)
         dialog.title("Новый профиль")
         dialog.configure(bg=BG)
@@ -397,41 +394,35 @@ class App(_AppBase):
                  bg=BG, fg=ACCENT, font=("Segoe UI", 10, "bold"),
                  padx=16, anchor="w").pack(fill="x", pady=(16, 4))
         tk.Label(dialog,
-                 text="Пульсовые данные помогают LLM точнее строить тренировки.\n"
-                      "Зоны рассчитаются автоматически из максимального пульса.\n"
-                      "Не обязательно — можно пропустить и настроить позже вручную\n"
-                      "в profiles/.../user_profile.yaml.",
+                 text="Максимальный пульс используется для расчёта зон Z1–Z5.\n"
+                      "Эти зоны доступны в LLM и в Конструкторе тренировок.\n"
+                      "Можно пропустить и задать свои диапазоны позже в user_profile.yaml.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9), justify="left",
                  padx=16, anchor="w").pack(fill="x", pady=(0, 8))
 
         form = ttk.Frame(dialog, padding=(16, 0))
         form.pack(fill="x")
         max_hr_var = tk.StringVar()
-        resting_hr_var = tk.StringVar()
         ttk.Label(form, text="Максимальный пульс (уд/мин):", style="Muted.TLabel").grid(
             row=0, column=0, sticky="w", pady=4)
         ttk.Entry(form, textvariable=max_hr_var, width=10).grid(row=0, column=1, padx=(8, 0))
-        ttk.Label(form, text="Пульс покоя (уд/мин):", style="Muted.TLabel").grid(
-            row=1, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=resting_hr_var, width=10).grid(row=1, column=1, padx=(8, 0))
 
         def _save():
             from garmin_fit.profile_store import activate_user_profile, write_user_profile
             try:
                 max_hr = int(max_hr_var.get())
-                resting_hr = int(resting_hr_var.get())
             except ValueError:
                 messagebox.showwarning(
                     "Некорректные данные",
-                    "Введите пульс числом, либо нажмите «Пропустить».", parent=dialog)
-                return
-            if not (100 <= max_hr <= 240) or not (30 <= resting_hr <= 150):
-                messagebox.showwarning(
-                    "Некорректные данные",
-                    "Проверьте диапазоны: макс. пульс 100–240, пульс покоя 30–150.",
+                    "Введите максимальный пульс числом, либо нажмите «Пропустить».",
                     parent=dialog)
                 return
-            write_user_profile(email, max_hr=max_hr, resting_hr=resting_hr)
+            if not 100 <= max_hr <= 240:
+                messagebox.showwarning(
+                    "Некорректные данные",
+                    "Максимальный пульс должен быть в диапазоне 100–240 уд/мин.", parent=dialog)
+                return
+            write_user_profile(email, max_hr=max_hr)
             activate_user_profile(email)
             self._log(f"[OK] Пульсовой профиль сохранён для {email}")
             dialog.destroy()
@@ -567,23 +558,67 @@ class App(_AppBase):
         self._log(f"[OK] Профиль переключён: {new_email}")
 
     def _create_profile(self):
-        email = simpledialog.askstring(
-            "Новый профиль",
-            "Введите email Garmin для нового профиля:",
-            parent=self,
-        )
-        email = (email or "").strip()
-        if not email:
+        dialog = tk.Toplevel(self)
+        dialog.title("Новый профиль Garmin")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        dialog.resizable(False, False)
+
+        tk.Label(dialog, text="Подключение профиля Garmin", bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold"), padx=16, anchor="w").pack(
+                     fill="x", pady=(16, 6))
+        tk.Label(
+            dialog,
+            text="Введите email Garmin и пароль для следующего подключения. Пароль\n"
+                 "останется в памяти приложения до переключения профиля или закрытия.\n"
+                 "Если Garmin Connect уже авторизован, пароль можно пропустить.",
+            bg=BG, fg=MUTED, font=("Segoe UI", 9), justify="left", padx=16,
+            anchor="w",
+        ).pack(fill="x", pady=(0, 8))
+
+        form = ttk.Frame(dialog, padding=(16, 0))
+        form.pack(fill="x")
+        email_var = tk.StringVar()
+        password_var = tk.StringVar()
+        ttk.Label(form, text="Email Garmin:", style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w", pady=4)
+        email_entry = ttk.Entry(form, textvariable=email_var, width=34)
+        email_entry.grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=4)
+        ttk.Label(form, text="Пароль Garmin:", style="Muted.TLabel").grid(
+            row=1, column=0, sticky="w", pady=4)
+        password_entry = ttk.Entry(form, textvariable=password_var, show="•", width=34)
+        password_entry.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=4)
+        form.columnconfigure(1, weight=1)
+
+        result: dict[str, str] = {}
+
+        def _submit():
+            email = email_var.get().strip()
+            if not email or "@" not in email:
+                messagebox.showwarning(
+                    "Некорректный email",
+                    "Введите email в формате user@example.com.", parent=dialog)
+                return
+            result["email"] = email
+            result["password"] = password_var.get()
+            dialog.destroy()
+
+        actions = ttk.Frame(dialog, padding=16)
+        actions.pack(fill="x")
+        ttk.Button(actions, text="Отмена", command=dialog.destroy).pack(side="left")
+        ttk.Button(actions, text="Создать профиль", style="Primary.TButton",
+                   command=_submit).pack(side="right")
+        dialog.bind("<Return>", lambda _event: _submit())
+        dialog.grab_set()
+        email_entry.focus_set()
+        self.wait_window(dialog)
+        if not result:
             return
-        if "@" not in email:
-            messagebox.showwarning(
-                "Некорректный email",
-                "Введите email в формате user@example.com.",
-                parent=self,
-            )
-            return
-        self.email_var.set(email)
+        self.email_var.set(result["email"])
         self._on_email_change()
+        # `_on_email_change` clears credentials when switching accounts.
+        # Apply the new password afterwards; it is never written to disk.
+        self.pass_var.set(result["password"])
 
     def _save_session(self):
         self._save_current_profile_session()
@@ -735,6 +770,9 @@ class App(_AppBase):
         self._profile_combo.bind("<Return>", self._on_email_change)
         ttk.Label(p, textvariable=self._profile_status_var,
                   style="Status.TLabel", wraplength=215, justify="left").pack(anchor="w")
+        ttk.Label(p, text="Пароль Garmin (не сохраняется):",
+                  style="Muted.TLabel").pack(anchor="w", pady=(5, 0))
+        ttk.Entry(p, textvariable=self.pass_var, show="•").pack(fill="x", pady=(0, 4))
 
         self._profile_settings_toggle_btn = ttk.Button(
             p, text="▸  Настройки профиля", command=self._toggle_profile_settings)
@@ -742,10 +780,6 @@ class App(_AppBase):
         self._profile_settings_frame = ttk.Frame(p)
         ttk.Button(self._profile_settings_frame, text="⚙  Настроить HR-профиль",
                    command=self._edit_hr_profile).pack(fill="x", pady=(4, 2))
-        ttk.Label(self._profile_settings_frame, text="Пароль (если потребуется вход):",
-                  style="Muted.TLabel").pack(anchor="w")
-        ttk.Entry(self._profile_settings_frame, textvariable=self.pass_var,
-                  show="•").pack(fill="x", pady=(0, 4))
         ttk.Button(self._profile_settings_frame, text="⌫  Выйти из Garmin",
                    command=self._clear_garmin_auth).pack(fill="x", pady=(2, 0))
 

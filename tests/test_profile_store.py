@@ -88,7 +88,7 @@ class ProfileStoreTests(unittest.TestCase):
     def test_has_user_profile_false_until_written(self):
         email = "amir@example.com"
         self.assertFalse(profile_store.has_user_profile(email))
-        profile_store.write_user_profile(email, max_hr=190, resting_hr=48)
+        profile_store.write_user_profile(email, max_hr=190)
         self.assertTrue(profile_store.has_user_profile(email))
 
     def test_compute_hr_zones_covers_full_range_without_gaps(self):
@@ -103,10 +103,10 @@ class ProfileStoreTests(unittest.TestCase):
     def test_write_user_profile_produces_loadable_yaml(self):
         import yaml
         email = "amir@example.com"
-        profile_store.write_user_profile(email, max_hr=190, resting_hr=48)
+        profile_store.write_user_profile(email, max_hr=190)
         data = yaml.safe_load(profile_store.user_profile_yaml_path(email).read_text(encoding="utf-8"))
         self.assertEqual(data["max_hr"], 190)
-        self.assertEqual(data["resting_hr"], 48)
+        self.assertNotIn("resting_hr", data)
         self.assertIn("zone1", data["hr_zones"])
         self.assertIn("zone5", data["hr_zones"])
 
@@ -154,7 +154,7 @@ class ProfileStoreTests(unittest.TestCase):
 
     def test_migrate_legacy_user_profile_does_not_overwrite_existing_profile_data(self):
         email = "amir@example.com"
-        profile_store.write_user_profile(email, max_hr=175, resting_hr=55)
+        profile_store.write_user_profile(email, max_hr=175)
         self.user_profile_path.write_text("max_hr: 190\nresting_hr: 48\n", encoding="utf-8")
 
         migrated = profile_store.migrate_legacy_user_profile(email)

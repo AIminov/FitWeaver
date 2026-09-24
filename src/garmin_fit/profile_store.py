@@ -159,14 +159,14 @@ def compute_hr_zones(max_hr: int) -> dict:
     }
 
 
-def write_user_profile(email: str, max_hr: int, resting_hr: int) -> None:
-    """Write this profile's personal HR data, deriving zone ranges from max_hr.
+def write_user_profile(email: str, max_hr: int) -> None:
+    """Write personal HR data and derive zone ranges from max_hr.
 
-    Format matches user_profile.yaml.example so a user can still hand-edit
-    the result (e.g. to plug in lab-measured zones instead of the % split)."""
+    Resting heart rate is intentionally omitted: no workout or prompt logic
+    uses it. Older profile files may still contain the legacy key.
+    """
     data = {
         "max_hr": max_hr,
-        "resting_hr": resting_hr,
         "hr_zones": compute_hr_zones(max_hr),
     }
     user_profile_yaml_path(email).write_text(

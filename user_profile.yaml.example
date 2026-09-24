@@ -2,7 +2,6 @@
 # Copy this file to user_profile.yaml and adjust values to match your personal HR data
 
 max_hr: 190          # Your maximum heart rate (bpm)
-resting_hr: 50       # Your resting heart rate (bpm)
 
 # HR zones (bpm ranges)
 # These are calculated from max HR — adjust to match your Garmin / lab results

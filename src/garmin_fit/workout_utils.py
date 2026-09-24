@@ -131,7 +131,8 @@ def load_user_profile():
     Load full user profile from user_profile.yaml.
 
     Returns:
-        dict: Full user profile including max_hr, resting_hr, hr_zones
+        dict: User profile including max_hr and hr_zones. Older profile files
+              may also contain the unused resting_hr compatibility field.
     """
     import yaml
 
