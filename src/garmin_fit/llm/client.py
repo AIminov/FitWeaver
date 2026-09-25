@@ -123,6 +123,7 @@ class UnifiedLLMClient:
         openai_mode: str = "auto",
         request_timeout_sec: int = 300,
         trace_callback: Callable[[dict[str, Any]], None] | None = None,
+        ollama_options: dict[str, Any] | None = None,
     ):
         self.model = model
         self.api_type = api_type
@@ -146,6 +147,13 @@ class UnifiedLLMClient:
         self._trace_sequence = 0
         self._trace_fields: dict[str, Any] = {}
         self._last_call_metrics: dict[str, Any] = {}
+        self.ollama_options = {
+            "temperature": 0.0,
+            "num_ctx": 4096,
+            "num_predict": 800,
+        }
+        if ollama_options:
+            self.ollama_options.update(ollama_options)
 
     def set_trace_context(self, **context: Any) -> None:
         """Set non-sensitive fields attached to subsequent trace events."""
@@ -401,7 +409,8 @@ class UnifiedLLMClient:
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": 0.0},
+            "think": False,
+            "options": dict(self.ollama_options),
         }
 
         try:
@@ -693,7 +702,7 @@ class UnifiedLLMClient:
                 step_base_indent = None
                 continue
 
-            if stripped == "steps:":
+            if stripped == "steps:" and not in_steps:
                 normalized.append("    steps:")
                 in_steps = True
                 step_base_indent = None
@@ -790,12 +799,18 @@ class UnifiedLLMClient:
                 error_categories={"schema_error": ["YAML is empty"]},
             )
 
-        repaired_data, repair_notes = repair_plan_data(data)
         from .marked_source_checks import (
+            compile_marked_source_repeats,
             sanitize_marked_source_targets,
             validate_marked_source_structure,
         )
 
+        repeat_repairs, repeat_warnings = compile_marked_source_repeats(
+            source_text,
+            data,
+        )
+        repaired_data, repair_notes = repair_plan_data(data)
+        repair_notes.extend(repeat_repairs)
         target_repairs, target_warnings = sanitize_marked_source_targets(
             source_text,
             repaired_data,
@@ -808,7 +823,7 @@ class UnifiedLLMClient:
         structure_errors = validate_marked_source_structure(source_text, repaired_data)
 
         warning_messages = list(dict.fromkeys(
-            [issue.message for issue in warnings] + target_warnings
+            [issue.message for issue in warnings] + target_warnings + repeat_warnings
         ))
         error_messages = [issue.message for issue in errors] + structure_errors
 

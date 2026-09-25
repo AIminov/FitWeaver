@@ -11,6 +11,7 @@ _TARGET_FIELDS = {
     "pace": {"pace_fast", "pace_slow"},
     "cadence": {"cad_low", "cad_high"},
 }
+_ALLOWED_INTENSITIES = {"active", "warmup", "cooldown", "recovery"}
 _HR_LABEL = re.compile(r"^\s*(?:пульс|чсс|hr)\s*[:：-]?\s*(.*?)\s*$", re.IGNORECASE)
 _PACE_LABEL = re.compile(r"^\s*(?:темп|pace)\s*[:：-]?\s*(.*?)\s*$", re.IGNORECASE)
 _CADENCE_LABEL = re.compile(
@@ -133,6 +134,25 @@ def _source_step_shape(lines: list[str]) -> str:
     return "open_step"
 
 
+def _source_step_intensity(lines: list[str]) -> str | None:
+    """Map only explicit, unambiguous marked step labels to Garmin intensity enums."""
+    for line in lines:
+        match = re.match(r"^\s*тип\s*[:：]\s*(.*?)\s*$", line, re.IGNORECASE)
+        if not match:
+            continue
+        value = match.group(1).strip().casefold()
+        if value in {"разминка", "warmup"}:
+            return "warmup"
+        if value in {"заминка", "cooldown"}:
+            return "cooldown"
+        if value in {"восстановление", "recovery"}:
+            return "recovery"
+        if value in {"работа", "ускорение", "active", "work"}:
+            return "active"
+        return None
+    return None
+
+
 def _source_workout_shapes(source_text: str) -> list[list[tuple[str, int | None, int | None]]]:
     """Return each marked workout as (step kind or repeat, offset, count) rows."""
     workouts: list[list[tuple[str, int | None, int | None]]] = []
@@ -196,6 +216,97 @@ def _generated_step_shape(step: dict[str, Any]) -> str:
     if kind.startswith("time_"):
         return "time"
     return kind
+
+
+def _model_content_steps(steps: list[Any]) -> list[dict[str, Any]]:
+    """Flatten optional model-nested repeats and discard Garmin repeat rows."""
+    output: list[dict[str, Any]] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if step.get("type") == "repeat":
+            nested = step.get("steps")
+            if isinstance(nested, list):
+                output.extend(_model_content_steps(nested))
+            continue
+        output.append(step)
+    return output
+
+
+def validate_marked_source_model_steps(source_text: str, data: Any) -> list[str]:
+    """Validate LLM steps while repeat rows are delegated to the deterministic compiler."""
+    if STEP_MARKER not in source_text or not isinstance(data, dict):
+        return []
+    expected_workouts = _source_workout_shapes(source_text)
+    actual_workouts = data.get("workouts")
+    if not isinstance(actual_workouts, list):
+        return []
+    if len(expected_workouts) != len(actual_workouts):
+        return [
+            "Marked-source step mismatch: source has "
+            f"{len(expected_workouts)} workouts, YAML has {len(actual_workouts)}"
+        ]
+
+    issues: list[str] = []
+    for workout_index, (expected, workout) in enumerate(zip(expected_workouts, actual_workouts), 1):
+        expected_steps = [kind for kind, _offset, _count in expected if kind != "repeat"]
+        raw_steps = workout.get("steps") if isinstance(workout, dict) else None
+        actual_steps = _model_content_steps(raw_steps) if isinstance(raw_steps, list) else []
+        actual = [_generated_step_shape(step) for step in actual_steps]
+        if actual != expected_steps:
+            issues.append(
+                f"Marked-source step mismatch in workout {workout_index}: "
+                f"expected ordered steps {expected_steps}, got {actual}"
+            )
+    return issues
+
+
+def compile_marked_source_repeats(source_text: str, data: Any) -> tuple[list[str], list[str]]:
+    """Replace model-produced repeat rows with repeat metadata from explicit source markers."""
+    if STEP_MARKER not in source_text or not isinstance(data, dict):
+        return [], []
+    expected_workouts = _source_workout_shapes(source_text)
+    workouts = data.get("workouts")
+    if not isinstance(workouts, list) or len(workouts) != len(expected_workouts):
+        return [], ["Repeat compiler skipped: marked-source workout count does not match YAML"]
+
+    repairs: list[str] = []
+    warnings: list[str] = []
+    for workout_index, (expected, workout) in enumerate(zip(expected_workouts, workouts), 1):
+        if not isinstance(workout, dict):
+            warnings.append(f"Repeat compiler skipped workout {workout_index}: YAML entry is not a mapping")
+            continue
+        steps = workout.get("steps")
+        if not isinstance(steps, list):
+            warnings.append(f"Repeat compiler skipped workout {workout_index}: steps is not a list")
+            continue
+        model_steps = _model_content_steps(steps)
+        expected_step_count = sum(kind != "repeat" for kind, _offset, _count in expected)
+        if len(model_steps) != expected_step_count:
+            warnings.append(
+                f"Repeat compiler skipped workout {workout_index}: source has "
+                f"{expected_step_count} steps but YAML has {len(model_steps)}"
+            )
+            continue
+
+        rebuilt_steps: list[dict[str, Any]] = []
+        model_index = 0
+        for kind, offset, count in expected:
+            if kind == "repeat":
+                rebuilt_steps.append({
+                    "type": "repeat",
+                    "back_to_offset": offset,
+                    "count": count,
+                })
+            else:
+                rebuilt_steps.append(model_steps[model_index])
+                model_index += 1
+        if steps != rebuilt_steps:
+            workout["steps"] = rebuilt_steps
+            repairs.append(
+                f"workouts[{workout_index - 1}]: compiled repeat placement/count from explicit source markers"
+            )
+    return repairs, warnings
 
 
 def validate_marked_source_structure(source_text: str, data: Any) -> list[str]:
@@ -345,6 +456,23 @@ def sanitize_marked_source_targets(
     repairs: list[str] = []
     warnings: list[str] = []
     for index, (source_step, generated_step) in enumerate(zip(source_steps, generated_steps)):
+        source_intensity = _source_step_intensity(source_step)
+        generated_intensity = generated_step.get("intensity")
+        if source_intensity is not None:
+            if generated_intensity != source_intensity:
+                generated_step["intensity"] = source_intensity
+                repairs.append(
+                    f"step {index + 1}: mapped explicit source type to intensity={source_intensity}"
+                )
+        elif generated_intensity is not None:
+            generated_step.pop("intensity", None)
+            repairs.append(
+                f"step {index + 1}: removed intensity not represented by an explicit Garmin enum"
+            )
+            warnings.append(
+                f"Step {index + 1}: intensity was not an explicit supported value and was omitted"
+            )
+
         expected_kind, expected_value, has_incomplete_target = _expected_step_target(source_step)
         actual_kind, actual_value = _generated_step_target(generated_step)
         measure_kind, measure_value = _source_step_measure(source_step)

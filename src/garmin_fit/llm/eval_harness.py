@@ -25,6 +25,7 @@ from .client import UnifiedLLMClient
 from .marked_source_checks import (
     STEP_MARKER,
     sanitize_marked_source_targets,
+    validate_marked_source_model_steps,
     validate_marked_source_structure,
 )
 
@@ -230,7 +231,7 @@ def check_raw_candidate(raw_response: str, source_text: str) -> dict[str, Any]:
         raw_data,
         enforce_filename_name_match=True,
     )
-    structure_errors = validate_marked_source_structure(source_text, raw_data)
+    structure_errors = validate_marked_source_model_steps(source_text, raw_data)
     target_probe = copy.deepcopy(raw_data)
     target_repairs, target_warnings = sanitize_marked_source_targets(source_text, target_probe)
     return {

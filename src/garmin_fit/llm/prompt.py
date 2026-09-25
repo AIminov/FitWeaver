@@ -344,7 +344,10 @@ def create_system_prompt(
     contract = load_llm_contract()
     contract_block = render_llm_contract(contract, user_profile=user_profile)
     training_text_format = load_training_text_format(source_text)
-    examples = load_strict_examples(
+    # Explicitly marked input already provides a step-by-step source manifest.
+    # Few-shot Garmin YAML examples conflict with the deterministic repeat
+    # compiler and can encourage the model to copy repeat offsets.
+    examples = "" if training_text_format else load_strict_examples(
         include_text_variations=include_text_variations,
         source_text=source_text,
         max_examples=2 if source_text else 3,
@@ -365,9 +368,7 @@ def create_system_prompt(
             sections.append(schema_section)
     if examples:
         sections.append(examples)
-    sections.append(
-        "\n".join(
-            [
+    source_rules = [
                 "SOURCE RULES",
                 "- Split at each date header. Output one workout per running session; omit rest days.",
                 "- Preserve explicit facts and units. Do not add steps, distances, targets, repetitions, or durations absent from the source.",
@@ -378,16 +379,27 @@ def create_system_prompt(
                 "- Use only complete targets explicitly stated for that step. Subjective labels (fast/easy/hard/aerobic/threshold) are not numeric targets; use personal zones only if the source names the zone.",
                 "- No target: use dist_open/time_step. Incomplete target: omit it; never guess a bound. Preserve useful source wording in desc.",
                 "- Whole-workout distance_km and estimated_duration_min: use null unless the source states the summary. Never calculate or guess these summaries.",
-                "- For N work intervals, include exactly N work steps; include recovery only between intervals (N-1) unless the source says otherwise. Equal-length repeated work/recovery such as 5x(200m + 200m jog) uses active step, recovery step, then repeat count 5. A ladder with different distances is sequential steps, not one repeat. back_to_offset is the 0-based index of the first repeated step; no nested repeats.",
-                "- Write every stated interval exactly once and in source order. Never duplicate a sequence. Use repeat only when the source gives an explicit repetition count.",
                 "OUTPUT CHECK",
                 "- Emit only the exact workouts YAML schema. Each workout has only filename,name,desc,type_code,distance_km,estimated_duration_min,steps. Use null for unavailable whole-workout distance/duration summaries. filename=name and names are unique.",
                 "- Each step must match one allowed step type and its required fields. No mixed HR and pace targets; pace is a quoted MM:SS string; distances and seconds are positive.",
                 "- Use the date-based name only when the source contains a date. If there is no date, use the fallback N{order}_{Type}_{Details}; never invent a date or week number.",
                 "- Examples show syntax only. Never copy their dates, distances, targets, repetitions, or workout details into this answer.",
             ]
+    if training_text_format:
+        source_rules.insert(
+            7,
+            "- For marked input, emit one non-repeat YAML step per **** ШАГ **** marker in exact order. Omit type: repeat; the app compiles repeat rows from the source markers.",
         )
-    )
+    else:
+        source_rules.insert(
+            7,
+            "- For N work intervals, include exactly N work steps; include recovery only between intervals (N-1) unless the source says otherwise. Equal-length repeated work/recovery such as 5x(200m + 200m jog) uses active step, recovery step, then repeat count 5. A ladder with different distances is sequential steps, not one repeat. back_to_offset is the 0-based index of the first repeated step; no nested repeats.",
+        )
+        source_rules.insert(
+            8,
+            "- Write every stated interval exactly once and in source order. Never duplicate a sequence. Use repeat only when the source gives an explicit repetition count.",
+        )
+    sections.append("\n".join(source_rules))
     return "\n\n".join(section.strip() for section in sections if section.strip())
 
 

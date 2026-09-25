@@ -17,6 +17,38 @@ class TestUnifiedLLMClient(unittest.TestCase):
             {"workouts": [{"desc": "Другое: после бега зал/силовая"}]},
         )
 
+    def test_extract_yaml_preserves_nested_repeat_steps_and_quotes_desc(self):
+        raw = """workouts:
+- filename: N01_Intervals
+  name: N01_Intervals
+  desc: Цель тренировки: скорость
+  type_code: intervals
+  distance_km: null
+  estimated_duration_min: null
+  steps:
+  - type: dist_open
+    dist: 2
+  - type: repeat
+    back_to_offset: 0
+    count: 6
+    steps:
+    - type: dist_open
+      dist: 0.4
+    - type: dist_open
+      dist: 0.2
+  - type: dist_open
+    dist: 1.5
+"""
+
+        candidate = UnifiedLLMClient._extract_yaml(raw)
+        candidate = UnifiedLLMClient._quote_desc_colons(candidate)
+        parsed = yaml.safe_load(candidate)
+        workout = parsed["workouts"][0]
+
+        self.assertEqual(workout["desc"], "Цель тренировки: скорость")
+        self.assertEqual(workout["steps"][1]["count"], 6)
+        self.assertEqual(len(workout["steps"][1]["steps"]), 2)
+
     def test_rejects_non_positive_request_timeout(self):
         with self.assertRaises(ValueError):
             UnifiedLLMClient(

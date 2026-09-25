@@ -60,3 +60,22 @@ class TestLlmPrompt(unittest.TestCase):
 
         self.assertLess(len(targeted_prompt), len(generic_prompt))
         self.assertLess(len(targeted_prompt), 5600)
+
+    def test_marked_input_delegates_repeat_rows_to_application(self):
+        prompt = create_system_prompt(
+            include_text_variations=False,
+            source_text="""==== ТРЕНИРОВКА ==== без даты — Интервалы
+**** ПОВТОР: 4 РАЗ ****
+**** ШАГ ****
+Тип: работа
+Дистанция: 800 м
+**** ШАГ ****
+Тип: восстановление
+Длительность: 2 мин
+**** КОНЕЦ ПОВТОРА ****
+""",
+        )
+
+        self.assertIn("Omit type: repeat; the app compiles repeat rows", prompt)
+        self.assertIn("Не создавай YAML-шаг `type: repeat`", prompt)
+        self.assertNotIn("EXAMPLE intervals", prompt)
