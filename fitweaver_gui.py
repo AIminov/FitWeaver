@@ -1881,8 +1881,14 @@ class App(_AppBase):
             return PlanApiClient(self.api_url.get(), self.api_token.get(), timeout_sec=timeout)
 
         from garmin_fit.llm.client import UnifiedLLMClient
+        # "auto" tries /v1/chat/completions first, which is the only path that
+        # actually sends enable_thinking=False / thinking:disabled -- forcing
+        # "completions" (the raw-text endpoint) skips that entirely, letting
+        # reasoning models like Qwen3 leak "Wait, let me reconsider..." style
+        # thinking text straight into the YAML output. auto still falls back
+        # to raw completions if chat fails or returns unusable content.
         kwargs = {"model": self.llm_model.get(), "base_url": self.llm_url.get(),
-                  "api_type": self.llm_type.get(), "openai_mode": "completions"}
+                  "api_type": self.llm_type.get(), "openai_mode": "auto"}
         if for_generation:
             kwargs["request_timeout_sec"] = max(60, self.llm_timeout.get())
         return UnifiedLLMClient(**kwargs)

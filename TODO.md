@@ -1,6 +1,13 @@
 # TODO — FitWeaver
 
-_Обновлено: 2026-09-25 (детерминированная компиляция repeat и итоговый golden-score)_
+_Обновлено: 2026-09-25 (GUI auto mode и итоговый golden-score)_
+
+## ✅ GUI: выбор endpoint для локальной LLM — 2026-09-25
+
+- ✅ FIXED GUI создаёт `UnifiedLLMClient` с `openai_mode="auto"`: клиент сначала пробует
+  OpenAI-compatible chat endpoint с отключённым reasoning и оставляет completions как fallback.
+- ⏳ Проверить вызов chat endpoint, передачу настройки reasoning и fallback на живом сервере;
+  после этого собрать и запустить GUI exe для smoke-проверки.
 
 ## ✅ Улучшение структурной точности LLM — 2026-09-25
 
