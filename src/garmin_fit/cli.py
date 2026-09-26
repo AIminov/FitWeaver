@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--api", choices=["ollama", "openai"], default="openai")
     doctor_parser.add_argument("--url")
     doctor_parser.add_argument("--model")
-    doctor_parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="completions")
+    doctor_parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="auto")
     doctor_parser.add_argument("--timeout-sec", type=int, default=120)
 
     subparsers.add_parser("archive", help="Archive the current runtime artifacts")
@@ -133,8 +133,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if command == "parse-marked":
         return _parse_marked(args)
     if command == "doctor":
-        doctor_url = args.url or ("http://localhost:11434" if args.api == "ollama" else "http://192.168.1.107:8080/v1")
-        doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
+        doctor_url = args.url or ("http://localhost:11434" if args.api == "ollama" else "http://127.0.0.1:1234/v1")
+        doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "qwen3.8-27b@iq3_xxs")
         return workflow_module.workflow_doctor(
             llm_check=args.llm,
             llm_api=args.api,

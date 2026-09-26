@@ -42,7 +42,8 @@ Plan/*
 # Garmin SDK — Java JARs not needed for Python users
 sdk/java/
 
-# PyInstaller build output (packaging/fitweaver.spec is checked in, this isn't)
+# PyInstaller build output (packaging/fitweaver_gui.spec and fitweaver_cli.spec
+# are checked in, these output dirs are not)
 /dist/
 /build/
 

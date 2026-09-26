@@ -10,13 +10,22 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the floor declared by requires-python and ruff's target-version;
+        # 3.12 is what the maintainer's venv runs; 3.13 is the newest supported.
+        # Without the floor in CI a 3.11+-only construct reaches main unnoticed,
+        # which has happened before (asyncio.to_thread usage on 3.10).
+        python-version: ["3.10", "3.12", "3.13"]
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.13
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
 
       - name: Install dependencies

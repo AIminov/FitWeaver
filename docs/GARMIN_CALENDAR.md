@@ -18,10 +18,11 @@ your watch automatically on the next Garmin Connect sync.
 
 ## Requirements
 
-Install the optional dependency group:
+Install the optional dependency group from your checkout (the package is not published
+on PyPI, so the editable form is the only one that works):
 
 ```bash
-pip install "garmin-fit-generator[garmin-calendar]"
+pip install -e ".[garmin-calendar]"
 ```
 
 Or individually:

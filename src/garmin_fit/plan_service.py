@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from .llm.client import GeneratedYamlResult, UnifiedLLMClient
+from .llm.client import MAX_RETRIES, GeneratedYamlResult, UnifiedLLMClient
 from .llm.prompt import get_sbu_drills_prompt
 from .marked_plan import compile_marked_text, is_marked_plan
 from .plan_domain import plan_from_data
@@ -21,13 +21,14 @@ def build_plan_draft(
     llm_client: UnifiedLLMClient,
     plan_text: str,
     *,
-    max_retries: int = 3,
+    max_retries: int = MAX_RETRIES,
     hr_zones: dict[str, Any] | None = None,
 ) -> GeneratedYamlResult:
     """Generate a previewable YAML draft from raw plan text.
 
     Text in the marked format is compiled deterministically and never reaches
-    the LLM; only free text is sent to ``llm_client``.
+    the LLM; only free text is sent to ``llm_client``. The retry budget defaults
+    to llm.client.MAX_RETRIES so every entry point gets the same number of attempts.
     """
     if is_marked_plan(plan_text):
         return build_marked_plan_draft(plan_text, hr_zones=hr_zones)

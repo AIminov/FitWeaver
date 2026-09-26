@@ -13,7 +13,7 @@ import yaml
 
 from ..config import ARTIFACTS_DIR, PROJECT_ROOT
 from ..plan_validator import validate_plan_data_detailed
-from .client import UnifiedLLMClient
+from .client import MAX_RETRIES, UnifiedLLMClient
 
 DEFAULT_SUITE = PROJECT_ROOT / "tests" / "fixtures" / "llm_benchmark" / "plan_week_2026_03_02.yaml"
 
@@ -251,10 +251,10 @@ def main() -> int:
     parser.add_argument("--suite", type=str, default=str(DEFAULT_SUITE), help="Path to benchmark suite YAML")
     parser.add_argument("--mode", choices=["existing", "generate"], default="existing")
     parser.add_argument("--api", choices=["ollama", "openai"], default="openai")
-    parser.add_argument("--url", type=str, default="http://192.168.1.107:8080/v1")
-    parser.add_argument("--model", type=str, default="/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
-    parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="completions")
-    parser.add_argument("--retries", type=int, default=1)
+    parser.add_argument("--url", type=str, default="http://127.0.0.1:1234/v1")
+    parser.add_argument("--model", type=str, default="qwen3.8-27b@iq3_xxs")
+    parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="auto")
+    parser.add_argument("--retries", type=int, default=MAX_RETRIES, help="Total attempts per workout (default: 2)")
     parser.add_argument("--timeout-sec", type=int, default=1800)
     args = parser.parse_args()
 

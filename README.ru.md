@@ -64,7 +64,7 @@ python fitweaver_gui.py
 
 | Метод | Как | Для чего |
 |-------|-----|----------|
-| **USB** | Копировать `.fit` в `/GARMIN/New files` | Отдельные тренировки, оффлайн |
+| **USB** | Копировать `.fit` в `/GARMIN/NewFiles` | Отдельные тренировки, оффлайн |
 | **Garmin Calendar** | Команда `garmin-calendar` | Целые планы, автоматическое расписание |
 
 ---
@@ -106,7 +106,7 @@ python -m garmin_fit.llm.request_cli \
   --plan Plan/my_plan.md \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
-  --openai-mode completions \
+  --openai-mode auto \
   --timeout-sec 1800
 ```
 
@@ -142,7 +142,7 @@ python -m garmin_fit.cli run
 
 **5.** Подключите часы к компьютеру и скопируйте файлы из `Output_fit/`:
 
-- Скопируйте `.fit`-файлы в папку **`/GARMIN/New files`** на часах
+- Скопируйте `.fit`-файлы в папку **`/GARMIN/NewFiles`** на часах
 - Часы обработают файлы автоматически — они появятся в **`/GARMIN/Workouts`**
 
 На часах:
@@ -193,7 +193,7 @@ python -m garmin_fit.cli run --plan Plan/my_plan.yaml
 
 **5.** Скопируйте файлы из `Output_fit/` на часы:
 
-- Скопируйте `.fit`-файлы в папку **`/GARMIN/New files`** на часах
+- Скопируйте `.fit`-файлы в папку **`/GARMIN/NewFiles`** на часах
 - Часы обработают файлы автоматически — они появятся в **`/GARMIN/Workouts`**
 
 На часах:
@@ -304,7 +304,7 @@ Plan/plan.md   или   Plan/plan.txt
 
 **3.** Сгенерируйте YAML через LLM (LM Studio):
 ```bash
-python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode completions
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode auto
 ```
 
 Если количество тренировок не определяется автоматически, укажите явно:
@@ -327,7 +327,7 @@ python -m garmin_fit.cli run
 
 Файлы появятся в `Output_fit/`.
 
-- Скопируйте `.fit`-файлы в папку **`/GARMIN/New files`** на часах
+- Скопируйте `.fit`-файлы в папку **`/GARMIN/NewFiles`** на часах
 - Часы обработают их автоматически — тренировки появятся в **`/GARMIN/Workouts`**
 
 ---

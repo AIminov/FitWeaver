@@ -15,6 +15,10 @@
    ```
 5. Безопасно извлеките часы — тренировки появятся в меню **«Тренировки»**
 
+> **Про имя папки:** на большинстве моделей она называется `NewFiles`, но часть
+> устройств (особенно в режиме MTP) показывает её как `New Files` — с пробелом.
+> Если точного совпадения нет, ищите папку с похожим именем внутри `Garmin`.
+
 > **Примечание:** некоторые модели часов могут не отображаться как накопитель автоматически — в этом случае используйте Garmin Express (см. ниже).
 
 ---
@@ -62,6 +66,10 @@
    Garmin / NewFiles /
    ```
 5. Safely eject the watch — workouts will appear under **Training**
+
+> **About the folder name:** most models call it `NewFiles`, but some devices
+> (particularly in MTP mode) show it as `New Files`, with a space. If neither
+> matches exactly, look for the similarly named folder inside `Garmin`.
 
 > **Note:** some watch models may not appear as a drive automatically — use Garmin Express in that case (see below).
 

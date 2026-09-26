@@ -64,7 +64,7 @@ The full workflow requires no intermediate Python templates.
 
 | Method | How | Best for |
 |--------|-----|----------|
-| **USB** | Copy `.fit` to `/GARMIN/New files` | Single workouts, offline |
+| **USB** | Copy `.fit` to `/GARMIN/NewFiles` | Single workouts, offline |
 | **Garmin Calendar** | `garmin-calendar` CLI command | Full plans, automatic scheduling |
 
 ---
@@ -106,7 +106,7 @@ python -m garmin_fit.llm.request_cli \
   --plan Plan/my_plan.md \
   --api openai \
   --url http://127.0.0.1:1234/v1 \
-  --openai-mode completions \
+  --openai-mode auto \
   --timeout-sec 1800
 ```
 
@@ -142,7 +142,7 @@ python -m garmin_fit.cli run
 
 **5.** Connect your Garmin watch and copy files from `Output_fit/`:
 
-- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Copy `.fit` files to the **`/GARMIN/NewFiles`** folder on the watch
 - The watch will process the files automatically — they will appear in **`/GARMIN/Workouts`**
 
 On the watch:
@@ -193,7 +193,7 @@ python -m garmin_fit.cli run --plan Plan/my_plan.yaml
 
 **6.** Copy files from `Output_fit/` to your watch:
 
-- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Copy `.fit` files to the **`/GARMIN/NewFiles`** folder on the watch
 - The watch will process the files automatically — they will appear in **`/GARMIN/Workouts`**
 
 On the watch:
@@ -305,7 +305,7 @@ Plan/plan.md   or   Plan/plan.txt
 
 **3.** Generate YAML via LLM (LM Studio):
 ```bash
-python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode completions
+python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --openai-mode auto
 ```
 
 If workout count is not auto-detected, specify explicitly:
@@ -328,7 +328,7 @@ python -m garmin_fit.cli run
 
 Files will appear in `Output_fit/`.
 
-- Copy `.fit` files to the **`/GARMIN/New files`** folder on the watch
+- Copy `.fit` files to the **`/GARMIN/NewFiles`** folder on the watch
 - The watch will process them automatically — workouts will appear in **`/GARMIN/Workouts`**
 
 ---
@@ -430,8 +430,8 @@ Any OpenAI-compatible server works. Set **Type = openai** and point the URL to t
 ### Running with llama-server (llama.cpp)
 
 ```powershell
-# Download and run a model directly from Hugging Face
-llama-server -hf ggml-org/gemma-4-12B-it-GGUF:Q4_K_M `
+# Run your downloaded GGUF model (replace the path)
+llama-server -m C:\Models\your-model.gguf `
   --host 127.0.0.1 `
   --port 8080 `
   -c 32768 `

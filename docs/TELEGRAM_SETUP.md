@@ -1,22 +1,30 @@
 # Telegram Bot Setup — FitWeaver
 
-Telegram-бот принимает текстовый план тренировок, генерирует YAML через локальную LLM (LM Studio или Ollama), показывает preview, собирает FIT-файлы и предлагает два варианта доставки: ZIP-архив или прямую загрузку в Garmin Connect Calendar.
+Telegram-бот принимает текстовый план тренировок, генерирует YAML через **Plan API**, показывает preview, собирает FIT-файлы и предлагает два варианта доставки: ZIP-архив или прямую загрузку в Garmin Connect Calendar.
+
+> **Важно:** бот **не подключается к LLM напрямую.** Он вызывает запущенный экземпляр
+> Plan API (`src/garmin_fit/api/`), а уже тот ходит к LM Studio/Ollama. Это тот же
+> сервис, который использует режим «LLM автора» в десктопном GUI. Поэтому настройка
+> состоит из двух частей: сначала поднимается Plan API, затем бот направляется на него.
 
 ## Быстрый старт
 
 ### 1. Установите зависимости
 
 ```powershell
-pip install -e ".[garmin-calendar]"
+pip install -e ".[api,garmin-calendar]"
 ```
+
+`api` нужен для Plan API, `garmin-calendar` — для загрузки в Garmin Connect.
 
 ### 2. Настройте LLM-сервер
 
 **Вариант A: LM Studio (рекомендуется)**
 
 1. Скачайте [LM Studio](https://lmstudio.ai/)
-2. Загрузите модель (например, `gemma-4-e4b` или `qwen2.5-9b-instruct`)
+2. Загрузите модель (канон проекта — `qwen3.8-27b@iq3_xxs`)
 3. Запустите Local Server на порту 1234
+4. Точный ID модели возьмите из `GET /v1/models` — он должен совпадать с `llm_model` ниже
 
 **Вариант B: Ollama**
 
@@ -25,47 +33,68 @@ ollama pull gemma2:2b
 ollama serve
 ```
 
-### 3. Создайте `bot_config.yaml`
+### 3. Настройте и запустите Plan API
 
-**LM Studio:**
+```powershell
+copy api_config.yaml.example api_config.yaml
+```
+
+Заполните в `api_config.yaml`:
 
 ```yaml
-telegram_bot_token: "YOUR_BOT_TOKEN"
+api_token: "ПРИДУМАЙТЕ_ДЛИННЫЙ_СЛУЧАЙНЫЙ_ТОКЕН"   # или env FITWEAVER_API_TOKEN
+host: "127.0.0.1"
+port: 8008
 
-llm_model: "gemma-4-e4b"
-llm_url: "http://127.0.0.1:1234"
+llm_url: "http://127.0.0.1:1234/v1"
+llm_model: "qwen3.8-27b@iq3_xxs"
 llm_api_type: "openai"
-
-allowed_user_ids: []
 ```
 
-**Ollama:**
+Запустите:
+
+```powershell
+garmin-fit-api
+```
+
+Проверка: `GET http://127.0.0.1:8008/v1/health` с заголовком `X-Api-Token`.
+
+> **Безопасность:** никогда не выставляйте `llm_url` (сам LLM-сервер) в интернет
+> напрямую — только через Plan API, у которого есть токен и rate limit. Если порт API
+> доступен извне localhost, это обязательное требование, а не рекомендация.
+
+### 4. Создайте `bot_config.yaml`
 
 ```yaml
 telegram_bot_token: "YOUR_BOT_TOKEN"
 
-llm_model: "gemma2:2b"
-llm_url: "http://localhost:11434"
-llm_api_type: "ollama"
+plan_api_url: "http://127.0.0.1:8008"
+plan_api_token: "ТОТ_ЖЕ_ТОКЕН_ЧТО_api_token_В_api_config.yaml"
 
 allowed_user_ids: []
 ```
 
-| Параметр | Описание |
-|----------|----------|
-| `telegram_bot_token` | Токен от @BotFather |
-| `llm_model` | Название модели |
-| `llm_url` | URL LLM-сервера |
-| `llm_api_type` | `"openai"` для LM Studio, `"ollama"` для Ollama |
-| `allowed_user_ids` | Whitelist Telegram user ID (пустой = все) |
+| Параметр | Обязателен | Описание |
+|----------|:---:|----------|
+| `telegram_bot_token` | да | Токен от @BotFather |
+| `plan_api_url` | да | Базовый URL запущенного Plan API |
+| `plan_api_token` | да | Должен совпадать с `api_token` в `api_config.yaml` |
+| `allowed_user_ids` | нет | Whitelist Telegram user ID (пустой = все) |
+| `session_timeout_sec` | нет | Сброс сессии по бездействию (по умолчанию 1200) |
 
-### 4. Запустите бота
+Больше никаких ключей бот не читает. В частности, `llm_model` / `llm_url` /
+`llm_api_type` в `bot_config.yaml` **не используются** — эти настройки живут в
+`api_config.yaml`, на стороне Plan API.
+
+### 5. Запустите бота
 
 ```powershell
 python -m garmin_fit.bot
 ```
 
-При старте бот проверяет наличие `bot_config.yaml` и доступ на запись в директории `Plan/`, `Output_fit/`, `Archive/`, `Build_artifacts/`.
+При старте бот требует в `bot_config.yaml` ключи `telegram_bot_token`, `plan_api_url`
+и `plan_api_token` — без любого из них он завершится с ошибкой. Также проверяется
+доступ на запись в директории `Plan/`, `Output_fit/`, `Archive/`, `Build_artifacts/`.
 
 ---
 
@@ -264,11 +293,28 @@ telegram_bot.py
 
 ## Troubleshooting
 
+### `Missing required key in bot_config.yaml`
+
+Бот требует ровно три ключа: `telegram_bot_token`, `plan_api_url`, `plan_api_token`.
+Если вы переносите конфиг со старой версии, где были `llm_model` / `llm_url` /
+`llm_api_type`, — эти ключи больше не используются, а `plan_api_*` нужно добавить.
+Настройки LLM переехали в `api_config.yaml` (см. шаг 3).
+
+### `Не удаётся подключиться к сервису генерации планов (Plan API)`
+
+Сообщение `api_unreachable` означает, что не отвечает **Plan API**, а не LLM.
+
+- Запущен ли `garmin-fit-api`? Процесс должен работать отдельно от бота.
+- Совпадает ли `plan_api_url` с `host`/`port` из `api_config.yaml` (по умолчанию `http://127.0.0.1:8008`)?
+- Совпадает ли `plan_api_token` с `api_token` в `api_config.yaml`? При несовпадении API вернёт 401.
+- Если API на другой машине — в `api_config.yaml` нужен `host: "0.0.0.0"`, а порт должен быть открыт.
+
 ### `Empty response from LLM` / `Cannot connect to LLM server`
 
-**LM Studio — частая причина:** неверный URL в `bot_config.yaml`.
+Это сообщение (`llm_no_connect`) приходит, когда Plan API **отвечает**, но LLM за ним —
+нет. Настройки правьте в `api_config.yaml`, не в `bot_config.yaml`.
 
-LM Studio обслуживает API по пути `/v1/`. Бот автоматически добавляет `/v1` если его нет, поэтому оба варианта корректны:
+LM Studio обслуживает API по пути `/v1/`. `/v1` дописывается автоматически, если его нет, поэтому оба варианта корректны:
 
 ```yaml
 llm_url: "http://127.0.0.1:1234"       # /v1 будет добавлен автоматически
@@ -278,6 +324,8 @@ llm_url: "http://127.0.0.1:1234/v1"    # явно — тоже верно
 Также проверьте:
 - Local Server запущен и модель загружена в LM Studio?
 - Порт 1234 (по умолчанию)?
+- `llm_model` совпадает с точным ID из `GET /v1/models`? Например `qwen3.8-27b@iq3_xxs`,
+  а не `qwen3.8-27b` — иначе запрос уйдёт несуществующей модели.
 - В логах LM Studio должно быть `POST /v1/chat/completions`, а не `POST /chat/completions`
 
 **Ollama:**
@@ -378,9 +426,21 @@ Garmin временно блокирует частые попытки вход�
 
 ---
 
-## Обратная совместимость
+## Миграция со старых версий
 
-Старые ключи конфигурации (`ollama_model`, `ollama_url`) поддерживаются и автоматически маппятся на новые (`llm_model`, `llm_url`).
+До перехода на Plan API бот подключался к LLM напрямую и читал из `bot_config.yaml`
+ключи `llm_model` / `llm_url` / `llm_api_type` (а ещё раньше — `ollama_model` /
+`ollama_url`). Сейчас **ни один из них не читается**.
+
+Что сделать при обновлении:
+
+1. Поднять Plan API (шаг 3) и перенести туда `llm_url` / `llm_model` / `llm_api_type`
+   из старого `bot_config.yaml` — в `api_config.yaml` они называются так же.
+2. Добавить в `bot_config.yaml` пары `plan_api_url` / `plan_api_token`.
+3. Старые `llm_*`-ключи можно удалить — они игнорируются.
+
+Причина изменения: вся логика repair/валидации плана живёт в `plan_service.py` и должна
+выполняться ровно один раз, внутри процесса API, а не дублироваться в боте и GUI.
 
 ---
 

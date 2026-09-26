@@ -5,7 +5,7 @@ Usage:
     python -m garmin_fit.llm.request_cli
     python -m garmin_fit.llm.request_cli --plan Plan/plan.txt --output Plan/plan.yaml
     python -m garmin_fit.llm.request_cli --api openai --url http://localhost:1234/v1
-    python -m garmin_fit.llm.request_cli --api openai --openai-mode completions
+    python -m garmin_fit.llm.request_cli --api openai --openai-mode auto
 """
 
 import argparse
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from ..config import PLAN_DIR
-from .client import UnifiedLLMClient
+from .client import MAX_RETRIES, UnifiedLLMClient
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -66,11 +66,11 @@ def main():
     )
     parser.add_argument(
         "--model", type=str, default=None,
-        help="Model name (default: gemma2:2b for ollama, qwen3.8-27b for openai)"
+        help="Model name (default: gemma2:2b for ollama, qwen3.8-27b@iq3_xxs for openai)"
     )
     parser.add_argument(
-        "--retries", type=int, default=3,
-        help="Max retry attempts for validation"
+        "--retries", type=int, default=MAX_RETRIES,
+        help="Maximum total attempts per workout, including the initial request (default: 2)"
     )
     parser.add_argument(
         "--openai-mode",
@@ -104,12 +104,12 @@ def main():
     if args.url is None:
         args.url = (
             "http://localhost:11434" if args.api == "ollama"
-            else "http://192.168.1.107:8080/v1"
+            else "http://127.0.0.1:1234/v1"
         )
     if args.model is None:
         args.model = (
             "gemma2:2b" if args.api == "ollama"
-            else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf"
+            else "qwen3.8-27b@iq3_xxs"
         )
 
     logger.info("=" * 70)
@@ -130,23 +130,8 @@ def main():
 
     logger.info(f"Plan file: {plan_path.name} ({len(plan_text)} chars)")
 
-    # Resolve expected workout count
+    # Only an explicit user hint is binding; free-form input needs no count.
     workouts_hint = args.workouts
-    if workouts_hint == 0:
-        from ..plan_processing import normalize_source_text
-        analysis = normalize_source_text(plan_text)
-        if analysis.expected_workouts > 0:
-            logger.info(f"Auto-detected workout count: {analysis.expected_workouts}")
-            workouts_hint = analysis.expected_workouts
-        else:
-            logger.info("Could not auto-detect workout count from plan structure.")
-            try:
-                raw = input("How many workouts does the plan contain? (Enter to skip): ").strip()
-                if raw.isdigit() and int(raw) > 0:
-                    workouts_hint = int(raw)
-                    logger.info(f"Using user-supplied workout count: {workouts_hint}")
-            except EOFError:
-                pass  # non-interactive context — proceed without hint
 
     # Generate YAML
     client = UnifiedLLMClient(

@@ -12,12 +12,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..llm.client import GeneratedYamlResult
+from ..llm.client import MAX_RETRIES, GeneratedYamlResult
 
 
 class GenerateDraftRequest(BaseModel):
     plan_text: str = Field(min_length=1)
-    max_retries: int = Field(default=3, ge=1, le=10)
+    # Default comes from llm.client.MAX_RETRIES so every entry point (CLI, GUI,
+    # bot via this API) shares one retry budget -- see the note there.
+    max_retries: int = Field(default=MAX_RETRIES, ge=1, le=10)
 
 
 class ApplySbuChoiceRequest(BaseModel):
