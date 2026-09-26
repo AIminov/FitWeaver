@@ -1756,13 +1756,18 @@ class App(_AppBase):
             return
         cmd = self._cli_command(args)
         self._log(f"\n$ garmin_fit.cli {' '.join(args)}")
+        env = None
+        if args and args[0].startswith("garmin-calendar") and self.pass_var.get():
+            # The password travels only in the child's environment: never on the
+            # command line (visible to other processes) and never in the log.
+            env = {**os.environ, "GARMIN_PASSWORD": self.pass_var.get()}
 
         def worker():
             try:
                 proc = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace",
-                    cwd=PROJECT_ROOT,
+                    cwd=PROJECT_ROOT, env=env,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
                 for line in proc.stdout:
@@ -1801,7 +1806,6 @@ class App(_AppBase):
 
     def _append_garmin_args(self, args):
         if self.email_var.get(): args += ["--email",     self.email_var.get()]
-        if self.pass_var.get():  args += ["--password",  self.pass_var.get()]
         if self.year_var.get():  args += ["--year",      self.year_var.get()]
         if self.from_var.get():  args += ["--from-date", self.from_var.get()]
         if self.to_var.get():    args += ["--to-date",   self.to_var.get()]
