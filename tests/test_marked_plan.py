@@ -289,6 +289,22 @@ class IntegrationTests(unittest.TestCase):
             source.write_text("**** ШАГ ****\n", encoding="utf-8")
             self.assertEqual(cli.main(["parse-marked", str(source)]), 1)
 
+    def test_llm_request_cli_compiles_marked_text_without_a_model(self):
+        from unittest.mock import patch
+
+        from garmin_fit.llm import request_cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "plan.txt"
+            output = Path(tmp) / "plan.yaml"
+            source.write_text(THRESHOLD, encoding="utf-8")
+            argv = ["request_cli", "--plan", str(source), "--output", str(output)]
+            no_llm = patch.object(request_cli, "UnifiedLLMClient", side_effect=AssertionError("LLM used"))
+            with patch("sys.argv", argv), no_llm:
+                self.assertTrue(request_cli.main())
+            data = yaml.safe_load(output.read_text(encoding="utf-8"))
+        self.assertEqual(len(data["workouts"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

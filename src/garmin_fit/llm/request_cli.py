@@ -13,7 +13,7 @@ import logging
 import sys
 from pathlib import Path
 
-from ..config import PLAN_DIR
+from ..config import ARTIFACTS_DIR, PLAN_DIR
 from .client import MAX_RETRIES, UnifiedLLMClient
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -133,18 +133,39 @@ def main():
     # Only an explicit user hint is binding; free-form input needs no count.
     workouts_hint = args.workouts
 
-    # Generate YAML
-    client = UnifiedLLMClient(
-        model=args.model,
-        base_url=args.url,
-        api_type=args.api,
-        openai_mode=args.openai_mode,
-        request_timeout_sec=args.timeout_sec,
-    )
+    from ..marked_plan import is_marked_plan
 
-    yaml_output = client.generate_yaml_from_plan(
-        plan_text, max_retries=args.retries, workouts_hint=workouts_hint
-    )
+    if is_marked_plan(plan_text):
+        # The marked format is compiled deterministically -- no model needed.
+        from ..plan_service import build_marked_plan_draft
+
+        logger.info("Marked plan format detected: compiling without the LLM")
+        draft = build_marked_plan_draft(plan_text)
+        for warning in draft.warnings:
+            logger.warning(f"  {warning}")
+        for error in draft.validation_errors:
+            logger.error(f"  {error}")
+        yaml_output = draft.yaml_text
+    else:
+        client = UnifiedLLMClient(
+            model=args.model,
+            base_url=args.url,
+            api_type=args.api,
+            openai_mode=args.openai_mode,
+            request_timeout_sec=args.timeout_sec,
+            segment_cache_dir=ARTIFACTS_DIR / "llm_segment_cache",
+        )
+        draft = client.generate_yaml_draft(
+            plan_text, max_retries=args.retries, workouts_hint=workouts_hint
+        )
+        for warning in draft.warnings:
+            logger.warning(f"  {warning}")
+        if draft.failed_segments:
+            logger.warning(
+                f"{len(draft.failed_segments)} workout(s) were not generated; the others are saved. "
+                "Fix those source blocks and re-run: finished workouts come from the cache."
+            )
+        yaml_output = draft.yaml_text
 
     if not yaml_output:
         logger.error("Failed to generate valid YAML")

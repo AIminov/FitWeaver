@@ -5,10 +5,11 @@ on:
     branches: ["main", "master"]
   pull_request:
     branches: ["main", "master"]
+  workflow_dispatch:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
@@ -17,7 +18,13 @@ jobs:
         # 3.12 is what the maintainer's venv runs; 3.13 is the newest supported.
         # Without the floor in CI a 3.11+-only construct reaches main unnoticed,
         # which has happened before (asyncio.to_thread usage on 3.10).
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.12", "3.13"]
+        include:
+          # The desktop app ships for Windows: run the suite there too
+          # (paths, encodings, line endings).
+          - os: windows-latest
+            python-version: "3.13"
 
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +36,62 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
+        # The api extra is needed, otherwise the Plan API tests are skipped.
         run: |
-          pip install --upgrade pip
-          pip install -e ".[dev]"
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,api]"
 
       - name: Lint with ruff
         run: ruff check .
 
       - name: Run tests
         run: pytest --tb=short -q
+
+  package-windows:
+    # Build both PyInstaller exes and smoke-test them: a module missing from
+    # the frozen build, or code that only works with a real interpreter
+    # (e.g. `sys.executable -m`), only shows up here.
+    runs-on: windows-latest
+    needs: lint-and-test
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Build exes
+        shell: pwsh
+        run: ./packaging/build.ps1
+
+      - name: Smoke-test CLI exe
+        shell: pwsh
+        run: |
+          ./dist/garmin-fit-cli.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "--help failed" }
+          ./dist/garmin-fit-cli.exe validate-yaml --plan tests/fixtures/direct_pipeline_basic.yaml
+          if ($LASTEXITCODE -ne 0) { throw "validate-yaml failed" }
+          ./dist/garmin-fit-cli.exe parse-marked examples/marked_plan_example.txt --year 2026
+          if ($LASTEXITCODE -ne 0) { throw "parse-marked failed" }
+          # Runs a workflow step (archive_manager.main) in-process inside the frozen exe.
+          ./dist/garmin-fit-cli.exe list-archives
+          if ($LASTEXITCODE -ne 0) { throw "list-archives failed" }
+
+      - name: Smoke-test GUI exe starts
+        shell: pwsh
+        run: |
+          $gui = Start-Process -FilePath ./dist/FitWeaver.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($gui.HasExited) { throw "FitWeaver.exe exited with code $($gui.ExitCode)" }
+          Stop-Process -Id $gui.Id -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fitweaver-windows
+          path: |
+            dist/FitWeaver.exe
+            dist/garmin-fit-cli.exe
+          retention-days: 14
