@@ -636,7 +636,22 @@ def main() -> int:
     parser.add_argument("--timeout-sec", type=int, default=1800)
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--output-root", type=Path, default=None)
+    parser.add_argument(
+        "--suite-from-golden",
+        nargs="?",
+        const="",
+        metavar="GOLDEN_YAML",
+        help="Write a suite (inputs + expected steps) from the golden dataset and exit",
+    )
     args = parser.parse_args()
+    if args.suite_from_golden is not None:
+        from .golden import DEFAULT_GOLDEN_PATH, build_suite_from_golden
+
+        golden = Path(args.suite_from_golden) if args.suite_from_golden else DEFAULT_GOLDEN_PATH
+        out_dir = (args.output_root or (ARTIFACTS_DIR / "llm_eval")) / "golden_suite"
+        suite_path = build_suite_from_golden(golden, out_dir)
+        print(f"Suite written: {suite_path}")
+        return 0
     if args.compare:
         output_root = args.output_root or (ARTIFACTS_DIR / "llm_eval")
         comparison, comparison_path = compare_reports(

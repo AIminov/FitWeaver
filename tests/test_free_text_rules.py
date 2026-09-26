@@ -6,6 +6,7 @@ import yaml
 
 from garmin_fit.free_text_rules import free_text_to_marked, parse_workout_with_rules
 from garmin_fit.llm.client import UnifiedLLMClient
+from garmin_fit.llm.golden import compare_to_canonical
 
 GOLDEN = Path(__file__).resolve().parents[1] / "docs" / "golden_dataset" / "golden_examples_v1.yaml"
 
@@ -92,29 +93,11 @@ class FreeTextRulesTests(unittest.TestCase):
                 if workout is None:
                     continue
                 parsed_valid += 1
-                got = [_facts(step) for step in workout["steps"]]
-                want = [_facts(step) for step in group["canonical"]["workouts"][0]["steps"]]
-                self.assertEqual(len(got), len(want), variant["id"])
-                for ours, reference in zip(got, want):
-                    self.assertEqual(ours[:-1], reference[:-1], variant["id"])
-                    self.assertIn(ours[-1], (reference[-1], None), variant["id"])
+                problems = compare_to_canonical(
+                    workout["steps"], group["canonical"]["workouts"][0]["steps"]
+                )
+                self.assertEqual(problems, [], variant["id"])
         self.assertGreaterEqual(parsed_valid, 15)
-
-
-def _facts(step):
-    """(kind, measure..., target) of a YAML step; target None when absent."""
-    if step["type"] == "repeat":
-        return ("repeat", step["back_to_offset"], step["count"], None)
-    if step["type"] == "sbu_block":
-        drills = tuple((d["name"], d.get("seconds"), d.get("reps")) for d in step.get("drills") or [])
-        return ("sbu", drills, None)
-    target = None
-    if "hr_low" in step and step["hr_low"] != 80:
-        target = ("hr", step["hr_low"], step["hr_high"])
-    elif "pace_fast" in step:
-        target = ("pace", step["pace_fast"], step["pace_slow"])
-    km = round(float(step["km"]), 3) if step.get("km") is not None else None
-    return ("step", km, step.get("seconds"), target)
 
 
 class RulesInClientTests(unittest.TestCase):

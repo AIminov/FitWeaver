@@ -168,6 +168,19 @@ def evaluate_case_expectations(
             )
         )
 
+    expected_steps = case.get("expected_steps")
+    if isinstance(expected_steps, list) and len(workouts) == 1 and isinstance(workouts[0], dict):
+        from .golden import compare_to_canonical
+
+        problems = compare_to_canonical(workouts[0].get("steps") or [], expected_steps)
+        results.append(
+            CheckResult(
+                severity="error",
+                passed=not problems,
+                message="steps match the reference" if not problems else "; ".join(problems[:3]),
+            )
+        )
+
     for check in case.get("checks", []):
         result = evaluate_single_check(workouts, check)
         results.append(result)

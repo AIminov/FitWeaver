@@ -43,6 +43,23 @@ cases:
         equals: dist_repeat
 ```
 
+## Golden suite
+
+Build a suite from the golden dataset (`docs/golden_dataset/golden_examples_v1.yaml`): one input
+per valid single-workout text variant, each with `expected_steps` from the reference YAML.
+
+```powershell
+garmin-fit-llm-eval --suite-from-golden            # -> Build_artifacts/llm_eval/golden_suite/suite.yaml
+garmin-fit-llm-eval --suite Build_artifacts\llm_eval\golden_suite\suite.yaml --mode live `
+  --api ollama --url http://localhost:11434 --model "qwen3:8b"
+```
+
+`expected_steps` is checked fact by fact (`llm/golden.py`): step kinds, distances/durations and
+repeat structure must match; a target may be missing (the reference sometimes adds targets the
+text does not state) but never different. The reference's `hr_low: 80` for an upper-only cap
+counts as "no target". The harness never enables the deterministic rules
+(`free_text_rules.py`), so scores measure the model.
+
 ## Commands
 
 Score saved responses without calling a model:
