@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from .garmin_step_mapper import extract_date_from_filename, map_workout
+from .garmin_step_mapper import StepMappingError, extract_date_from_filename, map_workout
 from .plan_domain import Workout, WorkoutPlan
 
 logger = logging.getLogger(__name__)
@@ -228,7 +228,12 @@ class GarminCalendarExporter:
         )
 
         if dry_run:
-            payload = map_workout(workout, self._language)
+            try:
+                payload = map_workout(workout, self._language)
+            except StepMappingError as exc:
+                result.error = str(exc)
+                logger.error("Cannot build payload for %r: %s", result.filename, exc)
+                return result
             step_count = len(
                 payload.get("workoutSegments", [{}])[0].get("workoutSteps", [])
             )

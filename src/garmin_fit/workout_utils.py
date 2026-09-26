@@ -65,7 +65,9 @@ def km_to_dist(km):
     Example:
         km_to_dist(2.0) -> 200  # 2km = 2000m = 200 FIT units
     """
-    return int(km * 100)
+    # round, not int(): float products like 1.15 * 100 = 114.999... would
+    # otherwise truncate to 114 and shorten the step by 10 m on the watch.
+    return int(round(km * 100))
 
 
 def sec_to_time(seconds):
@@ -81,7 +83,7 @@ def sec_to_time(seconds):
     Example:
         sec_to_time(60) -> 60000  # 60 seconds = 60000 ms
     """
-    return int(seconds * 1000)
+    return int(round(seconds * 1000))
 
 
 def bpm_to_fit_hr(bpm):

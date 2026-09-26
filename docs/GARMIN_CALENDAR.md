@@ -218,13 +218,26 @@ FitWeaver extracts the workout date from the filename pattern:
 W11_03-14_Sat_Long_14km  →  YYYY-03-14
 ```
 
-Year selection:
-- If the date hasn't passed yet → current year.
-- If the date has already passed → next year.
+Year selection (no `--year`):
+- Candidates are last, this and next year; years whose weekday matches the
+  `Day` token (`Sat` above) are preferred.
+- Among them the date closest to today wins, so a workout from yesterday stays
+  in the past (and `--skip-past` skips it) instead of moving a year ahead, and a
+  January workout planned in September goes to next year.
 - Use `--year YEAR` to override.
 
-If the date cannot be extracted from a filename, that workout is uploaded
+If the date cannot be extracted from a filename, or is not a real date
+(e.g. `02-30`, or `02-29` outside a leap year), that workout is uploaded
 without scheduling (a warning is logged).
+
+## Payload safety
+
+- Nested repeats (e.g. 3 sets of 4 × 400 m) become nested `RepeatGroupDTO`s with
+  each body exactly once — the same execution order as the FIT file
+  (`tests/test_fit_garmin_equivalence.py` checks this).
+- A step that cannot be mapped (unknown type, missing field, overlapping repeat
+  ranges) fails that workout with a `StepMappingError` naming `steps[i]`; the
+  workout is never uploaded with a step missing.
 
 ---
 

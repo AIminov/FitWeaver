@@ -18,6 +18,18 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-26 (продолжение) — исправления Garmin Connect и FIT
+`garmin_step_mapper.map_steps` переписан: плоские YAML-повторы складываются в дерево стеком
+(узел = диапазон YAML-индексов), вложенные группы содержат тело ровно один раз, пересекающиеся
+диапазоны → `StepMappingError`; язык передаётся в СБУ внутри повторов. Непреобразуемый шаг
+больше не выкидывается молча — `StepMappingError` с `steps[i]`, загрузка этой тренировки
+помечается ошибкой (и в dry-run). `extract_date_from_filename` выбирает год из прошлый/текущий/
+следующий по токену дня недели и близости к сегодня; невозможные даты → None. Найдено попутно:
+`km_to_dist` обрезал float (`int(1.15*100)=114`) — 287 дистанций с шагом 10 м были на 10 м
+короче на часах; теперь `round`. Добавлен `tests/test_fit_garmin_equivalence.py`: исполняет FIT
+и Garmin payload одного YAML и сравнивает. Старые тесты, закреплявшие ошибки, переписаны.
+Дедупликация загрузки отложена (нужен UI-выбор «пропустить/заменить»). 404 passed.
+
 ### 2026-09-26 — детерминированный парсер размеченного формата
 Аудит проекта (тесты и ruff чистые) нашёл три ошибки Garmin Connect: вложенный repeat дублирует
 тело внутренней группы в `garmin_step_mapper._map_repeat` (тест закрепляет это как норму);
@@ -1171,10 +1183,8 @@ smoke-тест (headless `App()`: 3 панели в PanedWindow, hint сраба
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed 2026-09-26, start here):**
-1. Fix Garmin Connect correctness bugs found in the 2026-09-26 review: nested `repeat` duplicates
-   the inner body in `garmin_step_mapper._map_repeat`; `extract_date_from_filename` rolls past
-   dates to next year (breaks `skip_past`, crashes on 02-29); the mapper silently drops steps it
-   cannot map. Add a YAML → FIT vs Garmin-payload equivalence test.
+1. Garmin upload de-duplication: re-uploading a plan creates duplicate workouts/schedules
+   (check the calendar first, offer skip/replace). The 2026-09-26 correctness bugs are fixed.
 2. LLM path for free text: make the model emit a short line format (or marked text) that
    `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
    (~2.6 tok/s measured). Compare on the golden suite with `garmin-fit-llm-eval`.
@@ -1204,7 +1214,7 @@ pip install -e ".[build]"        # add PyInstaller -- needed to package the desk
 ## Common Commands
 
 ```bash
-# Run all tests (390 passed with the api extra, as of 2026-09-26)
+# Run all tests (404 passed with the api extra, as of 2026-09-26)
 python3 -m pytest tests/
 
 # Run a single test file

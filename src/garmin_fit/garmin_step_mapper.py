@@ -13,12 +13,13 @@ time_pace  → time + pace (speed) target
 dist_open  → distance, no target
 time_step  → time, no target (recovery / rest)
 open_step  → converted to 60 s recovery (lap-button not supported by REST API)
-repeat     → RepeatGroupDTO wrapping steps from back_to_offset..current
+repeat     → RepeatGroupDTO wrapping steps from back_to_offset..current (nesting supported)
 sbu_block  → RepeatGroupDTO list (one repeat group per drill, with step notes)
 """
 
 from __future__ import annotations
 
+import datetime
 import logging
 import re
 from typing import Any
@@ -329,54 +330,12 @@ def _map_sbu_block(step: WorkoutStep, order: int, language: str = "ru") -> list[
     return groups
 
 
-# ---------------------------------------------------------------------------
-# Repeat step
-# ---------------------------------------------------------------------------
+class StepMappingError(ValueError):
+    """A workout step cannot be represented in a Garmin payload.
 
-def _map_repeat(
-    step: WorkoutStep,
-    order: int,
-    all_steps: list[WorkoutStep],
-    current_idx: int,
-    base_idx: int = 0,
-) -> dict[str, Any]:
+    Raised instead of skipping the step: uploading a workout with a silently
+    missing step is worse than failing that workout with a clear reason.
     """
-    repeat → RepeatGroupDTO.
-
-    back_to_offset is a YAML-level 0-based index.
-    We wrap the steps from back_to_offset..current_idx-1.
-    """
-    back_to = int(step.back_to_offset) - base_idx
-    count = int(step.count)
-
-    # Collect the steps that form the body of the repeat group.
-    # These are all steps between back_to_offset and the repeat step itself.
-    body_steps_domain = all_steps[back_to:current_idx]
-
-    child_steps: list[dict[str, Any]] = []
-    for child_order, child in enumerate(body_steps_domain, start=1):
-        mapped = _map_single_step(
-            child,
-            child_order,
-            body_steps_domain,
-            child_order - 1,
-            base_idx=base_idx + int(step.back_to_offset),
-        )
-        if mapped is not None:
-            # Flatten nested repeat groups into the child list
-            if isinstance(mapped, list):
-                child_steps.extend(mapped)
-            else:
-                child_steps.append(mapped)
-
-    for child_order, child_step in enumerate(child_steps, start=1):
-        child_step["stepOrder"] = child_order
-
-    return _repeat_group(
-        step_order=order,
-        iterations=count,
-        child_steps=child_steps,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -393,36 +352,28 @@ _MAPPERS = {
     "dist_open": _map_dist_open,
     "time_step": _map_time_step,
     "open_step": _map_open_step,
-    "sbu_block": _map_sbu_block,
 }
 
 
 def _map_single_step(
     step: WorkoutStep,
     order: int,
-    all_steps: list[WorkoutStep],
-    current_idx: int,
+    index: int,
     language: str = "ru",
-    base_idx: int = 0,
-) -> dict[str, Any] | list[dict[str, Any]] | None:
+) -> list[dict[str, Any]]:
+    """Map one non-repeat YAML step; sbu_block expands to several groups."""
     stype = step.step_type
-    if stype == "repeat":
-        return _map_repeat(step, order, all_steps, current_idx, base_idx)
-    if stype == "sbu_block":
-        try:
-            return _map_sbu_block(step, order, language)
-        except Exception as exc:
-            logger.warning("Failed to map sbu_block (order %d): %s", order, exc)
-            return None
-    mapper = _MAPPERS.get(stype or "")
-    if mapper is None:
-        logger.warning("Unknown step type %r — skipped", stype)
-        return None
     try:
-        return mapper(step, order)
+        if stype == "sbu_block":
+            return _map_sbu_block(step, order, language)
+        mapper = _MAPPERS.get(stype or "")
+        if mapper is None:
+            raise StepMappingError(f"steps[{index}]: unsupported step type {stype!r}")
+        return [mapper(step, order)]
+    except StepMappingError:
+        raise
     except Exception as exc:
-        logger.warning("Failed to map step %r (order %d): %s", stype, order, exc)
-        return None
+        raise StepMappingError(f"steps[{index}] ({stype}): {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -431,36 +382,50 @@ def _map_single_step(
 
 def map_steps(steps: list[WorkoutStep], language: str = "ru") -> list[dict[str, Any]]:
     """
-    Convert a list of WorkoutStep domain objects to a flat list of
-    Garmin workout-service step dicts.
+    Convert YAML steps to Garmin workout-service step dicts.
 
-    ``repeat`` steps absorb their body into a RepeatGroupDTO.
-    Steps consumed by a repeat block are NOT emitted separately.
+    YAML (like FIT) stores a repeat *after* its body: ``back_to_offset`` is
+    the YAML index of the body's first step and ``count`` the total number of
+    executions. Garmin wants a tree, so steps are folded with a stack: a
+    repeat pops every node that starts at or after ``back_to_offset`` and
+    wraps them in one RepeatGroupDTO. An inner repeat has already collapsed
+    into a single node by then, so nested groups keep each body exactly once
+    (same semantics as the FIT file).
+
+    Raises StepMappingError for unsupported steps and for repeat ranges that
+    start inside another group (overlapping, not nested).
     """
-    # Pre-compute which YAML indices are absorbed into repeat groups.
-    # Must be done before the main loop so body steps are skipped even
-    # though they appear *before* the repeat step in the list.
-    consumed: set[int] = set()
-    for idx, step in enumerate(steps):
-        if step.step_type == "repeat":
-            back_to = int(step.back_to_offset)
-            for i in range(back_to, idx):
-                consumed.add(i)
+    # Each node: (first YAML index, last YAML index, payload dicts it produces).
+    nodes: list[tuple[int, int, list[dict[str, Any]]]] = []
 
-    result: list[dict[str, Any]] = []
     for idx, step in enumerate(steps):
-        if idx in consumed:
+        if step.step_type != "repeat":
+            nodes.append((idx, idx, _map_single_step(step, 1, idx, language)))
             continue
-        if step.step_type == "repeat":
-            mapped = _map_repeat(step, len(result) + 1, steps, idx)
-            result.append(mapped)
-        else:
-            mapped_s = _map_single_step(step, len(result) + 1, steps, idx, language)
-            if isinstance(mapped_s, list):
-                result.extend(mapped_s)
-            elif mapped_s is not None:
-                result.append(mapped_s)
 
+        try:
+            back_to, count = int(step.back_to_offset), int(step.count)
+        except (TypeError, ValueError) as exc:
+            raise StepMappingError(f"steps[{idx}]: invalid repeat {exc}") from exc
+        if not 0 <= back_to < idx or count < 1:
+            raise StepMappingError(
+                f"steps[{idx}]: repeat back_to_offset={back_to} count={count} is out of range"
+            )
+
+        body: list[dict[str, Any]] = []
+        while nodes and nodes[-1][0] >= back_to:
+            body = nodes.pop()[2] + body
+        if nodes and nodes[-1][1] >= back_to:
+            raise StepMappingError(
+                f"steps[{idx}]: repeat starting at step {back_to} overlaps an earlier repeat group"
+            )
+        for child_order, child in enumerate(body, start=1):
+            child["stepOrder"] = child_order
+        nodes.append((back_to, idx, [_repeat_group(1, count, body)]))
+
+    result = [payload for _start, _end, group in nodes for payload in group]
+    for order, payload in enumerate(result, start=1):
+        payload["stepOrder"] = order
     return result
 
 
@@ -496,38 +461,66 @@ def map_workout(workout: Workout, language: str = "ru") -> dict[str, Any]:
     }
 
 
-def extract_date_from_filename(filename: str, year: int | None = None) -> str | None:
+_WEEKDAY_TOKENS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_FILENAME_DATE_RE = re.compile(r"_(\d{2})-(\d{2})(?:_([A-Za-z]{3}))?(?=_|$)")
+
+
+def extract_date_from_filename(
+    filename: str,
+    year: int | None = None,
+    today: datetime.date | None = None,
+) -> str | None:
     """
     Extract a calendar date from a FitWeaver workout filename.
 
-    Pattern: W{week}_{MM-DD}_{...}  e.g. "W11_03-14_Sat_Long_14km"
+    Pattern: W{week}_{MM-DD}_{Day}_{...}  e.g. "W11_03-14_Sat_Long_14km"
 
     Parameters
     ----------
     filename:
         Workout filename (without .fit extension).
     year:
-        Explicit year. If None, uses current year (or next if date already passed).
+        Explicit year. If None, the year is inferred: among last, this and next
+        year, candidates whose weekday matches the ``Day`` token are preferred,
+        and the one closest to today wins. A workout from yesterday therefore
+        stays in the past (so ``skip_past`` can skip it) instead of moving a
+        year ahead.
+    today:
+        Reference date for the inference (defaults to date.today(); for tests).
 
     Returns
     -------
     str | None
-        ISO date string "YYYY-MM-DD", or None if pattern not found.
+        ISO date string "YYYY-MM-DD", or None if the pattern is missing or the
+        month/day is not a real date (e.g. 02-30, or 02-29 in the given year).
     """
-    import datetime
-
-    match = re.search(r"_(\d{2})-(\d{2})_", filename)
+    match = _FILENAME_DATE_RE.search(filename or "")
     if not match:
         return None
 
-    month = int(match.group(1))
-    day = int(match.group(2))
+    month, day = int(match.group(1)), int(match.group(2))
+    weekday_token = (match.group(3) or "").title()
+    weekday = _WEEKDAY_TOKENS.index(weekday_token) if weekday_token in _WEEKDAY_TOKENS else None
+
+    def make(y: int) -> datetime.date | None:
+        try:
+            return datetime.date(y, month, day)
+        except ValueError:
+            return None
 
     if year is not None:
-        return f"{year:04d}-{month:02d}-{day:02d}"
+        explicit = make(year)
+        if explicit is None:
+            logger.warning("Invalid date %02d-%02d in %r for year %d", month, day, filename, year)
+        return explicit.isoformat() if explicit else None
 
-    today = datetime.date.today()
-    candidate = datetime.date(today.year, month, day)
-    if candidate < today:
-        candidate = datetime.date(today.year + 1, month, day)
-    return candidate.isoformat()
+    reference = today or datetime.date.today()
+    candidates = [d for d in (make(reference.year + delta) for delta in (-1, 0, 1)) if d]
+    if not candidates:
+        logger.warning("Invalid date %02d-%02d in %r", month, day, filename)
+        return None
+    if weekday is not None:
+        matching = [d for d in candidates if d.weekday() == weekday]
+        candidates = matching or candidates
+    best = min(candidates, key=lambda d: (abs((d - reference).days), d < reference))
+    return best.isoformat()

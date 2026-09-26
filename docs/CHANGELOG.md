@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-26 - Garmin Connect and FIT correctness fixes
+
+### Fixed
+- Nested repeats uploaded to Garmin Connect repeated the inner body one extra time per outer
+  iteration (the inner steps were emitted both inside and next to the inner group). Repeats are now
+  folded into a tree with a stack; overlapping (non-nested) ranges are rejected.
+- SBU blocks inside a repeat ignored the requested language (always Russian labels).
+- Steps that could not be mapped were silently dropped from the uploaded workout. They now raise
+  `StepMappingError` naming the step, so that workout fails instead (dry-run reports it too).
+- Auto-detected workout year moved past dates a year ahead (yesterday → next year), so
+  `--skip-past` never skipped anything; `02-29` crashed in non-leap years. The year is now picked
+  from last/this/next year by the filename's weekday token and proximity to today.
+- FIT distances were truncated by float error (`int(1.15 * 100) == 114`): 287 of the 10-m
+  distances up to a marathon were 10 m short on the watch. Conversions now round.
+
+### Added
+- `tests/test_fit_garmin_equivalence.py`: executes the FIT steps and the Garmin payload of the
+  same YAML and checks the runner does the same thing.
+
 ## 2026-09-26 - Deterministic parser for the marked plan format
 
 ### Added

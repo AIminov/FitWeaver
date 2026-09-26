@@ -22,6 +22,7 @@ from garmin_fit.garmin_step_mapper import (
     TARGET_HR,
     TARGET_NO,
     TARGET_SPD,
+    StepMappingError,
     _pace_to_mps,
     extract_date_from_filename,
     map_steps,
@@ -147,25 +148,35 @@ class TestExtractDateFromFilename(unittest.TestCase):
         result = extract_date_from_filename("")
         self.assertIsNone(result)
 
-    def test_auto_year_future_date(self):
-        """A date that hasn't passed yet → current year."""
-        today = datetime.date.today()
-        # Build a date 30 days in the future
-        future = today + datetime.timedelta(days=30)
-        filename = f"W01_{future.month:02d}-{future.day:02d}_Mon_Easy"
-        result = extract_date_from_filename(filename)
-        expected = datetime.date(today.year, future.month, future.day).isoformat()
-        self.assertEqual(result, expected)
+    TODAY = datetime.date(2026, 9, 26)
 
-    def test_auto_year_past_date_bumps_to_next_year(self):
-        """A date that has already passed → next year."""
-        today = datetime.date.today()
-        # Build a date 30 days in the past
-        past = today - datetime.timedelta(days=30)
-        filename = f"W01_{past.month:02d}-{past.day:02d}_Mon_Easy"
-        result = extract_date_from_filename(filename)
-        expected = datetime.date(today.year + 1, past.month, past.day).isoformat()
-        self.assertEqual(result, expected)
+    def test_auto_year_future_date(self):
+        result = extract_date_from_filename("W40_10-01_Thu_Easy", today=self.TODAY)
+        self.assertEqual(result, "2026-10-01")
+
+    def test_auto_year_recent_past_date_stays_in_past(self):
+        """Yesterday's workout must not be scheduled a year ahead (breaks skip_past)."""
+        result = extract_date_from_filename("W39_09-25_Fri_Easy", today=self.TODAY)
+        self.assertEqual(result, "2026-09-25")
+
+    def test_auto_year_rolls_over_new_year(self):
+        result = extract_date_from_filename("W02_01-05_Tue_Easy", today=self.TODAY)
+        self.assertEqual(result, "2027-01-05")
+
+    def test_auto_year_prefers_year_matching_weekday_token(self):
+        # 2026-03-14 is a Saturday, 2027-03-14 a Sunday.
+        self.assertEqual(
+            extract_date_from_filename("W11_03-14_Sun_Long", today=self.TODAY), "2027-03-14"
+        )
+        self.assertEqual(
+            extract_date_from_filename("W11_03-14_Sat_Long", today=self.TODAY), "2026-03-14"
+        )
+
+    def test_invalid_dates_return_none_instead_of_crashing(self):
+        self.assertIsNone(extract_date_from_filename("W09_02-29_Sun_X", today=self.TODAY))
+        self.assertIsNone(extract_date_from_filename("W09_02-29_Sun_X", year=2027))
+        self.assertIsNone(extract_date_from_filename("W05_02-30_Mon_X", today=self.TODAY))
+        self.assertEqual(extract_date_from_filename("W09_02-29_Thu_X", year=2028), "2028-02-29")
 
 
 # ---------------------------------------------------------------------------
@@ -452,21 +463,11 @@ class TestRepeat(unittest.TestCase):
         self.assertEqual(result[0]["numberOfIterations"], 3)
 
     def test_nested_repeat_produces_repeat_group_inside_repeat_group(self):
-        """TODO #11: a repeat whose own range contains an earlier, already
-        self-contained repeat instruction must nest correctly rather than
-        crash or silently drop the inner group.
-
-        steps: warmup(0), active(1), recovery(2), repeat(back_to=1,count=2)(3),
+        """steps: warmup(0), active(1), recovery(2), repeat(back_to=1,count=2)(3),
         cooldown(4), repeat(back_to=0,count=3)(5).
 
-        back_to_offset is a *position* replay, not a scoping construct: the
-        outer repeat (back_to_offset=0) walks positions 0..4 in order, so its
-        body is [warmup, active, recovery, <inner repeat instruction>,
-        cooldown] -- active/recovery legitimately appear once at their
-        original position AND again inside the inner RepeatGroupDTO, since
-        that's exactly what "replay steps 1-2, 2 more times" at position 3
-        means. This test locks in that this composes correctly instead of
-        crashing, dropping the inner group, or flattening it away.
+        count is the total number of executions (as in FIT), so the inner body
+        must appear once, inside its own group -- not also as siblings of it.
         """
         steps = self._make_interval_block(count=2, back_to=1) + [
             _step(step_type="dist_open", km=1, intensity="cooldown"),
@@ -476,28 +477,20 @@ class TestRepeat(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         outer = result[0]
-        self.assertEqual(outer["type"], "RepeatGroupDTO")
         self.assertEqual(outer["numberOfIterations"], 3)
-
         outer_children = outer["workoutSteps"]
-        outer_types = [c["type"] for c in outer_children]
         self.assertEqual(
-            outer_types,
-            ["ExecutableStepDTO", "ExecutableStepDTO", "ExecutableStepDTO",
-             "RepeatGroupDTO", "ExecutableStepDTO"],
+            [c["type"] for c in outer_children],
+            ["ExecutableStepDTO", "RepeatGroupDTO", "ExecutableStepDTO"],
         )
-
-        inner = outer_children[3]
+        inner = outer_children[1]
         self.assertEqual(inner["numberOfIterations"], 2)
-        self.assertEqual(len(inner["workoutSteps"]), 2)
         self.assertEqual([c["type"] for c in inner["workoutSteps"]],
                          ["ExecutableStepDTO", "ExecutableStepDTO"])
-
-        # stepOrder is consecutive within each nesting level, independently
-        self.assertEqual([c["stepOrder"] for c in outer_children], [1, 2, 3, 4, 5])
+        self.assertEqual([c["stepOrder"] for c in outer_children], [1, 2, 3])
         self.assertEqual([c["stepOrder"] for c in inner["workoutSteps"]], [1, 2])
 
-    def test_nested_repeat_with_nonzero_outer_start_uses_relative_offset(self):
+    def test_nested_repeat_with_nonzero_outer_start(self):
         steps = [
             _step(step_type="dist_open", km=1),
             _step(step_type="dist_open", km=1),
@@ -507,10 +500,34 @@ class TestRepeat(unittest.TestCase):
             _step(step_type="repeat", back_to_offset=1, count=3),
         ]
         result = map_steps(steps)
+        self.assertEqual([r["type"] for r in result], ["ExecutableStepDTO", "RepeatGroupDTO"])
         outer = result[1]
-        nested = outer["workoutSteps"][2]
-        self.assertEqual(nested["type"], "RepeatGroupDTO")
-        self.assertEqual(len(nested["workoutSteps"]), 1)
+        self.assertEqual(
+            [c["type"] for c in outer["workoutSteps"]],
+            ["ExecutableStepDTO", "RepeatGroupDTO", "ExecutableStepDTO"],
+        )
+        self.assertEqual(len(outer["workoutSteps"][1]["workoutSteps"]), 1)
+
+    def test_overlapping_repeat_ranges_are_rejected(self):
+        steps = [
+            _step(step_type="dist_open", km=1),
+            _step(step_type="dist_open", km=1),
+            _step(step_type="repeat", back_to_offset=0, count=2),
+            _step(step_type="dist_open", km=1),
+            _step(step_type="repeat", back_to_offset=1, count=2),
+        ]
+        with self.assertRaises(StepMappingError):
+            map_steps(steps)
+
+    def test_sbu_inside_repeat_uses_requested_language(self):
+        steps = [
+            _step(step_type="sbu_block", drills=[Drill(name="A", seconds=20, reps=2)]),
+            _step(step_type="time_step", seconds=60),
+            _step(step_type="repeat", back_to_offset=0, count=2),
+        ]
+        group = map_steps(steps, language="en")[0]
+        drill_group = group["workoutSteps"][0]
+        self.assertEqual(drill_group["workoutSteps"][1]["description"], "Recovery")
 
 
 # ---------------------------------------------------------------------------
@@ -519,15 +536,18 @@ class TestRepeat(unittest.TestCase):
 
 class TestUnknownStepType(unittest.TestCase):
 
-    def test_unknown_type_skipped(self):
+    def test_unknown_type_raises_instead_of_silently_dropping(self):
         steps = [
             _step(step_type="dist_hr", km=1, hr_low=130, hr_high=145),
             _step(step_type="totally_unknown"),
             _step(step_type="time_step", seconds=60),
         ]
-        result = map_steps(steps)
-        # Unknown step silently dropped
-        self.assertEqual(len(result), 2)
+        with self.assertRaisesRegex(StepMappingError, r"steps\[1\].*totally_unknown"):
+            map_steps(steps)
+
+    def test_broken_step_raises_with_index(self):
+        with self.assertRaisesRegex(StepMappingError, r"steps\[0\]"):
+            map_steps([_step(step_type="dist_hr", km=1, hr_low=None, hr_high=145)])
 
 
 # ---------------------------------------------------------------------------

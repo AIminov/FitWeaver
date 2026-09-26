@@ -32,10 +32,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed 2026-09-26, start here):**
-1. Fix Garmin Connect correctness bugs found in the 2026-09-26 review: nested `repeat` duplicates
-   the inner body in `garmin_step_mapper._map_repeat`; `extract_date_from_filename` rolls past
-   dates to next year (breaks `skip_past`, crashes on 02-29); the mapper silently drops steps it
-   cannot map. Add a YAML → FIT vs Garmin-payload equivalence test.
+1. Garmin upload de-duplication: re-uploading a plan creates duplicate workouts/schedules
+   (check the calendar first, offer skip/replace). The 2026-09-26 correctness bugs are fixed.
 2. LLM path for free text: make the model emit a short line format (or marked text) that
    `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
    (~2.6 tok/s measured). Compare on the golden suite with `garmin-fit-llm-eval`.
@@ -66,7 +64,7 @@ pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GU
 ## Common Commands
 
 ```bash
-# Run all tests (390 passed with the api extra, as of 2026-09-26)
+# Run all tests (404 passed with the api extra, as of 2026-09-26)
 python3 -m pytest tests/
 
 # Run a single test file
