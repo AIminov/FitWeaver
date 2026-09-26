@@ -616,6 +616,7 @@ def workflow_garmin_calendar(
     skip_past=False,
     from_date=None,
     to_date=None,
+    allow_duplicates=False,
 ):
     """
     Upload a YAML workout plan to Garmin Connect Calendar.
@@ -702,16 +703,13 @@ def workflow_garmin_calendar(
     # ------------------------------------------------------------------ upload
     from .garmin_calendar_export import GarminCalendarExporter
 
-    exporter = GarminCalendarExporter(client) if client else GarminCalendarExporter.__new__(GarminCalendarExporter)
-    if client is None:
-        exporter._client = None
-        exporter._delay = 1.2
-        exporter._language = "ru"
+    exporter = GarminCalendarExporter(client)  # client is None in dry-run: no API calls
 
     result = exporter.upload_plan(
         plan, schedule=schedule, dry_run=dry_run, year=year,
         week_pause=week_pause, skip_past=skip_past,
         from_date=from_date, to_date=to_date,
+        skip_duplicates=not allow_duplicates,
     )
 
     # ------------------------------------------------------------------ summary

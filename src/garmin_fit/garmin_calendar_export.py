@@ -105,6 +105,8 @@ class WorkoutUploadResult:
     scheduled: bool = False
     dry_run: bool = False
     error: str | None = None
+    # Set when the same workout name is already scheduled on that date.
+    skipped_duplicate: bool = False
 
     @property
     def ok(self) -> bool:
@@ -121,7 +123,11 @@ class PlanUploadResult:
 
     @property
     def uploaded(self) -> int:
-        return sum(1 for r in self.results if r.ok and not r.dry_run)
+        return sum(1 for r in self.results if r.ok and not r.dry_run and not r.skipped_duplicate)
+
+    @property
+    def skipped_duplicates(self) -> int:
+        return sum(1 for r in self.results if r.skipped_duplicate)
 
     @property
     def scheduled(self) -> int:
@@ -137,10 +143,13 @@ class PlanUploadResult:
                 f"[DRY RUN] Would upload {self.total} workout(s), "
                 f"schedule {sum(1 for r in self.results if r.date)} with dates"
             )
-        return (
+        summary = (
             f"Uploaded {self.uploaded}/{self.total} workouts, "
             f"scheduled {self.scheduled}, failed {self.failed}"
         )
+        if self.skipped_duplicates:
+            summary += f", skipped {self.skipped_duplicates} already scheduled"
+        return summary
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +280,7 @@ class GarminCalendarExporter:
         skip_past: bool = False,
         from_date: str | None = None,
         to_date: str | None = None,
+        skip_duplicates: bool = True,
     ) -> PlanUploadResult:
         """
         Upload all workouts in a plan to Garmin Connect Calendar.
@@ -297,6 +307,10 @@ class GarminCalendarExporter:
             Only upload workouts on or after this date ('YYYY-MM-DD').
         to_date:
             Only upload workouts on or before this date ('YYYY-MM-DD').
+        skip_duplicates:
+            Before a live scheduled upload, read the Garmin calendar for the
+            affected months and skip workouts whose name is already scheduled
+            on the same date, so re-running an upload does not create copies.
         """
         plan_result = PlanUploadResult()
 
@@ -335,6 +349,11 @@ class GarminCalendarExporter:
             "dry-run" if dry_run else "live", total, n_weeks,
         )
 
+        existing: set[tuple[str, str]] = set()
+        if skip_duplicates and schedule and not dry_run:
+            dates = [extract_date_from_filename(w.filename or "", year=year) for w in included]
+            existing = self._scheduled_names_by_date(d for d in dates if d)
+
         uploaded_total = 0
         for week_idx, (label, week_workouts) in enumerate(weeks.items()):
             logger.info(
@@ -355,6 +374,13 @@ class GarminCalendarExporter:
                             "Could not extract date from %r — uploading without scheduling",
                             workout.filename,
                         )
+
+                name = workout.filename or workout.name or ""
+                if date and (date, name) in existing:
+                    logger.info("Skipping %r: already scheduled on %s", name, date)
+                    plan_result.results.append(WorkoutUploadResult(
+                        filename=name, date=date, skipped_duplicate=True))
+                    continue
 
                 result = self.upload_and_schedule(workout, date=date, dry_run=dry_run)
                 plan_result.results.append(result)
@@ -377,6 +403,30 @@ class GarminCalendarExporter:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _scheduled_names_by_date(self, dates) -> set[tuple[str, str]]:
+        """(date, workout name) pairs already on the Garmin calendar for these dates.
+
+        Best effort: if the calendar cannot be read, duplicates are not
+        detected and the upload proceeds (with a warning).
+        """
+        from .garmin_calendar_view import normalize_scheduled_workouts
+
+        get_month = getattr(self._client, "get_scheduled_workouts", None)
+        if not callable(get_month):
+            logger.warning("Garmin client cannot read the calendar; duplicate check skipped")
+            return set()
+        months = sorted({(int(d[:4]), int(d[5:7])) for d in dates})
+        existing: set[tuple[str, str]] = set()
+        for year_, month in months:
+            try:
+                events = normalize_scheduled_workouts(get_month(year_, month))
+            except Exception as exc:
+                logger.warning("Could not read Garmin calendar %04d-%02d (%s); duplicate check skipped",
+                               year_, month, exc)
+                continue
+            existing.update((event["date"], event["name"]) for event in events)
+        return existing
 
     @staticmethod
     def _extract_workout_id(response: Any) -> str:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-26 - Garmin upload skips already scheduled workouts
+
+### Changed
+- A live scheduled upload reads the Garmin calendar for the affected months first and skips
+  workouts already scheduled on the same date under the same name; `--allow-duplicates`
+  restores the old behaviour. The upload summary reports skipped workouts.
+
 ## 2026-09-26 - Local LLM generation: partial results, cache, progress, cancel
 
 ### Changed

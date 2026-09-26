@@ -182,9 +182,14 @@ uploaded.
 | `--email EMAIL` | `$GARMIN_EMAIL` | Garmin account email |
 | `--password PASSWORD` | `$GARMIN_PASSWORD` | Garmin account password |
 | `--token-dir DIR` | `~/.garminconnect` | Token storage directory |
-| `--year YEAR` | auto (current/next) | Override year for date extraction |
+| `--year YEAR` | auto (nearest date) | Override year for date extraction |
 | `--no-schedule` | off | Upload without calendar scheduling |
 | `--dry-run` | off | Preview only — no API calls |
+| `--allow-duplicates` | off | Upload even if the same workout name is already scheduled on that date |
+
+By default a live scheduled upload first reads the Garmin calendar for the affected months and
+skips workouts already scheduled on the same date under the same name, so re-running an upload
+does not create copies. If the calendar cannot be read, the upload continues with a warning.
 
 ---
 
