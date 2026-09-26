@@ -5,7 +5,8 @@
 1. Пользователь дает план в `.txt`, `.md` или сразу в `.yaml`.
 2. Текст в [размеченном формате](MARKED_PLAN_FORMAT.md) (есть строки `**** ШАГ ****`)
    компилируется в YAML детерминированным парсером `marked_plan.py` — без LLM; repeat/offset
-   вычисляются кодом. Свободный текст преобразует в YAML LLM-пайплайн. Результат сохраняется
+   вычисляются кодом. Свободный текст разбивается на тренировки; тренировки в типовой форме
+   разбирают правила `free_text_rules.py` (тоже без LLM), остальные — LLM-пайплайн. Результат сохраняется
    в `Plan/*.yaml`. Маршрутизация — в `plan_service.build_plan_draft()` (GUI, Plan API).
 3. Pipeline готовит build artifacts: repaired YAML и machine-readable build report.
 4. Полный workflow `python -m garmin_fit.cli run` строит FIT напрямую из YAML/domain objects.

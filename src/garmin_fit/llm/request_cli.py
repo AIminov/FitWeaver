@@ -157,6 +157,7 @@ def main():
             request_timeout_sec=args.timeout_sec,
             segment_cache_dir=ARTIFACTS_DIR / "llm_segment_cache",
         )
+        client.use_rules = True
         draft = client.generate_yaml_draft(
             plan_text, max_retries=args.retries, workouts_hint=workouts_hint
         )

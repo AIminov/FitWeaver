@@ -32,6 +32,10 @@ def build_plan_draft(
     """
     if is_marked_plan(plan_text):
         return build_marked_plan_draft(plan_text, hr_zones=hr_zones)
+    if hasattr(llm_client, "use_rules"):
+        # Workouts written in common, fully understood forms skip the LLM.
+        llm_client.use_rules = True
+        llm_client.rule_hr_zones = hr_zones
     return llm_client.generate_yaml_draft(plan_text, max_retries=max_retries)
 
 

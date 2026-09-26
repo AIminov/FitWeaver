@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-26 - Common workout lines parsed without the LLM
+
+### Added
+- `free_text_rules.py`: deterministic rules for workouts written the usual way (dated header,
+  title, `Разминка: 2 км (5:45-6:00)`, `6x800м по 4:20-4:30, восстановление 400 м`,
+  `5 циклов: 2 мин … + 3 мин …`, `СБУ: …`, `Итого: …`). A workout is converted only if every line
+  is understood and every number is accounted for; non-running sessions, effort described only
+  in words and unsupported structures (series, ladders) go to the LLM as before. The result
+  goes through the marked-format compiler and validation.
+- GUI, Plan API and `garmin-fit-llm` try the rules per workout first (`use_rules`); the eval
+  harness keeps them off so LLM scores measure the model. On the golden dataset the rules parse
+  12 of 59 valid variants (all formal-style), never parse any of the 18 unclear/unsupported
+  cases, and differ from the reference only where the reference invents facts.
+
 ## 2026-09-26 - Review generated plans as text
 
 ### Added

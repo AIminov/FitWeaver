@@ -188,6 +188,22 @@ class UnifiedLLMClient:
         self.progress_callback: Callable[[dict[str, Any]], None] | None = None
         self.cancel_event: Any = None
         self._segmenting = False
+        # Deterministic rules for common workout lines (free_text_rules): when
+        # enabled, a workout they fully understand skips the LLM. Off by default
+        # so LLM evaluations measure the model, not the rules.
+        self.use_rules = False
+        self.rule_hr_zones: dict[str, Any] | None = None
+
+    def _workout_from_rules(self, block_text: str) -> dict[str, Any] | None:
+        if not self.use_rules:
+            return None
+        from ..free_text_rules import parse_workout_with_rules
+
+        try:
+            return parse_workout_with_rules(block_text, hr_zones=self.rule_hr_zones)
+        except Exception as exc:  # rules are an optimisation, never a failure
+            logger.info("Rule-based parsing skipped: %s", exc)
+            return None
 
     def _check_cancelled(self) -> None:
         if self.cancel_event is not None and self.cancel_event.is_set():
@@ -297,6 +313,24 @@ class UnifiedLLMClient:
                 validate_plan_data_detailed=validate_plan_data_detailed,
                 group_issues_by_category=group_issues_by_category,
             )
+
+        rule_workout = self._workout_from_rules(analysis.text)
+        if rule_workout is not None:
+            rule_yaml = yaml.safe_dump(
+                {"workouts": [rule_workout]}, allow_unicode=True, default_flow_style=False, sort_keys=False
+            )
+            prepared = self._prepare_yaml_candidate(
+                rule_yaml,
+                analysis_repairs=analysis.changes + ["workout parsed by deterministic rules (no LLM)"],
+                analysis_ambiguities=analysis.ambiguities,
+                expected_workout_count=1,
+                source_text=analysis.text,
+                repair_plan_data=repair_plan_data,
+                validate_plan_data_detailed=validate_plan_data_detailed,
+                group_issues_by_category=group_issues_by_category,
+            )
+            if not prepared.validation_errors and prepared.yaml_text:
+                return prepared
 
         size_warning = None
         if analysis.expected_workouts > LARGE_UNSEGMENTED_PLAN_WORKOUTS:
@@ -1071,6 +1105,13 @@ class UnifiedLLMClient:
             self._report_progress(stage="segment", segment=index, total=total)
             self._check_cancelled()
             logger.info(f"Segmented LLM generation for workout {index}/{total}...")
+            rule_workout = self._workout_from_rules(block_text)
+            if rule_workout is not None:
+                logger.info(f"segment {index}: parsed by deterministic rules (no LLM)")
+                repairs.append(f"workouts[{len(merged_workouts)}]: parsed by deterministic rules (no LLM)")
+                merged_workouts.append(rule_workout)
+                merged_sources.append(block_text)
+                continue
             segment_fact = self._extract_single_workout_fact(block_text)
             segment_workout, segment_error = self._generate_and_validate_segment_workout(
                 block_text=block_text,
