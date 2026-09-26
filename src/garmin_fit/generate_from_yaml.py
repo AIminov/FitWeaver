@@ -531,31 +531,33 @@ def generate_all_templates(yaml_path=None, *, output_dir=None, cleanup_output=Fa
     return success, total_workouts
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+def main(argv: list[str] | None = None) -> int:
+    """Export debug templates from YAML. Returns a process exit code."""
+    args = list(sys.argv[1:] if argv is None else argv)
     run_id = None
-    if "--run-id" in sys.argv:
-        idx = sys.argv.index("--run-id")
-        if idx + 1 < len(sys.argv):
-            run_id = sys.argv[idx + 1]
-        del sys.argv[idx:idx + 2]
+    if "--run-id" in args:
+        idx = args.index("--run-id")
+        if idx + 1 < len(args):
+            run_id = args[idx + 1]
+        del args[idx:idx + 2]
 
     setup_file_logging(prefix="generate_from_yaml", run_id=run_id)
-
-    yaml_path = None
-    if len(sys.argv) > 1:
-        yaml_path = sys.argv[1]
+    yaml_path = args[0] if args else None
 
     try:
         generated, total = generate_all_templates(yaml_path)
         if total > 0 and generated == total:
             logger.info("\nNext step: python -m garmin_fit.legacy_cli build")
-            sys.exit(0)
-        else:
-            sys.exit(1)
+            return 0
+        return 1
     except FileNotFoundError as e:
         logger.error(str(e))
-        sys.exit(1)
+        return 1
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    raise SystemExit(main())

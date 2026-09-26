@@ -227,11 +227,13 @@ silently corrupts one of the two onefile exes), and `build.ps1`.
 **Build:** `powershell packaging/build.ps1` (or manually: `pip install -e
 ".[garmin-calendar,build]"`, then build from an isolated staging copy — see below — with
 `pyinstaller packaging/fitweaver_gui.spec` and `pyinstaller packaging/fitweaver_cli.spec`).
-Produces `dist/FitWeaver.exe` + `dist/garmin-fit-cli.exe`, which **must ship together in the
-same folder** — the GUI shells out to the CLI exe as a sibling process for every sidebar
-action ("Собрать FIT-файлы", Garmin upload/delete, the whole "ПРОДВИНУТЫЕ" section), since a
-frozen exe can't be re-run with `-m` like a real Python interpreter (`_cli_command()` in
-`fitweaver_gui.py` branches on `getattr(sys, "frozen", False)`).
+Produces `dist/FitWeaver.exe` + `dist/garmin-fit-cli.exe`. Since 2026-09-26 the GUI runs every
+sidebar action (build, Garmin upload/delete, the "ПРОДВИНУТЫЕ" section) **in-process** through
+`garmin_fit.cli_runner.run_cli_captured()`, so `FitWeaver.exe` works on its own; the CLI exe is
+optional. (It used to shell out to the sibling CLI exe, which cost ~4.5 s of onefile unpacking
+per action and put the Garmin password on a command line.) Workflow steps likewise call each
+module's `main(argv)` in-process (`workflow.run_step`) — `sys.executable -m module` does not
+work inside a frozen exe, where `sys.executable` is the exe itself.
 
 **Why two exes, and why the CLI one excludes the GUI toolkits:** the split exists because
 the two have different Windows subsystems — the GUI is built `console=False` (windowed, no

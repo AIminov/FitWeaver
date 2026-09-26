@@ -53,11 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="auto")
     doctor_parser.add_argument("--timeout-sec", type=int, default=120)
 
-    subparsers.add_parser("archive", help="Archive the current runtime artifacts")
+    archive_parser = subparsers.add_parser("archive", help="Archive the current runtime artifacts")
+    archive_parser.add_argument("--yes", action="store_true", help="Do not ask for confirmation")
     subparsers.add_parser("list-archives", help="List available archives")
 
     restore_parser = subparsers.add_parser("restore", help="Restore a named archive")
     restore_parser.add_argument("archive_name")
+    restore_parser.add_argument("--yes", action="store_true", help="Do not ask for confirmation")
 
     gc_parser = subparsers.add_parser(
         "garmin-calendar",
@@ -144,11 +146,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             llm_timeout_sec=args.timeout_sec,
         )
     if command == "archive":
-        return workflow_module.workflow_archive(run_id=run_id)
+        return workflow_module.workflow_archive(run_id=run_id, assume_yes=args.yes)
     if command == "list-archives":
         return workflow_module.workflow_list_archives()
     if command == "restore":
-        return workflow_module.workflow_restore(args.archive_name)
+        return workflow_module.workflow_restore(args.archive_name, assume_yes=args.yes)
     if command == "garmin-calendar":
         return workflow_module.workflow_garmin_calendar(
             plan_path=args.plan,

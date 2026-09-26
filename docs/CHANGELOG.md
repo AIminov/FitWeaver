@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-26 - GUI runs commands in-process
+
+### Changed
+- GUI sidebar actions run `garmin_fit.cli` in-process (`cli_runner.run_cli_captured`) instead of
+  starting `garmin-fit-cli.exe`/`python -m`: no ~4.5 s onefile unpack per action (including the
+  automatic YAML check after loading a plan); `FitWeaver.exe` no longer needs the CLI exe beside it.
+- Workflow steps call each module's `main(argv)` in-process.
+
+### Fixed
+- In the packaged CLI, `validate-fit`, `archive`, `list-archives` and `restore` ran
+  `sys.executable -m …`, which fails inside a frozen exe.
+- `archive`/`restore` asked for confirmation on stdin, which the GUI does not have. They take
+  `--yes`; the GUI confirms in a dialog. Missing stdin now cancels instead of crashing.
+- Log files are written as UTF-8 (Cyrillic messages failed with the Windows ANSI code page).
+
 ## 2026-09-26 - Garmin Connect and FIT correctness fixes
 
 ### Fixed

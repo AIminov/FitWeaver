@@ -437,44 +437,43 @@ def print_archives():
         print(f"{archive.name:<40} {created:<20} {templates_count:<12} {fits_count}")
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """archive / restore / list. Returns a process exit code."""
     import argparse
-    import sys
-
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
     parser = argparse.ArgumentParser(description="Manage workout archives")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # Archive command
     archive_parser = subparsers.add_parser("archive", help="Archive current plan")
     archive_parser.add_argument("--name", help="Custom archive name")
     archive_parser.add_argument("--keep-plan", action="store_true", help="Keep plan in Plan/ directory")
     archive_parser.add_argument("--run-id", help="Run identifier for traceability")
     archive_parser.add_argument("--owner-tag", help="Optional owner/user tag for archive naming")
 
-    # Restore command
     restore_parser = subparsers.add_parser("restore", help="Restore from archive")
     restore_parser.add_argument("archive_name", help="Archive name to restore")
 
-    # List command
     subparsers.add_parser("list", help="List all archives")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.command == "archive":
         archive_path = archive_current_plan(args.name, args.keep_plan, args.run_id, args.owner_tag)
         print(f"\n[OK] Archived to: {archive_path}")
-
-    elif args.command == "restore":
+        return 0
+    if args.command == "restore":
         if restore_from_archive(args.archive_name):
             print(f"\n[OK] Restored from: {args.archive_name}")
-        else:
-            print(f"\n[FAIL] Failed to restore from: {args.archive_name}")
-            sys.exit(1)
-
-    elif args.command == "list":
+            return 0
+        print(f"\n[FAIL] Failed to restore from: {args.archive_name}")
+        return 1
+    if args.command == "list":
         print_archives()
+        return 0
+    parser.print_help()
+    return 0
 
-    else:
-        parser.print_help()
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    raise SystemExit(main())

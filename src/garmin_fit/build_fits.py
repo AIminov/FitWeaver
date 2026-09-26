@@ -210,20 +210,20 @@ def build_all_fits(verify_with_csv=False):
     return success_count, len(templates)
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """Legacy build: Workout_templates/*.py -> FIT. Returns a process exit code."""
+    args = list(sys.argv[1:] if argv is None else argv)
     run_id = None
-    if "--run-id" in sys.argv:
-        idx = sys.argv.index("--run-id")
-        if idx + 1 < len(sys.argv):
-            run_id = sys.argv[idx + 1]
-        del sys.argv[idx:idx + 2]
+    if "--run-id" in args:
+        idx = args.index("--run-id")
+        if idx + 1 < len(args):
+            run_id = args[idx + 1]
+        del args[idx:idx + 2]
 
-    log_file = setup_file_logging(run_id=run_id)
+    setup_file_logging(run_id=run_id)
 
     try:
-        # Check for verification flag
-        verify = "--verify" in sys.argv or "--csv" in sys.argv
-
+        verify = "--verify" in args or "--csv" in args
         if verify:
             logger.info("CSV verification enabled")
 
@@ -232,17 +232,19 @@ if __name__ == "__main__":
         if success == total and total > 0:
             logger.info("\n[OK] All workouts built successfully!")
             print_state()
-            sys.exit(0)
-        elif success > 0:
+            return 0
+        if success > 0:
             logger.warning(f"\n⚠ {total - success} workout(s) failed")
-            sys.exit(1)
-        else:
-            logger.error("\n[FAIL] Build failed")
-            sys.exit(1)
-
+            return 1
+        logger.error("\n[FAIL] Build failed")
+        return 1
     except KeyboardInterrupt:
         logger.info("\n\nBuild cancelled by user")
-        sys.exit(130)
+        return 130
     except Exception as e:
         logger.error(f"Build error: {e}", exc_info=True)
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

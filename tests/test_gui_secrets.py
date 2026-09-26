@@ -1,11 +1,12 @@
-"""Guard: the GUI must never put the Garmin password on a child command line."""
+"""Guard: the GUI must never put the Garmin password on a command line or in its log."""
 
 from pathlib import Path
 
 GUI_SOURCE = Path(__file__).resolve().parents[1] / "fitweaver_gui.py"
 
 
-def test_gui_does_not_pass_password_as_cli_argument():
+def test_gui_runs_cli_in_process_and_redacts_logged_args():
     source = GUI_SOURCE.read_text(encoding="utf-8")
-    assert '"--password"' not in source
-    assert '"GARMIN_PASSWORD"' in source
+    assert "subprocess.Popen(\n                    cmd" not in source
+    assert "garmin-fit-cli.exe" not in source
+    assert "redact_args(run_args)" in source

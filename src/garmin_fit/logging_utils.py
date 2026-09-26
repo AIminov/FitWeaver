@@ -27,7 +27,7 @@ def setup_file_logging(prefix: str = "workflow", run_id: str | None = None):
     suffix = f"_{run_id}" if run_id else ""
     log_file = date_dir / f"{prefix}_{datetime.now().strftime('%H%M%S')}{suffix}.log"
 
-    file_handler = logging.FileHandler(log_file)
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")

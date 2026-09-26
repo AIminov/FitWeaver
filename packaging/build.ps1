@@ -61,7 +61,7 @@ try {
         Pop-Location
     }
 
-    Write-Host "Built dist/FitWeaver.exe and dist/garmin-fit-cli.exe -- ship them together in the same folder."
+    Write-Host "Built dist/FitWeaver.exe (standalone GUI) and dist/garmin-fit-cli.exe (optional CLI)."
 }
 finally {
     Pop-Location

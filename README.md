@@ -39,8 +39,8 @@ expand the detailed journal or open it as a file when needed. GUI actions that c
 require explicit confirmation. The `--dry-run` option remains available in the CLI only.
 Session state (email, YAML path, LLM settings) is saved between runs.
 
-The GUI has **Simple** and **Expert** modes. In the packaged Windows build, ship
-`FitWeaver.exe` and `garmin-fit-cli.exe` together in the same folder.
+The GUI has **Simple** and **Expert** modes. In the packaged Windows build `FitWeaver.exe`
+works on its own; `garmin-fit-cli.exe` is an optional command-line companion.
 
 ---
 

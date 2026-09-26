@@ -73,7 +73,7 @@ def prompt_mfa_with_timeout(
     def _read() -> None:
         try:
             result["value"] = input(prompt)
-        except EOFError:
+        except (EOFError, OSError, RuntimeError):
             result["value"] = ""
 
     thread = threading.Thread(target=_read, daemon=True)

@@ -349,33 +349,25 @@ def validate_directory(directory, strict=False, sdk_python_check=True):
     return valid_count, len(fit_files)
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        # Default: check Output_fit directory
-        output_dir = OUTPUT_DIR
+def main(argv: list[str] | None = None) -> int:
+    """Validate FIT files; default target is Output_fit/. Returns a process exit code."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    strict = "--strict" in args
+    sdk_python_check = "--no-sdk-python-check" not in args
+    args = [a for a in args if a not in {"--strict", "--no-sdk-python-check"}]
 
-        if output_dir.exists():
-            valid, total = validate_directory(output_dir, strict=False, sdk_python_check=True)
-            sys.exit(0 if valid == total else 1)
-        else:
-            print("Usage: python check_fit.py <file_or_directory>")
-            print("   or: python check_fit.py --strict <file_or_directory>")
-            print("   add: --no-sdk-python-check to disable vendored sdk/py validation")
-            sys.exit(1)
+    if not args:
+        if OUTPUT_DIR.exists():
+            valid, total = validate_directory(OUTPUT_DIR, strict=strict, sdk_python_check=sdk_python_check)
+            return 0 if valid == total else 1
+        print("Usage: python -m garmin_fit.check_fit [--strict] [--no-sdk-python-check] <file_or_directory>")
+        return 1
 
-    strict = "--strict" in sys.argv
-    if strict:
-        sys.argv.remove("--strict")
-    sdk_python_check = "--no-sdk-python-check" not in sys.argv
-    if "--no-sdk-python-check" in sys.argv:
-        sys.argv.remove("--no-sdk-python-check")
-
-    path = Path(sys.argv[1])
-
+    path = Path(args[0])
     if path.is_dir():
         valid, total = validate_directory(path, strict=strict, sdk_python_check=sdk_python_check)
-        sys.exit(0 if valid == total else 1)
-    elif path.is_file():
+        return 0 if valid == total else 1
+    if path.is_file():
         results = validate_fit_file(path, strict=strict)
         if sdk_python_check:
             sdk_ok, sdk_message = _validate_with_local_sdk_python(path)
@@ -383,7 +375,10 @@ if __name__ == "__main__":
                 results["errors"].append(sdk_message)
                 results["valid"] = False
         print_validation_results(path, results)
-        sys.exit(0 if results["valid"] else 1)
-    else:
-        logger.error(f"Path not found: {path}")
-        sys.exit(1)
+        return 0 if results["valid"] else 1
+    logger.error(f"Path not found: {path}")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

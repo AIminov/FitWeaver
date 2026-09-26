@@ -139,35 +139,58 @@ def _select_garmin_workouts_for_delete(
 
 
 def run_step(step_name, script_path=None, args=None, module_name=None, run_id=None):
-    """Run one workflow step script and return its code.
+    """Run one workflow step and return its exit code.
 
     Args:
         step_name: Display name for the step
-        script_path: Path to script (fallback if module_name is None)
+        script_path: Path to a script run with the current interpreter (legacy fallback)
         args: Optional arguments
-        module_name: If set, use 'python -m module_name' invocation
+        module_name: Module with a ``main(argv) -> int`` entry point, called
+            in-process. Spawning ``sys.executable -m module`` breaks in the
+            packaged exe, where sys.executable is the exe itself, and costs a
+            full interpreter start-up per step.
     """
     print_header(f"STEP: {step_name}")
-    if module_name:
-        cmd = [sys.executable, "-m", module_name]
-    else:
-        cmd = [sys.executable, str(script_path)]
-    if args:
-        cmd.extend(args)
-
+    step_args = [str(arg) for arg in (args or [])]
     run_tag = f"[run_id={run_id}] " if run_id else ""
-    logger.info(f"{run_tag}Running: {' '.join(cmd)}")
-    logger.info("")
 
-    result = subprocess.run(cmd)
-    if result.returncode == 0:
+    if module_name:
+        import importlib
+
+        logger.info(f"{run_tag}Running: {module_name} {' '.join(step_args)}".rstrip())
+        logger.info("")
+        try:
+            code = importlib.import_module(module_name).main(step_args)
+        except SystemExit as exc:  # argparse errors inside a step
+            code = exc.code if isinstance(exc.code, int) else 1
+        except Exception as exc:
+            logger.error(f"{step_name} crashed: {exc}", exc_info=True)
+            code = 1
+        code = int(code or 0)
+    else:
+        cmd = [sys.executable, str(script_path), *step_args]
+        logger.info(f"{run_tag}Running: {' '.join(cmd)}")
+        logger.info("")
+        code = subprocess.run(cmd).returncode
+
+    if code == 0:
         logger.info("")
         logger.info(f"[OK] {step_name} completed successfully")
     else:
         logger.error("")
-        logger.error(f"[FAIL] {step_name} failed with code {result.returncode}")
+        logger.error(f"[FAIL] {step_name} failed with code {code}")
+    return code
 
-    return result.returncode
+
+def _confirm(prompt: str, assume_yes: bool) -> bool:
+    """Ask for yes/no unless assume_yes; a missing stdin (GUI, service) means no."""
+    if assume_yes:
+        return True
+    try:
+        return input(prompt).strip().lower() == "yes"
+    except (EOFError, OSError, RuntimeError):
+        logger.error("No interactive input available; pass --yes to confirm.")
+        return False
 
 
 def check_prerequisites(plan_path=None):
@@ -523,7 +546,7 @@ def workflow_templates_only(run_id=None, plan_path=None):
     return run_step("Export Debug Templates", module_name="garmin_fit.generate_from_yaml", args=template_args, run_id=run_id)
 
 
-def workflow_archive(run_id=None):
+def workflow_archive(run_id=None, assume_yes=False):
     print_header("ARCHIVE CURRENT PLAN")
     template_export_count = count_workspace_template_exports()
     output_count = check_outputs()
@@ -541,8 +564,7 @@ def workflow_archive(run_id=None):
         logger.info("  - debug template exports will be derived from YAML if possible")
     logger.info("")
 
-    confirm = input("Continue with archiving? (yes/no): ")
-    if confirm.lower() != "yes":
+    if not _confirm("Continue with archiving? (yes/no): ", assume_yes):
         logger.info("Archive cancelled")
         return 0
 
@@ -565,13 +587,12 @@ def workflow_list_archives():
     return run_step("List Archives", module_name="garmin_fit.archive_manager", args=["list"])
 
 
-def workflow_restore(archive_name):
+def workflow_restore(archive_name, assume_yes=False):
     print_header(f"RESTORE FROM ARCHIVE: {archive_name}")
     logger.info(f"Will restore debug template exports and FIT files from: {archive_name}")
     logger.info("")
 
-    confirm = input("This will overwrite current template exports/FIT files. Continue? (yes/no): ")
-    if confirm.lower() != "yes":
+    if not _confirm("This will overwrite current template exports/FIT files. Continue? (yes/no): ", assume_yes):
         logger.info("Restore cancelled")
         return 0
 

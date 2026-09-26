@@ -28,7 +28,6 @@ if getattr(sys, "frozen", False):
     PROJECT_ROOT = Path(sys.executable).resolve().parent
 else:
     PROJECT_ROOT = Path(__file__).resolve().parent
-PYTHON = sys.executable
 SESSION_FILE = PROJECT_ROOT / ".gui_session.json"
 APP_VERSION = "10.5.0"
 LATEST_RELEASE_URL = "https://api.github.com/repos/AIminov/FitWeaver/releases/latest"
@@ -1744,44 +1743,28 @@ class App(_AppBase):
             self._log(f"[ERR] Не удалось открыть папку FIT: {exc}")
 
     # ── CLI runner ────────────────────────────────────────────────────────────
-    def _cli_command(self, args):
-        if getattr(sys, "frozen", False):
-            # Packaged exe: sys.executable is FitWeaver.exe itself, not a
-            # Python interpreter -- shell out to the sibling CLI exe instead.
-            return [str(PROJECT_ROOT / "garmin-fit-cli.exe")] + args
-        return [PYTHON, "-m", "garmin_fit.cli"] + args
-
     def _run(self, args):
+        """Run a garmin_fit.cli command in-process on a worker thread.
+
+        In-process instead of a child process: the packaged onefile CLI exe
+        needed ~4.5 s just to unpack before every action, and secrets never
+        have to appear on a command line.
+        """
         if not self._begin_operation("Выполняется команда"):
             return
-        cmd = self._cli_command(args)
-        self._log(f"\n$ garmin_fit.cli {' '.join(args)}")
-        env = None
-        if args and args[0].startswith("garmin-calendar") and self.pass_var.get():
-            # The password travels only in the child's environment: never on the
-            # command line (visible to other processes) and never in the log.
-            env = {**os.environ, "GARMIN_PASSWORD": self.pass_var.get()}
+        from garmin_fit.cli_runner import redact_args, run_cli_captured
+
+        run_args = list(args)
+        if run_args and run_args[0].startswith("garmin-calendar") and self.pass_var.get():
+            run_args += ["--password", self.pass_var.get()]
+        self._log(f"\n$ garmin_fit.cli {' '.join(redact_args(run_args))}")
 
         def worker():
-            try:
-                proc = subprocess.Popen(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, encoding="utf-8", errors="replace",
-                    cwd=PROJECT_ROOT, env=env,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                )
-                for line in proc.stdout:
-                    self.after(0, self._log, line.rstrip())
-                proc.wait()
-                ok = proc.returncode == 0
-                msg = "[OK] Готово" if ok else f"[FAIL] код {proc.returncode}"
-                self.after(0, self._log, msg)
-                self.after(0, self._handle_cli_result, args, ok)
-                self.after(0, self._end_operation, ok)
-            except Exception as exc:
-                self.after(0, self._log, f"[ERR] {exc}")
-                self.after(0, self._handle_cli_result, args, False)
-                self.after(0, self._end_operation, False)
+            code = run_cli_captured(run_args, lambda line: self.after(0, self._log, line))
+            ok = code == 0
+            self.after(0, self._log, "[OK] Готово" if ok else f"[FAIL] код {code}")
+            self.after(0, self._handle_cli_result, args, ok)
+            self.after(0, self._end_operation, ok)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1866,14 +1849,24 @@ class App(_AppBase):
 
     def _cmd_validate_fit(self):  self._run(["validate-fit"])
     def _cmd_doctor(self):        self._run(["doctor", "--llm"])
-    def _cmd_archive(self):       self._run(["archive"])
+    def _cmd_archive(self):
+        if messagebox.askyesno(
+            "Архивировать план",
+            "Переместить текущий план и FIT-файлы в архив? Output_fit/ будет очищен.",
+            parent=self,
+        ):
+            self._run(["archive", "--yes"])
     def _cmd_list_archives(self): self._run(["list-archives"])
 
     def _cmd_restore(self):
         name = simpledialog.askstring("Восстановить архив",
                                       "Введите имя архива:", parent=self)
-        if name:
-            self._run(["restore", name.strip()])
+        if name and messagebox.askyesno(
+            "Восстановить архив",
+            f"Восстановить «{name.strip()}»? Текущие FIT-файлы будут перезаписаны.",
+            parent=self,
+        ):
+            self._run(["restore", name.strip(), "--yes"])
 
     # ── LLM tab helpers ───────────────────────────────────────────────────────
     def _make_llm_client(self, *, for_generation: bool = False):

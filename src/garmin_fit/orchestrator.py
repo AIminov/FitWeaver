@@ -54,7 +54,8 @@ def select_active_yaml(prefer_latest: bool = True, interactive: bool = False) ->
             if 0 <= idx < len(yaml_files):
                 return yaml_files[idx]
             print(f"  Введите число от 1 до {len(yaml_files)}")
-        except (ValueError, EOFError):
+        except (ValueError, EOFError, OSError, RuntimeError):
+            # RuntimeError: no stdin at all (GUI / packaged exe).
             return yaml_files[0]
 
 
