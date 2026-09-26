@@ -3,7 +3,7 @@
 ## 2026-09-26 - Golden dataset in the LLM evaluation harness
 
 ### Added
-- `garmin-fit-llm-eval --suite-from-golden` builds a suite from the golden dataset (57 cases:
+- `garmin-fit-llm-eval --suite-from-golden` builds a suite from the golden dataset (59 cases:
   valid single-workout variants with `expected_steps`); suite cases may carry `expected_steps`,
   checked fact by fact by `llm/golden.py` (shared with the rules' regression test).
 
