@@ -700,3 +700,107 @@ def _render_items(items: list[MarkedItem], lines: list[str]) -> None:
             lines.extend(["", f"**** ПОВТОР: {item.count} РАЗ ****"])
             _render_items(item.items, lines)
             lines.append(REPEAT_END_MARKER)
+
+
+# ---------------------------------------------------------------------------
+# Garmin YAML -> marked text (for human review of generated plans)
+# ---------------------------------------------------------------------------
+
+_KIND_BY_INTENSITY = {
+    "warmup": "разминка",
+    "cooldown": "заминка",
+    "recovery": "восстановление",
+    "active": "работа",
+}
+
+
+def plan_data_to_marked_text(data: dict[str, Any]) -> str:
+    """Render Garmin YAML plan data as marked text a person can check and edit.
+
+    Repeats are shown as nested ``ПОВТОР`` groups, distances/durations in
+    natural units, and targets in the notation the parser reads back, so the
+    text compiles to the same steps (identifiers may differ: they are derived
+    from the title).
+    """
+    from .garmin_step_mapper import extract_date_from_filename
+    from .plan_domain import plan_from_data
+
+    plan = MarkedPlan()
+    for workout in plan_from_data(data).workouts:
+        marked = MarkedWorkout(line=0, title=_review_title(workout))
+        date_text = extract_date_from_filename(workout.filename or "")
+        if date_text:
+            marked.date = date.fromisoformat(date_text)
+        if workout.distance_km:
+            marked.meta.append((0, "Общая дистанция", f"{_number(float(workout.distance_km))} км"))
+        if workout.estimated_duration_min:
+            marked.meta.append((0, "Общая длительность", f"{_number(float(workout.estimated_duration_min))} мин"))
+        marked.items = _steps_to_items(workout.steps)
+        plan.workouts.append(marked)
+    return render_marked_plan(plan)
+
+
+def _review_title(workout) -> str:
+    desc = (workout.desc or "").strip()
+    if desc:
+        return desc.split(". ")[0].strip()
+    return workout.name or workout.filename or ""
+
+
+def _steps_to_items(steps) -> list[MarkedItem]:
+    """Fold flat YAML steps (repeat after its body) back into a tree."""
+    nodes: list[tuple[int, MarkedItem]] = []
+    for index, step in enumerate(steps):
+        if step.step_type != "repeat":
+            nodes.append((index, _step_to_marked(step)))
+            continue
+        back_to = int(step.back_to_offset or 0)
+        body: list[MarkedItem] = []
+        while nodes and nodes[-1][0] >= back_to:
+            body.insert(0, nodes.pop()[1])
+        nodes.append((back_to, MarkedRepeat(line=0, count=int(step.count or 1), items=body)))
+    return [item for _start, item in nodes]
+
+
+def _step_to_marked(step) -> MarkedStep:
+    from .plan_domain import PACE_CONSTANT_VALUES
+
+    fields: list[tuple[int, str, str]] = []
+    stype = step.step_type or ""
+    if stype == "sbu_block":
+        fields.append((0, "Тип", "СБУ"))
+        if step.drills:
+            drills = "; ".join(
+                f"{drill.name} — {drill.reps or 2}×{drill.seconds or 60} сек" for drill in step.drills
+            )
+            fields.append((0, "Упражнения", drills))
+        return MarkedStep(line=0, fields=fields)
+
+    kind = _KIND_BY_INTENSITY.get(step.intensity or "", "работа")
+    fields.append((0, "Тип", kind))
+    if stype.startswith("dist_") and step.km:
+        km = float(step.km)
+        fields.append((0, "Дистанция", f"{_number(km)} км" if km >= 1 else f"{round(km * 1000)} м"))
+    elif (stype.startswith("time_") or stype == "time_step") and step.seconds:
+        fields.append((0, "Длительность", _duration_text(int(step.seconds))))
+    if stype.endswith("_hr"):
+        fields.append((0, "Пульс", f"{step.hr_low}–{step.hr_high} уд/мин"))
+    elif stype.endswith("_pace"):
+        fast = PACE_CONSTANT_VALUES.get(str(step.pace_fast), str(step.pace_fast))
+        slow = PACE_CONSTANT_VALUES.get(str(step.pace_slow), str(step.pace_slow))
+        fields.append((0, "Темп", f"{fast}–{slow} мин/км"))
+    elif stype.endswith("_cadence"):
+        fields.append((0, "Частота шагов", f"{step.cad_low}–{step.cad_high}"))
+    return MarkedStep(line=0, fields=fields)
+
+
+def _number(value: float) -> str:
+    return f"{value:g}"
+
+
+def _duration_text(seconds: int) -> str:
+    if seconds % 60 == 0:
+        return f"{seconds // 60} мин"
+    if seconds > 60:
+        return f"{seconds // 60} мин {seconds % 60} сек"
+    return f"{seconds} сек"

@@ -254,6 +254,38 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(plan_to_yaml_data(parse_marked_plan(rendered)), plan_to_yaml_data(plan))
 
 
+class YamlToMarkedTextTests(unittest.TestCase):
+    def test_generated_yaml_renders_to_text_that_compiles_to_the_same_steps(self):
+        from garmin_fit.marked_plan import plan_data_to_marked_text
+
+        data = {"workouts": [{
+            "filename": "W40_10-01_Thu_Sets", "name": "W40_10-01_Thu_Sets", "desc": "Sets. Hard",
+            "distance_km": 10.0,
+            "steps": [
+                {"type": "dist_hr", "km": 2.0, "hr_low": 125, "hr_high": 140, "intensity": "warmup"},
+                {"type": "sbu_block", "drills": [{"name": "A", "seconds": 20, "reps": 2}]},
+                {"type": "dist_pace", "km": 0.4, "pace_fast": "3:50", "pace_slow": "4:00",
+                 "intensity": "active"},
+                {"type": "time_step", "seconds": 90, "intensity": "recovery"},
+                {"type": "repeat", "back_to_offset": 2, "count": 4},
+                {"type": "time_step", "seconds": 180, "intensity": "recovery"},
+                {"type": "repeat", "back_to_offset": 2, "count": 3},
+                {"type": "time_cadence", "seconds": 600, "cad_low": 170, "cad_high": 180,
+                 "intensity": "cooldown"},
+            ],
+        }]}
+
+        text = plan_data_to_marked_text(data)
+        self.assertIn("**** ПОВТОР: 3 РАЗ ****", text)
+        self.assertIn("Длительность: 1 мин 30 сек", text)
+        self.assertIn("Дистанция: 400 м", text)
+
+        recompiled = compile_marked_text(text)
+        self.assertEqual(recompiled.errors, [])
+        self.assertEqual(recompiled.data["workouts"][0]["steps"], data["workouts"][0]["steps"])
+        self.assertEqual(recompiled.data["workouts"][0]["distance_km"], 10.0)
+
+
 class IntegrationTests(unittest.TestCase):
     def test_plan_service_compiles_marked_text_without_calling_llm(self):
         llm = Mock()

@@ -48,6 +48,25 @@ BG3    = "#313244"
 FG     = "#cdd6f4"
 ACCENT = "#89b4fa"
 MUTED  = "#6c7086"
+
+
+def ru_count(n: int, one: str, few: str, many: str) -> str:
+    """'1 тренировка', '3 тренировки', '5 тренировок'."""
+    n = int(n)
+    tail = n % 100
+    if 11 <= tail <= 14:
+        word = many
+    elif n % 10 == 1:
+        word = one
+    elif 2 <= n % 10 <= 4:
+        word = few
+    else:
+        word = many
+    return f"{n} {word}"
+
+
+def ru_workouts(n: int) -> str:
+    return ru_count(n, "тренировка", "тренировки", "тренировок")
 GREEN  = "#a6e3a1"
 RED    = "#f38ba8"
 PURPLE = "#cba6f7"
@@ -1098,10 +1117,22 @@ class App(_AppBase):
         # Output
         out_hdr = ttk.Frame(panes)
         out_hdr.grid(row=0, column=1, sticky="ew", pady=(0, 4))
-        tk.Label(out_hdr, text="Сгенерированный YAML", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 9, "bold"), anchor="w").pack(side="left")
+        self._out_title = tk.Label(out_hdr, text="Сгенерированный YAML", bg=BG, fg=ACCENT,
+                                   font=("Segoe UI", 9, "bold"), anchor="w")
+        self._out_title.pack(side="left")
         ttk.Button(out_hdr, text="Скопировать", command=self._copy_yaml,
                    width=12).pack(side="right")
+        # Generated YAML is kept here; the panel shows it either as YAML or as
+        # marked text, which is easier to check and can be edited and re-run
+        # without the LLM.
+        self._generated_yaml = ""
+        self._out_view = "yaml"
+        self._to_editor_btn = ttk.Button(out_hdr, text="Править как текст",
+                                         command=self._generated_to_editor, state="disabled")
+        self._to_editor_btn.pack(side="right", padx=(0, 4))
+        self._view_btn = ttk.Button(out_hdr, text="Показать как текст",
+                                    command=self._toggle_out_view, state="disabled")
+        self._view_btn.pack(side="right", padx=(0, 4))
 
         self._yaml_out = tk.Text(panes, bg=BG2, fg=GREEN, font=("Consolas", 9),
                                  insertbackground=FG, relief="flat",
@@ -1542,9 +1573,9 @@ class App(_AppBase):
             self._draw_calendar()
             self._yaml_loaded = True
             self._set_yaml_status(
-                f"План загружен · {len(self.workouts)} тренировок · проверяю YAML…", ready=False
+                f"План загружен · {ru_workouts(len(self.workouts))} · проверяю YAML…", ready=False
             )
-            self._log(f"[OK] Загружено {len(self.workouts)} тренировок из {Path(path).name}")
+            self._log(f"[OK] Загружено: {ru_workouts(len(self.workouts))} из {Path(path).name}")
             if repairs:
                 self._log("[Авто-правки]")
                 for r in repairs:
@@ -1985,9 +2016,7 @@ class App(_AppBase):
         cancel_event = self._llm_cancel_event
         self._llm_segment_label = ""
         self._set_progress("⏳ Генерирую YAML…")
-        self._yaml_out.config(state="normal")
-        self._yaml_out.delete("1.0", "end")
-        self._yaml_out.config(state="disabled")
+        self._show_generated("")
 
         from garmin_fit.marked_plan import is_marked_plan
         marked = is_marked_plan(plan_text)
@@ -2031,9 +2060,7 @@ class App(_AppBase):
 
                 def finish():
                     if errors:
-                        self._yaml_out.config(state="normal")
-                        self._yaml_out.delete("1.0", "end")
-                        self._yaml_out.config(state="disabled")
+                        self._show_generated("")
                         self._set_progress(f"❌ YAML не создан: {errors[0]}", RED)
                         self._llm_ui_idle()
                         self._end_operation(False)
@@ -2042,21 +2069,18 @@ class App(_AppBase):
                             self._log(f"  {error}")
                         return
 
-                    self._yaml_out.config(state="normal")
-                    self._yaml_out.delete("1.0", "end")
-                    self._yaml_out.insert("end", yaml_text)
-                    self._yaml_out.config(state="disabled")
+                    self._show_generated(yaml_text)
 
-                    status = f"✅ {'Разобрано без LLM' if marked else 'Готово'} — {n} тренировок"
+                    status = f"✅ {'Разобрано без LLM' if marked else 'Готово'} — {ru_workouts(n)}"
                     color = GREEN
                     if failed_segments:
-                        status = (f"⚠ Готово {n} из {n + len(failed_segments)} тренировок; "
+                        status = (f"⚠ Готово {n} из {ru_workouts(n + len(failed_segments))}; "
                                   "остальные не распознаны — см. лог")
                         color = YELLOW
                     if repairs:
-                        status += f", {len(repairs)} правок"
+                        status += ", " + ru_count(len(repairs), "правка", "правки", "правок")
                     if warnings:
-                        status += f", {len(warnings)} предупреждений"
+                        status += ", " + ru_count(len(warnings), "предупреждение", "предупреждения", "предупреждений")
                     self._set_progress(status, color)
                     self._llm_ui_idle()
                     self._end_operation(True)
@@ -2113,15 +2137,61 @@ class App(_AppBase):
             self.clipboard_clear()
             self.clipboard_append(text)
 
-    def _clear_plan(self):
-        self._plan_text.delete("1.0", "end")
+    def _marked_view_text(self) -> str:
+        from garmin_fit.marked_plan import plan_data_to_marked_text
+        try:
+            return plan_data_to_marked_text(yaml.safe_load(self._generated_yaml) or {})
+        except Exception as exc:  # show YAML rather than nothing
+            self._log(f"[WARN] Не удалось показать план как текст: {exc}")
+            return ""
+
+    def _show_generated(self, yaml_text: str) -> None:
+        self._generated_yaml = yaml_text or ""
+        if not self._generated_yaml:
+            self._out_view = "yaml"
+        shown = self._generated_yaml
+        if self._out_view == "text" and self._generated_yaml:
+            shown = self._marked_view_text() or self._generated_yaml
         self._yaml_out.config(state="normal")
         self._yaml_out.delete("1.0", "end")
+        self._yaml_out.insert("end", shown)
         self._yaml_out.config(state="disabled")
+        has_plan = bool(self._generated_yaml)
+        self._view_btn.config(state="normal" if has_plan else "disabled",
+                              text="Показать YAML" if self._out_view == "text" else "Показать как текст")
+        self._to_editor_btn.config(state="normal" if has_plan else "disabled")
+        self._out_title.config(text="План текстом (для проверки)" if self._out_view == "text"
+                               else "Сгенерированный YAML")
+
+    def _toggle_out_view(self):
+        self._out_view = "yaml" if self._out_view == "text" else "text"
+        self._show_generated(self._generated_yaml)
+
+    def _generated_to_editor(self):
+        """Put the generated plan into the input as marked text: fix it there and
+        press Generate again -- marked text compiles instantly without the LLM."""
+        text = self._marked_view_text()
+        if not text:
+            return
+        current = self._plan_text.get("1.0", "end").strip()
+        if current and not messagebox.askyesno(
+            "Заменить текст плана",
+            "Заменить текст плана размеченной версией результата? Её можно поправить и "
+            "сгенерировать заново — без LLM и мгновенно.",
+            parent=self,
+        ):
+            return
+        self._plan_text.delete("1.0", "end")
+        self._plan_text.insert("1.0", text)
+        self._set_progress("Правьте текст и нажмите «Генерировать YAML» — разбор без LLM", ACCENT)
+
+    def _clear_plan(self):
+        self._plan_text.delete("1.0", "end")
+        self._show_generated("")
         self._set_progress("")
 
     def _save_yaml(self):
-        text = self._yaml_out.get("1.0", "end").strip()
+        text = self._generated_yaml.strip()
         if not text:
             messagebox.showwarning("Нет YAML", "Сначала сгенерируйте YAML.")
             return
@@ -2139,7 +2209,7 @@ class App(_AppBase):
             self._nb.select(0)
 
     def _yaml_save_temp(self) -> str | None:
-        text = self._yaml_out.get("1.0", "end").strip()
+        text = self._generated_yaml.strip()
         if not text:
             messagebox.showwarning("Нет YAML", "Сначала сгенерируйте YAML.")
             return None
@@ -2691,7 +2761,7 @@ class App(_AppBase):
             self._builder_update_action_availability(False)
         elif warnings:
             self._builder_validation_lbl.config(
-                text=(f"Готово, {len(warnings)} предупреждений"
+                text=(f"Готово, {ru_count(len(warnings), 'предупреждение', 'предупреждения', 'предупреждений')}"
                       if self._store is not None else
                       f"Готово · {len(warnings)} предупреждений; сохраните YAML или отправьте в Garmin"),
                 fg=YELLOW)
@@ -3258,9 +3328,9 @@ class App(_AppBase):
         self._gc_scheduled_workouts = events
         self._gc_calendar_render()
         self._gc_calendar_status_var.set(
-            f"{len(events)} тренировок · обновлено {stamp} · источник: Garmin Connect"
+            f"{ru_workouts(len(events))} · обновлено {stamp} · источник: Garmin Connect"
         )
-        self._result_var.set(f"Календарь Garmin обновлён: {len(events)} тренировок")
+        self._result_var.set(f"Календарь Garmin обновлён: {ru_workouts(len(events))}")
 
     def _refresh_gc_history(self) -> None:
         if not hasattr(self, "_gc_history_tree"):
@@ -3427,7 +3497,7 @@ class App(_AppBase):
         total     = len(workouts)
         fitweaver = sum(1 for w in workouts if w.get("_date"))
         self._gc_status.config(
-            text=f"✅ {total} тренировок · {fitweaver} с датой в имени", fg=GREEN)
+            text=f"✅ {ru_workouts(total)} · {fitweaver} с датой в имени", fg=GREEN)
         self._gc_summary.config(
             text=f"Сохранено: {total}  |  Дата указана в имени: {fitweaver}  |  Без метки даты: {len(no_date)}")
 
@@ -3576,7 +3646,7 @@ class App(_AppBase):
             return
         if not messagebox.askyesno(
                 "Удалить выбранные",
-                f"Удалить {len(to_delete)} тренировок из Garmin Connect?\n\nЭто необратимо.",
+                f"Удалить {ru_workouts(len(to_delete))} из Garmin Connect?\n\nЭто необратимо.",
                 icon="warning"):
             return
 

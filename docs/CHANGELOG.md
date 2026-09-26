@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-26 - Review generated plans as text
+
+### Added
+- The LLM tab can show a generated plan as marked text ("Показать как текст") instead of YAML and
+  put it into the plan editor ("Править как текст"): fix it there and generate again — marked text
+  compiles instantly without the LLM. `marked_plan.plan_data_to_marked_text()` renders YAML back
+  to marked text that compiles to the same steps (nested repeats included).
+
+### Fixed
+- Russian counts in GUI statuses use the right plural form ("3 тренировки", not "3 тренировок").
+
 ## 2026-09-26 - Legacy template builder removed
 
 ### Removed
