@@ -55,8 +55,6 @@ Free text    →  LLM ─────────────┴→  YAML  →  
 Text in the [marked format](docs/MARKED_PLAN_FORMAT.md) (`**** ШАГ ****`, `**** ПОВТОР: N РАЗ ****`)
 is compiled deterministically — instantly and without an LLM. Example: `examples/marked_plan_example.txt`.
 
-The full workflow requires no intermediate Python templates.
-`--templates-only` and `--build-only` modes are retained as legacy/debug tools.
 
 ---
 
@@ -380,13 +378,6 @@ python -m garmin_fit.llm.request_cli --api ollama
 python -m garmin_fit.llm.request_cli --workouts 48   # Explicit count
 ```
 
-### Legacy / Debug CLI
-
-```bash
-python -m garmin_fit.legacy_cli templates --plan Plan/plan.yaml
-python -m garmin_fit.legacy_cli build
-python -m garmin_fit.legacy_cli compare --plan Plan/plan.yaml
-```
 
 ### Other
 

@@ -17,7 +17,6 @@ MUTABLE_DIRECTORIES = [
     "Archive",
     "Build_artifacts",
     "Logs",
-    "Workout_templates",
 ]
 
 MUTABLE_FILES = [

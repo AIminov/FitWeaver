@@ -391,10 +391,7 @@ def build_yaml_to_fit_index(steps) -> dict:
 	and FIT step indices diverge whenever one is present. repeat.back_to_offset must
 	be translated through this mapping before writing to the FIT file.
 
-	This is the canonical implementation for domain-object step lists.
-	generate_from_yaml._build_yaml_to_fit_index is a parallel version that also
-	handles raw dicts (legacy template path) — keep both in sync when adding new
-	expandable step types.
+	This is the only implementation; the FIT builder (build_from_plan) uses it.
 	"""
 	from .plan_domain import drill_to_data
 	from .sbu_block import sbu_block as _sbu

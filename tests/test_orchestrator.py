@@ -53,11 +53,7 @@ class OrchestratorTests(unittest.TestCase):
                 )
 
             self.assertTrue(result["success"])
-            self.assertEqual(result["build_mode"], "direct")
-            self.assertEqual(result["template_export_count"], 0)
-            self.assertEqual(result["template_export_total_count"], 0)
-            self.assertNotIn("templates_count", result)
-            self.assertNotIn("templates_total_count", result)
+            self.assertNotIn("template_export_count", result)
             self.assertEqual(len(result["fit_files"]), 2)
             self.assertTrue(result["build_report_path"].exists())
             self.assertTrue(result["repaired_yaml_path"].exists())
@@ -121,36 +117,6 @@ class OrchestratorTests(unittest.TestCase):
             archive_mock.assert_not_called()
             self.assertTrue(any("Direct build incomplete" in e for e in result["errors"]))
 
-    @patch("garmin_fit.orchestrator.archive_current_plan")
-    @patch("garmin_fit.orchestrator.validate_directory", return_value=(1, 1))
-    @patch("garmin_fit.orchestrator.build_all_fits", return_value=(1, 1))
-    @patch("garmin_fit.orchestrator.generate_all_templates", return_value=(1, 2))
-    def test_run_generation_pipeline_fails_on_partial_template_generation(
-        self, _gen, _build, _validate, archive_mock
-    ):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            yaml_path = root / "plan.yaml"
-            out_dir = root / "out"
-            artifacts_dir = root / "artifacts"
-            out_dir.mkdir()
-            artifacts_dir.mkdir()
-            (out_dir / "w1.fit").write_bytes(b"fit")
-            yaml_path.write_text("workouts: []", encoding="utf-8")
-
-            with patch.object(orch, "OUTPUT_DIR", out_dir), patch.object(
-                plan_artifacts, "ARTIFACTS_DIR", artifacts_dir
-            ):
-                result = orch.run_generation_pipeline(
-                    yaml_path,
-                    cleanup_first=False,
-                    auto_archive=True,
-                    build_mode="templates",
-                )
-
-            self.assertFalse(result["success"])
-            archive_mock.assert_not_called()
-            self.assertTrue(any("Debug template export incomplete" in e for e in result["errors"]))
 
 
 if __name__ == "__main__":

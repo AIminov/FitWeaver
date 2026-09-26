@@ -42,7 +42,6 @@ gui = [
 
 [project.scripts]
 garmin-fit = "garmin_fit.cli:main"
-garmin-fit-legacy = "garmin_fit.legacy_cli:main"
 garmin-fit-runner = "garmin_fit.runner:main"
 garmin-fit-bot = "garmin_fit.bot:main"
 garmin-fit-llm = "garmin_fit.llm_cli:main"

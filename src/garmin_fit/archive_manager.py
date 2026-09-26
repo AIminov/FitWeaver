@@ -18,9 +18,7 @@ from .config import (  # noqa: E402
     OUTPUT_DIR,
     PLAN_DIR,
     PLAN_DONE_DIR,
-    TEMPLATES_DIR,
 )
-from .generate_from_yaml import generate_all_templates  # noqa: E402
 from .plan_artifacts import get_plan_artifact_paths  # noqa: E402
 
 
@@ -125,26 +123,6 @@ def _collect_artifact_files(plan_files, artifact_paths=None):
     return artifacts
 
 
-def _export_templates_to_archive(archive_path: Path, yaml_plan_path: Path | None) -> tuple[int, str]:
-    if yaml_plan_path is None:
-        return 0, "none"
-
-    templates_archive = archive_path / "workout_templates"
-    templates_archive.mkdir(exist_ok=True)
-    generated, total = generate_all_templates(
-        yaml_plan_path,
-        output_dir=templates_archive,
-        cleanup_output=True,
-    )
-    if total > 0 and generated == total:
-        logger.info(f"Exported {generated} debug templates from YAML for archive")
-        return generated, "exported_from_yaml"
-
-    if templates_archive.exists():
-        shutil.rmtree(templates_archive, ignore_errors=True)
-    logger.warning("Template export from YAML failed; archive will continue without debug templates")
-    return 0, "none"
-
 
 def get_archive_name(plan_name=None, owner_tag=None):
     """
@@ -215,38 +193,8 @@ def archive_current_plan(
     logger.info(f"Creating archive: {archive_name}")
     logger.info(f"Archive location: {archive_path}")
 
-    # Collect plan files early so we can optionally export debug templates from YAML.
     plan_files = _collect_plan_files(plan_paths=plan_paths)
     artifact_files = _collect_artifact_files(plan_files, artifact_paths=artifact_paths)
-    yaml_plan_path = _pick_yaml_plan_file(plan_files)
-
-    # Archive workspace debug template exports (excluding __pycache__)
-    templates = [f for f in TEMPLATES_DIR.glob("*.py")]
-    templates_source = "workspace"
-    templates_count = 0
-    if templates:
-        templates_archive = archive_path / "workout_templates"
-        templates_archive.mkdir(exist_ok=True)
-
-        for template in templates:
-            dest = templates_archive / template.name
-            shutil.copy2(template, dest)
-            if not dest.exists() or dest.stat().st_size != template.stat().st_size:
-                raise IOError(f"Failed to archive template: {template.name}")
-            template.unlink()
-
-        templates_count = len(templates)
-        logger.info(f"Archived {templates_count} workspace debug templates")
-    else:
-        templates_count, templates_source = _export_templates_to_archive(archive_path, yaml_plan_path)
-        if templates_count == 0:
-            logger.warning("No debug templates to archive")
-
-    # Clean __pycache__ in Workout_templates
-    pycache_dir = TEMPLATES_DIR / "__pycache__"
-    if pycache_dir.exists():
-        shutil.rmtree(pycache_dir)
-        logger.info("Cleaned __pycache__ in Workout_templates/")
 
     # Archive FIT files
     fits = list(OUTPUT_DIR.glob("*.fit"))
@@ -307,8 +255,6 @@ def archive_current_plan(
             f.write(f"Run ID: {run_id}\n")
         if owner_tag is not None:
             f.write(f"Owner tag: {owner_tag}\n")
-        f.write(f"Templates archived: {templates_count}\n")
-        f.write(f"Templates source: {templates_source}\n")
         f.write(f"FIT files archived: {len(fits)}\n")
         f.write(f"Build artifacts archived: {artifact_count}\n")
         f.write(f"Plan files: {len(plan_files)}\n")
@@ -320,7 +266,7 @@ def archive_current_plan(
 
 def restore_from_archive(archive_name):
     """
-    Restore debug template exports, build artifacts, and FIT files from archive.
+    Restore build artifacts and FIT files from archive.
 
     Args:
         archive_name: Name of archive to restore
@@ -336,19 +282,10 @@ def restore_from_archive(archive_name):
 
     logger.info(f"Restoring from archive: {archive_name}")
 
-    # Restore debug template exports
-    templates_archive = archive_path / "workout_templates"
-    if templates_archive.exists():
-        TEMPLATES_DIR.mkdir(exist_ok=True)
-        templates = list(templates_archive.glob("*.py"))
-
-        for template in templates:
-            dest = TEMPLATES_DIR / template.name
-            if dest.exists():
-                logger.warning(f"Overwriting existing template: {template.name}")
-            shutil.copy2(template, dest)
-
-        logger.info(f"Restored {len(templates)} debug templates")
+    if (archive_path / "workout_templates").exists():
+        # Archives made before 2026-09-26 may hold debug templates of the
+        # removed legacy builder; they are no longer restored.
+        logger.info("Skipping legacy debug templates in this archive")
 
     # Restore FIT files
     fits_archive = archive_path / "output_fit"
@@ -418,12 +355,11 @@ def print_archives():
         return
 
     print(f"\nAvailable archives ({len(archives)}):\n")
-    print(f"{'Name':<40} {'Created':<20} {'Debug Tpl':<12} {'FIT Files'}")
+    print(f"{'Name':<40} {'Created':<20} {'FIT Files'}")
     print("-" * 90)
 
     for archive in archives:
         info_file = archive / "archive_info.txt"
-        templates_count = len(list((archive / "workout_templates").glob("*.py"))) if (archive / "workout_templates").exists() else 0
         fits_count = len(list((archive / "output_fit").glob("*.fit"))) if (archive / "output_fit").exists() else 0
 
         created = ""
@@ -434,7 +370,7 @@ def print_archives():
                         created = line.split(":", 1)[1].strip()[:19]
                         break
 
-        print(f"{archive.name:<40} {created:<20} {templates_count:<12} {fits_count}")
+        print(f"{archive.name:<40} {created:<20} {fits_count}")
 
 
 def main(argv: list[str] | None = None) -> int:

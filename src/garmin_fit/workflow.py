@@ -14,8 +14,7 @@ from pathlib import Path
 from time import perf_counter
 
 from ._shared_cli import display_path
-from .compare_build_modes import compare_build_modes
-from .config import OUTPUT_DIR, PLAN_DIR, ROOT, TEMPLATES_DIR
+from .config import OUTPUT_DIR, PLAN_DIR, ROOT
 from .logging_utils import setup_file_logging as _setup_file_logging
 from .orchestrator import run_generation_pipeline, select_active_yaml
 
@@ -221,7 +220,7 @@ def check_prerequisites(plan_path=None):
     required_modules = [
         "garmin_fit.workout_utils",
         "garmin_fit.state_manager",
-        "garmin_fit.build_fits",
+        "garmin_fit.build_from_plan",
         "garmin_fit.check_fit",
     ]
     for module_name in required_modules:
@@ -341,10 +340,6 @@ def workflow_doctor(
     return 0
 
 
-def count_workspace_template_exports():
-    return len(list(TEMPLATES_DIR.glob("*.py")))
-
-
 def check_outputs():
     if not OUTPUT_DIR.exists():
         return 0
@@ -430,77 +425,6 @@ def workflow_full(validate_strict=False, run_id=None, plan_path=None):
         return 1
 
 
-def workflow_compare_build_modes(validate_strict=False, run_id=None, plan_path=None):
-    print_header("COMPARE DIRECT VS LEGACY BUILD")
-    print("Diagnostic workflow: YAML -> direct FIT vs templates FIT")
-    print("")
-
-    if not check_prerequisites(plan_path):
-        return 1
-
-    try:
-        if plan_path:
-            yaml_path = Path(plan_path)
-            if not yaml_path.exists():
-                logger.error(f"YAML plan not found: {yaml_path}")
-                return 1
-        else:
-            yaml_path = select_active_yaml(prefer_latest=True, interactive=True)
-    except FileNotFoundError as e:
-        logger.error(str(e))
-        return 1
-
-    logger.info(f"Using YAML plan: {yaml_path.name}")
-    logger.info(f"Validation mode: {'strict' if validate_strict else 'soft'}")
-    result = compare_build_modes(
-        yaml_path,
-        validate_strict=validate_strict,
-        run_id=run_id,
-    )
-
-    print_header("COMPARE SUMMARY")
-    logger.info(f"Compare report: {result['compare_report_path']}")
-    logger.info(
-        "Direct build: "
-        f"{result['direct']['built_count']}/{result['direct']['build_total_count']} built, "
-        f"{result['direct']['valid_count']}/{result['direct']['total_count']} valid"
-    )
-    logger.info(
-        "Legacy templates build: "
-        f"{result['templates']['built_count']}/{result['templates']['build_total_count']} built, "
-        f"{result['templates']['valid_count']}/{result['templates']['total_count']} valid, "
-        f"{result['templates']['template_export_count']} template export(s)"
-    )
-
-    if result["matches"]:
-        logger.info("")
-        logger.info("[OK] Direct and legacy build outputs match")
-        return 0
-
-    logger.error("")
-    logger.error("Comparison found mismatches:")
-    for mismatch in result["mismatches"]:
-        if mismatch["type"] == "fit_content_mismatch":
-            logger.error(f"  - fit content mismatch: {mismatch['fit_file']}")
-        elif mismatch["type"] == "count_mismatch":
-            logger.error(
-                "  - "
-                f"{mismatch['field']}: direct={mismatch['direct']} "
-                f"templates={mismatch['templates']}"
-            )
-        elif mismatch["type"] == "fit_file_set_mismatch":
-            logger.error(
-                "  - fit file set mismatch: "
-                f"direct_only={mismatch['direct_only']} "
-                f"templates_only={mismatch['templates_only']}"
-            )
-        elif mismatch["type"] == "mode_failure":
-            logger.error(f"  - {mismatch['mode']} failed: {mismatch['errors']}")
-        else:
-            logger.error(f"  - {mismatch}")
-    return 1
-
-
 def workflow_validate_only(validate_strict=False, run_id=None):
     print_header("VALIDATE FIT FILES")
     output_count = check_outputs()
@@ -512,56 +436,18 @@ def workflow_validate_only(validate_strict=False, run_id=None):
     return run_step("Validate FIT Files", module_name="garmin_fit.check_fit", args=validate_args, run_id=run_id)
 
 
-def workflow_build_only(validate_strict=False, run_id=None):
-    print_header("LEGACY BUILD FROM TEMPLATE EXPORTS")
-    template_export_count = count_workspace_template_exports()
-    if template_export_count == 0:
-        logger.error("No template exports found in Workout_templates/. Run --templates-only first.")
-        return 1
-
-    logger.info(f"Found {template_export_count} template export(s)")
-    build_args = ["--run-id", run_id] if run_id else None
-    ret = run_step("Legacy Build FIT Files", module_name="garmin_fit.build_fits", args=build_args, run_id=run_id)
-    if ret == 0:
-        validate_args = ["--strict", str(OUTPUT_DIR)] if validate_strict else [str(OUTPUT_DIR)]
-        validate_ret = run_step("Validate FIT Files", module_name="garmin_fit.check_fit", args=validate_args, run_id=run_id)
-        if validate_ret != 0:
-            return validate_ret
-    return ret
-
-
-def workflow_templates_only(run_id=None, plan_path=None):
-    print_header("EXPORT DEBUG TEMPLATES")
-    template_args = []
-    if run_id:
-        template_args.extend(["--run-id", run_id])
-    if plan_path:
-        yaml_path = Path(plan_path)
-        if not yaml_path.exists():
-            logger.error(f"YAML plan not found: {yaml_path}")
-            return 1
-        template_args.append(str(yaml_path))
-    if not template_args:
-        template_args = None
-    return run_step("Export Debug Templates", module_name="garmin_fit.generate_from_yaml", args=template_args, run_id=run_id)
-
-
 def workflow_archive(run_id=None, assume_yes=False):
     print_header("ARCHIVE CURRENT PLAN")
-    template_export_count = count_workspace_template_exports()
     output_count = check_outputs()
     plan_count = len(sorted(PLAN_DIR.glob("*.yaml")) + sorted(PLAN_DIR.glob("*.yml")) + sorted(PLAN_DIR.glob("*.md")))
 
-    if template_export_count == 0 and output_count == 0 and plan_count == 0:
-        logger.error("Nothing to archive (no plans, debug template exports, or FIT files)")
+    if output_count == 0 and plan_count == 0:
+        logger.error("Nothing to archive (no plans or FIT files)")
         return 1
 
     logger.info("Will archive:")
     logger.info(f"  - {plan_count} plan file(s)")
-    logger.info(f"  - {template_export_count} workspace debug template export(s)")
     logger.info(f"  - {output_count} FIT files")
-    if template_export_count == 0 and plan_count > 0:
-        logger.info("  - debug template exports will be derived from YAML if possible")
     logger.info("")
 
     if not _confirm("Continue with archiving? (yes/no): ", assume_yes):
@@ -576,7 +462,6 @@ def workflow_archive(run_id=None, assume_yes=False):
         logger.info("")
         logger.info("[OK] Plan archived successfully")
         logger.info("  Output_fit/ is now clean")
-        logger.info("  Workout_templates/ is clean if workspace debug exports existed")
         logger.info("  Plan moved to Plan/plan_done/")
         logger.info("  Archive saved to Archive/")
     return ret
@@ -589,10 +474,10 @@ def workflow_list_archives():
 
 def workflow_restore(archive_name, assume_yes=False):
     print_header(f"RESTORE FROM ARCHIVE: {archive_name}")
-    logger.info(f"Will restore debug template exports and FIT files from: {archive_name}")
+    logger.info(f"Will restore FIT files and build artifacts from: {archive_name}")
     logger.info("")
 
-    if not _confirm("This will overwrite current template exports/FIT files. Continue? (yes/no): ", assume_yes):
+    if not _confirm("This will overwrite current FIT files. Continue? (yes/no): ", assume_yes):
         logger.info("Restore cancelled")
         return 0
 
@@ -600,7 +485,7 @@ def workflow_restore(archive_name, assume_yes=False):
     if ret == 0:
         logger.info("")
         logger.info("[OK] Restored successfully")
-        logger.info(f"  Debug template exports and FIT files restored from: {archive_name}")
+        logger.info(f"  FIT files and build artifacts restored from: {archive_name}")
     return ret
 
 

@@ -12,13 +12,11 @@ class ArchiveManagerTests(unittest.TestCase):
             root = Path(tmp)
             plan_dir = root / "Plan"
             plan_done_dir = plan_dir / "plan_done"
-            templates_dir = root / "Workout_templates"
             output_dir = root / "Output_fit"
             archive_dir = root / "Archive"
             artifacts_dir = root / "Build_artifacts"
 
             plan_done_dir.mkdir(parents=True)
-            templates_dir.mkdir(parents=True)
             output_dir.mkdir(parents=True)
             archive_dir.mkdir(parents=True)
             artifacts_dir.mkdir(parents=True)
@@ -32,7 +30,7 @@ class ArchiveManagerTests(unittest.TestCase):
 
             with patch.object(archive_manager, "PLAN_DIR", plan_dir), patch.object(
                 archive_manager, "PLAN_DONE_DIR", plan_done_dir
-            ), patch.object(archive_manager, "TEMPLATES_DIR", templates_dir), patch.object(
+            ), patch.object(
                 archive_manager, "OUTPUT_DIR", output_dir
             ), patch.object(
                 archive_manager, "ARCHIVE_DIR", archive_dir
@@ -50,69 +48,16 @@ class ArchiveManagerTests(unittest.TestCase):
             self.assertFalse(plan_file.exists())
             self.assertTrue((archive_path / "sample.yaml").exists())
 
-    def test_archive_exports_debug_templates_from_yaml_when_workspace_templates_missing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            plan_dir = root / "Plan"
-            plan_done_dir = plan_dir / "plan_done"
-            templates_dir = root / "Workout_templates"
-            output_dir = root / "Output_fit"
-            archive_dir = root / "Archive"
-            artifacts_dir = root / "Build_artifacts"
-
-            plan_done_dir.mkdir(parents=True)
-            templates_dir.mkdir(parents=True)
-            output_dir.mkdir(parents=True)
-            archive_dir.mkdir(parents=True)
-            artifacts_dir.mkdir(parents=True)
-
-            plan_file = plan_dir / "sample.yaml"
-            plan_file.write_text(
-                """
-workouts:
-- filename: W01_TEST
-  name: W01_TEST
-  steps:
-  - type: dist_open
-    km: 5
-""".strip(),
-                encoding="utf-8",
-            )
-
-            with patch.object(archive_manager, "PLAN_DIR", plan_dir), patch.object(
-                archive_manager, "PLAN_DONE_DIR", plan_done_dir
-            ), patch.object(archive_manager, "TEMPLATES_DIR", templates_dir), patch.object(
-                archive_manager, "OUTPUT_DIR", output_dir
-            ), patch.object(
-                archive_manager, "ARCHIVE_DIR", archive_dir
-            ), patch.object(
-                archive_manager, "ARTIFACTS_DIR", artifacts_dir
-            ):
-                archive_path = archive_manager.archive_current_plan(
-                    archive_name="test_export_archive",
-                    keep_plan=False,
-                    plan_paths=[plan_file],
-                )
-
-            exported_template = archive_path / "workout_templates" / "W01_TEST.py"
-            info_text = (archive_path / "archive_info.txt").read_text(encoding="utf-8")
-
-            self.assertTrue(exported_template.exists())
-            self.assertIn("Templates archived: 1", info_text)
-            self.assertIn("Templates source: exported_from_yaml", info_text)
-
     def test_archive_collects_related_build_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             plan_dir = root / "Plan"
             plan_done_dir = plan_dir / "plan_done"
-            templates_dir = root / "Workout_templates"
             output_dir = root / "Output_fit"
             archive_dir = root / "Archive"
             artifacts_dir = root / "Build_artifacts"
 
             plan_done_dir.mkdir(parents=True)
-            templates_dir.mkdir(parents=True)
             output_dir.mkdir(parents=True)
             archive_dir.mkdir(parents=True)
             artifacts_dir.mkdir(parents=True)
@@ -124,7 +69,7 @@ workouts:
 
             with patch.object(archive_manager, "PLAN_DIR", plan_dir), patch.object(
                 archive_manager, "PLAN_DONE_DIR", plan_done_dir
-            ), patch.object(archive_manager, "TEMPLATES_DIR", templates_dir), patch.object(
+            ), patch.object(
                 archive_manager, "OUTPUT_DIR", output_dir
             ), patch.object(
                 archive_manager, "ARCHIVE_DIR", archive_dir

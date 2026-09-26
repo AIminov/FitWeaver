@@ -48,17 +48,6 @@ def get_plan_artifact_paths(
     )
 
 
-def get_build_mode_compare_path(
-    yaml_path: Path,
-    *,
-    artifacts_dir: Path | None = None,
-) -> Path:
-    yaml_path = Path(yaml_path)
-    artifacts_dir = ARTIFACTS_DIR if artifacts_dir is None else Path(artifacts_dir)
-    stem = sanitize_workout_name(yaml_path.stem)
-    return artifacts_dir / f"{stem}.build_mode_compare.json"
-
-
 def prepare_plan_artifacts(
     yaml_path: Path,
     *,
@@ -126,7 +115,6 @@ def prepare_plan_artifacts(
 def write_build_report(
     prepared: PreparedPlanArtifacts,
     *,
-    build_mode: str,
     validate_strict: bool,
     run_id: str | None,
     success: bool,
@@ -136,8 +124,6 @@ def write_build_report(
     total_count: int,
     fit_files: list[Path],
     errors: list[str],
-    template_export_count: int = 0,
-    template_export_total_count: int = 0,
     archive_path: Path | None = None,
     started_at: datetime | None = None,
     finished_at: datetime | None = None,
@@ -147,7 +133,7 @@ def write_build_report(
     finished_at = finished_at or datetime.now(timezone.utc)
 
     report = {
-        "report_version": 1,
+        "report_version": 2,
         "run_id": run_id,
         "generated_at": finished_at.isoformat(),
         "started_at": started_at.isoformat(),
@@ -157,7 +143,6 @@ def write_build_report(
             str(prepared.repaired_yaml_path) if prepared.repaired_yaml_path.exists() else None
         ),
         "archive_path": str(archive_path) if archive_path is not None else None,
-        "build_mode": build_mode,
         "validate_strict": validate_strict,
         "success": success,
         "planned_workouts": prepared.planned_workouts,
@@ -174,10 +159,6 @@ def write_build_report(
         "validation": {
             "valid_count": valid_count,
             "total_count": total_count,
-        },
-        "template_exports": {
-            "generated_count": template_export_count,
-            "expected_count": template_export_total_count,
         },
         "errors": errors,
     }

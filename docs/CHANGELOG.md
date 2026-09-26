@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-26 - Legacy template builder removed
+
+### Removed
+- The legacy build path (`generate_from_yaml.py` generated Python templates from YAML and
+  `build_fits.py` executed them), `compare_build_modes.py`, `legacy_cli.py` and the
+  `garmin-fit-legacy` command, with their `Scripts/` shims and the runner menu items. The direct
+  builder was already the default everywhere; the legacy path doubled maintenance ("update both
+  builders") and executed generated code. Archives no longer contain debug templates (old
+  archives restore without them); the build report drops `build_mode`/`template_exports`
+  (`report_version` 2).
+
 ## 2026-09-26 - Garmin upload skips already scheduled workouts
 
 ### Changed

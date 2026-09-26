@@ -55,9 +55,6 @@ python fitweaver_gui.py
 Текст в [размеченном формате](docs/MARKED_PLAN_FORMAT.md) (`**** ШАГ ****`, `**** ПОВТОР: N РАЗ ****`)
 разбирается детерминированно — мгновенно и без LLM. Пример: `examples/marked_plan_example.txt`.
 
-Полный workflow не требует промежуточных Python-шаблонов.
-Режимы `--templates-only` и `--build-only` сохранены как legacy/debug инструменты.
-
 ---
 
 ## Варианты доставки
@@ -380,13 +377,6 @@ python -m garmin_fit.llm.request_cli --api ollama
 python -m garmin_fit.llm.request_cli --workouts 48   # Явное число тренировок
 ```
 
-### Legacy / Debug CLI
-
-```bash
-python -m garmin_fit.legacy_cli templates --plan Plan/plan.yaml
-python -m garmin_fit.legacy_cli build
-python -m garmin_fit.legacy_cli compare --plan Plan/plan.yaml
-```
 
 ### Прочее
 

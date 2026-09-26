@@ -11,11 +11,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .archive_manager import archive_current_plan
-from .build_fits import build_all_fits
 from .build_from_plan import build_all_fits_from_plan
 from .check_fit import validate_directory
-from .config import OUTPUT_DIR, PLAN_DIR, TEMPLATES_DIR
-from .generate_from_yaml import generate_all_templates
+from .config import OUTPUT_DIR, PLAN_DIR
 from .plan_artifacts import prepare_plan_artifacts, write_build_report
 
 logger = logging.getLogger(__name__)
@@ -60,12 +58,7 @@ def select_active_yaml(prefer_latest: bool = True, interactive: bool = False) ->
 
 
 def cleanup_runtime_dirs() -> None:
-    """Remove FIT outputs and optional debug template exports before a clean run."""
-    for file in TEMPLATES_DIR.glob("*.py"):
-        file.unlink(missing_ok=True)
-    pycache = TEMPLATES_DIR / "__pycache__"
-    if pycache.exists():
-        shutil.rmtree(pycache)
+    """Remove FIT outputs before a clean run."""
     for file in OUTPUT_DIR.glob("*.fit"):
         file.unlink(missing_ok=True)
 
@@ -78,16 +71,12 @@ def run_generation_pipeline(
     auto_archive: bool = False,
     archive_owner_tag: Optional[int] = None,
     run_id: Optional[str] = None,
-    build_mode: str = "direct",
 ) -> Dict:
     """
-    Run the shared YAML pipeline with direct build by default.
+    Run the shared YAML pipeline: repair/validate YAML, build FIT files directly.
 
     Returns dict with:
       - success: bool
-      - build_mode: str
-      - template_export_count: int
-      - template_export_total_count: int
       - built_count: int
       - build_total_count: int
       - valid_count: int
@@ -105,9 +94,6 @@ def run_generation_pipeline(
     if not yaml_path.exists():
         return {
             "success": False,
-            "build_mode": build_mode,
-            "template_export_count": 0,
-            "template_export_total_count": 0,
             "built_count": 0,
             "build_total_count": 0,
             "valid_count": 0,
@@ -120,40 +106,22 @@ def run_generation_pipeline(
             "archive_path": None,
         }
 
-    if build_mode not in {"direct", "templates"}:
-        raise ValueError(f"Unsupported build mode: {build_mode}")
-
     if cleanup_first:
         cleanup_runtime_dirs()
 
     prepared_artifacts = prepare_plan_artifacts(yaml_path)
 
-    if build_mode == "templates":
-        templates_count, templates_total_count = generate_all_templates(yaml_path)
-        if templates_total_count == 0:
-            errors.append("Debug template export produced 0 files")
-        elif templates_count != templates_total_count:
-            errors.append(f"Debug template export incomplete: {templates_count}/{templates_total_count}")
-
-        built_count, build_total_count = build_all_fits()
-        if build_total_count == 0:
-            errors.append("No template exports available for legacy build")
-        elif built_count != build_total_count:
-            errors.append(f"Legacy build incomplete: {built_count}/{build_total_count}")
-    else:
-        templates_count = 0
-        templates_total_count = 0
-        direct_build_error = None
-        try:
-            built_count, build_total_count = build_all_fits_from_plan(yaml_path)
-        except Exception as exc:
-            built_count, build_total_count = 0, 0
-            direct_build_error = str(exc)
-            errors.append(f"Direct build failed: {exc}")
-        if build_total_count == 0 and direct_build_error is None:
-            errors.append("No workouts found in YAML for direct build")
-        elif built_count != build_total_count:
-            errors.append(f"Direct build incomplete: {built_count}/{build_total_count}")
+    direct_build_error = None
+    try:
+        built_count, build_total_count = build_all_fits_from_plan(yaml_path)
+    except Exception as exc:
+        built_count, build_total_count = 0, 0
+        direct_build_error = str(exc)
+        errors.append(f"Direct build failed: {exc}")
+    if build_total_count == 0 and direct_build_error is None:
+        errors.append("No workouts found in YAML for direct build")
+    elif built_count != build_total_count:
+        errors.append(f"Direct build incomplete: {built_count}/{build_total_count}")
 
     valid_count, validate_total_count = validate_directory(OUTPUT_DIR, strict=validate_strict)
     if validate_total_count == 0:
@@ -167,7 +135,6 @@ def run_generation_pipeline(
 
     build_report_path = write_build_report(
         prepared_artifacts,
-        build_mode=build_mode,
         validate_strict=validate_strict,
         run_id=run_id,
         success=success,
@@ -177,8 +144,6 @@ def run_generation_pipeline(
         total_count=validate_total_count,
         fit_files=fit_files,
         errors=errors,
-        template_export_count=templates_count,
-        template_export_total_count=templates_total_count,
         archive_path=None,
         started_at=started_at,
         finished_at=finished_at,
@@ -200,7 +165,6 @@ def run_generation_pipeline(
             finished_at = datetime.now(timezone.utc)
             build_report_path = write_build_report(
                 prepared_artifacts,
-                build_mode=build_mode,
                 validate_strict=validate_strict,
                 run_id=run_id,
                 success=success,
@@ -210,8 +174,6 @@ def run_generation_pipeline(
                 total_count=validate_total_count,
                 fit_files=fit_files,
                 errors=errors,
-                template_export_count=templates_count,
-                template_export_total_count=templates_total_count,
                 archive_path=archive_path,
                 started_at=started_at,
                 finished_at=finished_at,
@@ -223,9 +185,6 @@ def run_generation_pipeline(
 
     return {
         "success": success,
-        "build_mode": build_mode,
-        "template_export_count": templates_count,
-        "template_export_total_count": templates_total_count,
         "built_count": built_count,
         "build_total_count": build_total_count,
         "valid_count": valid_count,

@@ -20,12 +20,10 @@ class DirectPipelineE2ETests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             output_dir = root / "Output_fit"
-            templates_dir = root / "Workout_templates"
             artifacts_dir = root / "Build_artifacts"
             state_file = root / "state.json"
             lock_file = root / "state.lock"
             output_dir.mkdir()
-            templates_dir.mkdir()
             artifacts_dir.mkdir()
 
             original_build_fit = build_from_plan.build_fit_from_workout
@@ -39,8 +37,6 @@ class DirectPipelineE2ETests(unittest.TestCase):
                 )
 
             with patch.object(orch, "OUTPUT_DIR", output_dir), patch.object(
-                orch, "TEMPLATES_DIR", templates_dir
-            ), patch.object(
                 build_from_plan,
                 "OUTPUT_DIR",
                 output_dir,
@@ -79,8 +75,6 @@ class DirectPipelineE2ETests(unittest.TestCase):
         )
 
         self.assertTrue(result["success"], result["errors"])
-        self.assertEqual(result["build_mode"], "direct")
-        self.assertEqual(result["template_export_count"], 0)
         self.assertEqual(result["built_count"], 2)
         self.assertEqual(result["build_total_count"], 2)
         self.assertEqual(result["valid_count"], 2)
@@ -149,7 +143,6 @@ class DirectPipelineE2ETests(unittest.TestCase):
         self.assertEqual(hr_results["steps"][2].get("custom_target_value_low"), 255)
         self.assertEqual(hr_results["steps"][2].get("custom_target_value_high"), 268)
         self.assertEqual(state_data["generated_count"], 1)
-        self.assertEqual(report_data["template_exports"]["generated_count"], 0)
         self.assertIn("hr_low: 155", repaired_yaml_text)
 
 

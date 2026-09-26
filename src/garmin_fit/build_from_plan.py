@@ -5,13 +5,14 @@ Build FIT workout files directly from YAML/domain objects.
 from __future__ import annotations
 
 import logging
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 import yaml
 
-from .config import LOGS_DIR, OUTPUT_DIR
+from .config import FITCSV_JAR, LOGS_DIR, OUTPUT_DIR
 from .logging_utils import setup_file_logging as _setup_logging
 from .plan_domain import Drill, Workout, WorkoutPlan, drill_to_data, plan_from_data
 from .plan_processing import repair_plan_data, sanitize_workout_name
@@ -234,6 +235,45 @@ def _drills_to_data(drills: Iterable[Drill] | None):
     return [drill_to_data(drill) for drill in drills]
 
 
+def verify_fit_with_csv_tool(fit_path):
+    """
+    Verify FIT file using FitCSVTool.jar (optional extra validation).
+
+    Args:
+        fit_path: Path to FIT file
+
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if FITCSV_JAR is None:
+        logger.debug("FitCSVTool.jar not found, skipping CSV verification")
+        return True
+
+    try:
+        tmp_csv = fit_path.with_suffix(".csv")
+
+        # Convert FIT to CSV
+        result = subprocess.run(
+            ["java", "-jar", str(FITCSV_JAR), "-b", str(fit_path), str(tmp_csv)],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            # Clean up CSV
+            if tmp_csv.exists():
+                tmp_csv.unlink()
+            return True
+        else:
+            logger.warning(f"FitCSVTool validation failed for {fit_path.name}")
+            logger.debug(f"STDERR: {result.stderr}")
+            return False
+
+    except Exception as e:
+        logger.debug(f"CSV verification error: {e}")
+        return True  # Don't fail if verification tool has issues
+
+
 def _load_fit_verifier():
-    from .build_fits import verify_fit_with_csv_tool
     return verify_fit_with_csv_tool

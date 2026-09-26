@@ -213,11 +213,6 @@ def _print_menu() -> None:
 	print("  6) List archives")
 	print("  7) Restore from archive")
 	print()
-	print("  --- Legacy / Debug ---")
-	print("  8) Templates only")
-	print("  9) Build from templates")
-	print("  C) Compare direct vs legacy build")
-	print()
 	print("  0) Exit")
 	print()
 
@@ -264,14 +259,6 @@ def main(argv: list[str] | None = None) -> int:
 			ret = run_module("garmin_fit.cli", ["list-archives"])
 		elif choice == "7":
 			ret = _handle_restore()
-		elif choice == "8":
-			ret = run_module("garmin_fit.legacy_cli", ["templates"])
-		elif choice == "9":
-			mode = _ask_mode()
-			ret = run_module("garmin_fit.legacy_cli", ["build", "--validate-mode", mode])
-		elif choice == "C":
-			mode = _ask_mode()
-			ret = run_module("garmin_fit.legacy_cli", ["compare", "--validate-mode", mode])
 		else:
 			print("Invalid choice.")
 			continue

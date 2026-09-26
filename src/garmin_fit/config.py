@@ -33,7 +33,6 @@ ROOT = PROJECT_ROOT
 RUNTIME_ROOT = resolve_runtime_root()
 PLAN_DIR = RUNTIME_ROOT / "Plan"
 PLAN_DONE_DIR = PLAN_DIR / "plan_done"
-TEMPLATES_DIR = RUNTIME_ROOT / "Workout_templates"
 OUTPUT_DIR = RUNTIME_ROOT / "Output_fit"
 ARCHIVE_DIR = RUNTIME_ROOT / "Archive"
 ARTIFACTS_DIR = RUNTIME_ROOT / "Build_artifacts"

@@ -13,25 +13,9 @@
 6. При успехе выполняется автоархивация.
 
 ```text
- marked text -> marked_plan parser -- free text/md -> LLM ----------------+-> YAML -> repaired YAML/report -> domain objects -> FIT -> validation -> archive
+ marked text  -> marked_plan parser --+
+ free text/md -> LLM -----------------+-> YAML -> repaired YAML/report -> domain objects -> FIT -> validation -> archive
 ```
-
-## Legacy / debug режимы
-
-Python templates больше не обязательны для основного pipeline, но сохранены как дополнительный слой:
-
-- `python -m garmin_fit.legacy_cli templates`
-  - экспортирует debug templates из YAML в `Workout_templates/`
-- `python -m garmin_fit.legacy_cli build`
-  - legacy build path: `Workout_templates/*.py -> FIT`
-- `python -m garmin_fit.legacy_cli compare`
-  - compare `direct` vs `templates` on one YAML and write `*.build_mode_compare.json`
-
-Это нужно для:
-
-- отладки
-- сравнения output
-- совместимости со старым workflow
 
 ## Validation и repair
 
@@ -101,44 +85,11 @@ Python templates больше не обязательны для основно�
 - меньше точек отказа
 - проще тестировать
 
-### Templates mode
-
-Используется только когда это явно нужно:
-
-- `--templates-only`
-- `--build-only`
-- `run_generation_pipeline(..., build_mode="templates")`
-
-### Compare mode
-
-Diagnostics-only path:
-
-- `python -m garmin_fit.legacy_cli compare`
-- runs both `build_mode="direct"` and `build_mode="templates"` in isolated temp workspaces
-- compares FIT filenames, workout metadata, and decoded step structures
-- writes `Build_artifacts/*.build_mode_compare.json`
-
 ## Архивы и ZIP bundles
 
-Архивы и Telegram ZIP больше не предполагают, что `Workout_templates/` уже заполнен.
-
-Новое поведение:
-
-- если templates есть в workspace, они архивируются как есть
-- если templates нет, но есть YAML, система пытается экспортировать debug templates прямо в archive/ZIP
-- если export невозможен, архив все равно создается без templates
-
-В `archive_info.txt` пишется:
-
-- `Templates archived`
-- `Templates source`
-- `Build artifacts archived`
-
-Возможные значения `Templates source`:
-
-- `workspace`
-- `exported_from_yaml`
-- `none`
+Архив содержит план (YAML), FIT-файлы и build artifacts (repaired YAML, build report). Debug
+templates прежнего legacy-сборщика (удалён 2026-09-26) больше не создаются; при восстановлении
+старого архива они пропускаются.
 
 ## Telegram flow
 
@@ -176,7 +127,7 @@ idle -> generating -> awaiting_sbu_choice -> awaiting_confirm -> queued -> build
 - `tests/test_build_from_plan.py`
 - `tests/test_orchestrator.py`
 - `tests/test_archive_manager.py`
-- `tests/test_compare_build_modes.py`
+- `tests/test_fit_garmin_equivalence.py`
 - `tests/test_direct_pipeline_e2e.py`
 - `tests/test_telegram_bot_cancel.py`
 - `tests/test_llm_prompt.py`

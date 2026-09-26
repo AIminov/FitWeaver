@@ -37,14 +37,6 @@ class PackageCliTests(unittest.TestCase):
         self.assertEqual(args.to_date, "2026-06-30")
         self.assertTrue(args.dry_run)
 
-    def test_legacy_cli_parser_exposes_legacy_subcommands(self):
-        from garmin_fit.legacy_cli import build_parser
-
-        parser = build_parser()
-        args = parser.parse_args(["compare", "--validate-mode", "soft"])
-        self.assertEqual(args.command, "compare")
-        self.assertEqual(args.validate_mode, "soft")
-
     def test_validate_cli_parser_accepts_plan(self):
         from garmin_fit.validate_cli import build_parser
 

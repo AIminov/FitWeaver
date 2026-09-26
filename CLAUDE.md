@@ -95,7 +95,7 @@ python -m garmin_fit.cli parse-marked plan.txt --output Plan/plan.yaml --profile
 # LLM generation (LM Studio or Ollama)
 python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1
 
-# Interactive menu (loop-based, 14 options)
+# Interactive menu (loop-based)
 python -m garmin_fit.runner
 
 # Telegram bot
@@ -132,23 +132,23 @@ compiled by `marked_plan.compile_marked_text()`; only free text reaches the LLM.
 
 ---
 
-## Two build paths — BOTH must stay in sync
+## One build path
 
-| Path | Script | Used by |
-|------|--------|---------|
-| **Direct** (default) | `src/garmin_fit/build_from_plan.py` | `workflow_full`, Telegram bot |
-| **Legacy/debug** | `src/garmin_fit/generate_from_yaml.py` + `src/garmin_fit/build_fits.py` | `--templates-only` / `--build-only` |
+`src/garmin_fit/build_from_plan.py` builds FIT files directly from YAML domain objects; it is
+used by the full workflow, the GUI and the bot. The legacy template path (`generate_from_yaml.py`
++ `build_fits.py`, which generated and exec'd Python code) and `garmin-fit-legacy` were removed
+on 2026-09-26. `build_yaml_to_fit_index()` in `workout_utils.py` is the single YAML→FIT index
+mapping.
 
-When adding new step types or fixing step generation logic, update **both** builders.
-
-The canonical `build_yaml_to_fit_index()` lives in `workout_utils.py` and is imported by `build_from_plan.py`. `generate_from_yaml.py` has its own dict-handling version (legacy path, raw dicts not domain objects).
+The Garmin Connect payload (`garmin_step_mapper.py`) is the second consumer of the same YAML;
+`tests/test_fit_garmin_equivalence.py` checks that both execute identically.
 
 ---
 
 ## back_to_offset — CRITICAL
 
 `back_to_offset` in YAML is always a **YAML-level step index** (0-based position in the `steps` list).
-Both builders call `build_yaml_to_fit_index()` to translate it to the correct FIT runtime index at build time, accounting for `sbu_block` expansion.
+The builder calls `build_yaml_to_fit_index()` to translate it to the correct FIT runtime index at build time, accounting for `sbu_block` expansion.
 
 **Never** put FIT runtime indices directly in YAML — the validator will reject them (`back_to_offset >= s_idx`).
 
@@ -302,7 +302,8 @@ Scripts/          ← compatibility shims — DO NOT edit directly
 
 Key modules:
 - `config.py` — paths; `GARMIN_FIT_RUNTIME_DIR` env var overrides `RUNTIME_ROOT`
-- `cli.py` / `legacy_cli.py` / `validate_cli.py` / `runtime_cli.py` — CLI entry points
+- `cli.py` / `validate_cli.py` / `runtime_cli.py` — CLI entry points
+- `cli_runner.py` — runs `cli.main` in-process with captured output (the GUI's command runner)
 - `_shared_cli.py` — `configure_logging()`, `generate_run_id()`
 - `plan_schema.py` — Pydantic v2 schema; `_is_valid_pace()`, `_pace_to_seconds()`, `_check_pace_ordering()` are shared with `plan_validator.py`
 - `plan_validator.py` — semantic validation (imports helpers from `plan_schema.py`)
@@ -312,7 +313,6 @@ Key modules:
 - `marked_plan.py` — deterministic parser/compiler for the marked text format (step tree → YAML, repeat offsets computed, `render_marked_plan()` back to text); `garmin-fit parse-marked` CLI
 - `workout_utils.py` — FIT step builders + canonical `build_yaml_to_fit_index()`
 - `build_from_plan.py` — direct YAML→FIT builder (default path)
-- `generate_from_yaml.py` — legacy template-based builder (debug path)
 - `sbu_block.py` — SBU FIT step generator; `DEFAULT_DRILLS` in Russian
 - `garmin_step_mapper.py` — maps domain objects to Garmin Calendar API payloads; `map_workout(workout, language="ru")`
 - `garmin_calendar_export.py` — `GarminCalendarExporter(client, language="ru")`; upload/schedule/delete
