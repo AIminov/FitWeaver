@@ -38,11 +38,14 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
    `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
    (~2.6 tok/s measured). Compare on the golden suite with `garmin-fit-llm-eval`.
 3. Rule-based pre-parser for common free-text phrases so many workouts skip the LLM entirely.
+   Also from the 2026-09-26 second pass: run YAML validation/build in-process instead of the
+   ~4.5 s onefile CLI exe per GUI action; keep partial results of segmented LLM generation.
 4. GUI: show the compiled plan back as marked text for review (`render_marked_plan`).
 5. See `TODO.md` for the full backlog — it is the authoritative list. The Telegram bot is
    deprioritized (optional feature, no work unless asked).
 
 **Working style preferences:**
+- Start every session with `git pull` (work on several PCs diverged into two 22-commit lines once)
 - Communicate in Russian, code/commits in English
 - No trailing summaries of what was just done — user can see the diff
 - Commit and push after each logical unit of work
@@ -64,7 +67,7 @@ pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GU
 ## Common Commands
 
 ```bash
-# Run all tests (404 passed with the api extra, as of 2026-09-26)
+# Run all tests (408 passed with the api extra, as of 2026-09-26)
 python3 -m pytest tests/
 
 # Run a single test file

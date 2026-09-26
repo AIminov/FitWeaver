@@ -18,6 +18,15 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-26 (продолжение 2) — второй проход: пароль и год
+Исправлена утечка пароля Garmin: GUI передавал его в CLI аргументом `--password`, а `_run`
+логирует командную строку — пароль попадал в лог-панель и лог-файл (в существующих логах не
+найден). Теперь только `GARMIN_PASSWORD` в окружении дочернего процесса. Исправлен зашитый 2025
+год в `_extract_segment_header_info` (LLM-сегменты): дата без года получала день недели 2025
+года, что вместе с новым выбором года по дню недели назначило бы тренировку в прошлое. Добавлена
+общая `infer_date()`; парсер размеченного текста использует её же. Замер: запуск onefile
+CLI-exe ~4.5 с на каждое действие GUI. Рекомендации второго прохода — в TODO.md. 408 passed.
+
 ### 2026-09-26 (продолжение) — исправления Garmin Connect и FIT
 `garmin_step_mapper.map_steps` переписан: плоские YAML-повторы складываются в дерево стеком
 (узел = диапазон YAML-индексов), вложенные группы содержат тело ровно один раз, пересекающиеся
@@ -1189,6 +1198,8 @@ smoke-тест (headless `App()`: 3 панели в PanedWindow, hint сраба
    `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
    (~2.6 tok/s measured). Compare on the golden suite with `garmin-fit-llm-eval`.
 3. Rule-based pre-parser for common free-text phrases so many workouts skip the LLM entirely.
+   Also from the 2026-09-26 second pass: run YAML validation/build in-process instead of the
+   ~4.5 s onefile CLI exe per GUI action; keep partial results of segmented LLM generation.
 4. GUI: show the compiled plan back as marked text for review (`render_marked_plan`).
 5. See `TODO.md` for the full backlog — it is the authoritative list. The Telegram bot is
    deprioritized (optional feature, no work unless asked).
@@ -1214,7 +1225,7 @@ pip install -e ".[build]"        # add PyInstaller -- needed to package the desk
 ## Common Commands
 
 ```bash
-# Run all tests (404 passed with the api extra, as of 2026-09-26)
+# Run all tests (408 passed with the api extra, as of 2026-09-26)
 python3 -m pytest tests/
 
 # Run a single test file

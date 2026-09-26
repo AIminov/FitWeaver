@@ -15,6 +15,13 @@
 - FIT distances were truncated by float error (`int(1.15 * 100) == 114`): 287 of the 10-m
   distances up to a marathon were 10 m short on the watch. Conversions now round.
 
+- The GUI passed the Garmin password to the CLI as `--password`, exposing it on the process
+  command line and writing it in clear text to the GUI log (the command line is logged). It now
+  travels only in the child's `GARMIN_PASSWORD` environment variable.
+- LLM segment headers without a year were dated in 2025 (hard-coded), giving wrong weekdays in
+  workout names. `infer_date()` now picks the nearest real date for the LLM path, the marked
+  parser and filename dates alike.
+
 ### Added
 - `tests/test_fit_garmin_equivalence.py`: executes the FIT steps and the Garmin payload of the
   same YAML and checks the runner does the same thing.
