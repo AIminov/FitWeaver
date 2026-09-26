@@ -11,7 +11,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 В конце каждой рабочей сессии (перед финальным коммитом):
 1. Обнови раздел **«Журнал сессий»** в `AGENTS.md` — что сделано, какие решения приняты, что отложено и почему.
 2. Обнови раздел **«Next tasks»** — следующие приоритеты.
-3. Обнови `TODO.md` — пометь выполненные пункты `✅ FIXED`, добавь новые идеи.
+3. Обнови `TODO.md` — удали выполненные пункты (они уходят в `docs/CHANGELOG.md`), добавь новые.
+   TODO.md хранит только открытые задачи; старая история — в `docs/history/`.
 4. Закоммить оба файла вместе с остальными изменениями.
 
 ---
@@ -32,17 +33,17 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (agreed 2026-09-26, start here):**
-1. Garmin upload de-duplication: re-uploading a plan creates duplicate workouts/schedules
-   (check the calendar first, offer skip/replace). The 2026-09-26 correctness bugs are fixed.
+1. Live checks that need hardware/accounts: rebuild both exes and click through the LLM tab
+   (marked text, progress/cancel) and sidebar commands; Garmin duplicate-skip against real
+   calendar names; OpenAI `auto` mode against a live server.
 2. LLM path for free text: make the model emit a short line format (or marked text) that
    `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
-   (~2.6 tok/s measured). Compare on the golden suite with `garmin-fit-llm-eval`.
+   (~2.6 tok/s measured). Compare on the golden suite (`docs/golden_dataset/`) with
+   `garmin-fit-llm-eval`; do not change prompts without a measurement.
 3. Rule-based pre-parser for common free-text phrases so many workouts skip the LLM entirely.
-   Also from the 2026-09-26 second pass: run YAML validation/build in-process instead of the
-   ~4.5 s onefile CLI exe per GUI action; keep partial results of segmented LLM generation.
-4. GUI: show the compiled plan back as marked text for review (`render_marked_plan`).
-5. See `TODO.md` for the full backlog — it is the authoritative list. The Telegram bot is
-   deprioritized (optional feature, no work unless asked).
+4. Code quality: one parser for the marked format (`marked_source_checks` → `marked_plan`),
+   retire the legacy exec-based builder, extract GUI state logic from `fitweaver_gui.py`.
+5. `TODO.md` lists every open task (only open ones). The Telegram bot is deprioritized.
 
 **Working style preferences:**
 - Start every session with `git pull` (work on several PCs diverged into two 22-commit lines once)
@@ -67,7 +68,7 @@ pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GU
 ## Common Commands
 
 ```bash
-# Run all tests (408 passed with the api extra, as of 2026-09-26)
+# Run all tests (428 passed with the api extra, as of 2026-09-26)
 python3 -m pytest tests/
 
 # Run a single test file

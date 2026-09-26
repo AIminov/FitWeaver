@@ -230,3 +230,4 @@ python -m unittest discover -s tests -p "test_*.py" -v
 - [LLM Connection Profile](LLM_CONNECTION_PROFILE.md)
 - [Telegram Setup](TELEGRAM_SETUP.md)
 - [Changelog](CHANGELOG.md)
+- [История TODO и журнала сессий](history/) — архив до 2026-09-26
