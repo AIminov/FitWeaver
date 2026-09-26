@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-26 - Local LLM generation: partial results, cache, progress, cancel
+
+### Changed
+- Plans with per-workout headers are always generated one workout per request (the old limit
+  of 10 sent larger plans in one request that did not fit `num_predict`). Larger plans without
+  headers get a warning that the answer may be cut off.
+- A failed workout no longer discards the others: the successful ones are returned and the
+  failures are listed (`GeneratedYamlResult.failed_segments`, also over the Plan API).
+- Plan-wide notes before the first workout (zones, paces) are prepended to every workout request.
+- Successful workouts are cached by model, options, system prompt and source text
+  (`Build_artifacts/llm_segment_cache/` in the GUI): re-running an edited plan only regenerates
+  the changed workouts.
+- Ollama requests stream: the GUI shows "workout 3/10" and answer progress and has a Cancel
+  button; requests keep the model loaded (`keep_alive: 30m`) and the GUI warms the model up when
+  the LLM tab opens.
+
 ## 2026-09-26 - GUI runs commands in-process
 
 ### Changed

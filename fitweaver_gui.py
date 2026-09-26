@@ -911,6 +911,7 @@ class App(_AppBase):
         self._nb.add(llm_tab,     text="LLM")
         self._nb.add(builder_tab, text="Конструктор")
         self._nb.add(garmin_tab,  text="Garmin Connect")
+        self._nb.bind("<<NotebookTabChanged>>", self._on_tab_changed, add="+")
 
         self._build_calendar_tab(cal_tab)
         self._build_llm_tab(llm_tab)
@@ -1120,6 +1121,9 @@ class App(_AppBase):
         self._gen_btn = ttk.Button(actions, text="🤖  Генерировать YAML",
                                    style="Primary.TButton", command=self._llm_generate)
         self._gen_btn.pack(side="left", padx=(16, 2))
+        self._cancel_btn = ttk.Button(actions, text="Отменить", command=self._llm_cancel,
+                                      state="disabled")
+        self._cancel_btn.pack(side="left", padx=2)
 
         self._llm_progress = tk.Label(actions, text="", bg=BG, fg=YELLOW,
                                       font=("Segoe UI", 9))
@@ -1877,7 +1881,9 @@ class App(_AppBase):
             timeout = max(60, self.llm_timeout.get()) if for_generation else 300
             return PlanApiClient(self.api_url.get(), self.api_token.get(), timeout_sec=timeout)
 
+        from garmin_fit.config import ARTIFACTS_DIR
         from garmin_fit.llm.client import UnifiedLLMClient
+
         # "auto" tries /v1/chat/completions first, which is the only path that
         # actually sends enable_thinking=False / thinking:disabled -- forcing
         # "completions" (the raw-text endpoint) skips that entirely, letting
@@ -1885,10 +1891,62 @@ class App(_AppBase):
         # thinking text straight into the YAML output. auto still falls back
         # to raw completions if chat fails or returns unusable content.
         kwargs = {"model": self.llm_model.get(), "base_url": self.llm_url.get(),
-                  "api_type": self.llm_type.get(), "openai_mode": "auto"}
+                  "api_type": self.llm_type.get(), "openai_mode": "auto",
+                  # Re-running an edited plan regenerates only the changed workouts.
+                  "segment_cache_dir": ARTIFACTS_DIR / "llm_segment_cache"}
         if for_generation:
             kwargs["request_timeout_sec"] = max(60, self.llm_timeout.get())
         return UnifiedLLMClient(**kwargs)
+
+    def _on_tab_changed(self, _event=None):
+        try:
+            is_llm_tab = self._nb.index(self._nb.select()) == 1
+        except tk.TclError:
+            return
+        if is_llm_tab:
+            self._warm_up_llm()
+
+    def _warm_up_llm(self):
+        """Load the local Ollama model in the background before the first request."""
+        if self.llm_conn_mode.get() != "own" or self.llm_type.get() != "ollama":
+            return
+        key = (self.llm_url.get(), self.llm_model.get())
+        if getattr(self, "_warmed_llm", None) == key:
+            return
+        self._warmed_llm = key
+
+        def worker():
+            try:
+                self._make_llm_client().warm_up()
+            except Exception:
+                pass  # best effort: generation will load the model anyway
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _llm_cancel(self):
+        event = getattr(self, "_llm_cancel_event", None)
+        if event is not None:
+            event.set()
+            self._cancel_btn.config(state="disabled")
+            self._set_progress("⏳ Отменяю…")
+
+    def _on_llm_progress(self, info):
+        stage = info.get("stage")
+        if stage == "segment" and info.get("total", 1) > 1:
+            self._llm_segment_label = f"тренировка {info['segment']}/{info['total']}"
+            self._set_progress(f"⏳ Генерирую YAML: {self._llm_segment_label}…")
+        elif stage == "generating":
+            label = getattr(self, "_llm_segment_label", "")
+            prefix = f"{label}, " if label else ""
+            self._set_progress(f"⏳ Генерирую YAML: {prefix}{info.get('tokens', 0)} фрагм. ответа…")
+        elif stage == "cached":
+            self._set_progress(f"⏳ Тренировка {info.get('segment')}: взята из кэша")
+
+    def _llm_ui_idle(self):
+        self._gen_btn.config(state="normal")
+        self._cancel_btn.config(state="disabled")
+        self._llm_cancel_event = None
+        self._llm_segment_label = ""
 
     def _llm_check(self):
         if not self._begin_operation("Проверка подключения"):
@@ -1923,6 +1981,9 @@ class App(_AppBase):
             return
 
         self._gen_btn.config(state="disabled")
+        self._llm_cancel_event = threading.Event()
+        cancel_event = self._llm_cancel_event
+        self._llm_segment_label = ""
         self._set_progress("⏳ Генерирую YAML…")
         self._yaml_out.config(state="normal")
         self._yaml_out.delete("1.0", "end")
@@ -1933,9 +1994,12 @@ class App(_AppBase):
         hr_zones = self._builder_hr_zones() if marked else {}
         if marked:
             self._set_progress("⏳ Разбираю размеченный план (без LLM)…")
+        else:
+            self._cancel_btn.config(state="normal")
 
         def worker():
             from garmin_fit.api_client import PlanApiError
+            from garmin_fit.llm.client import GenerationCancelled
             try:
                 if marked:
                     # Marked text is compiled deterministically: no LLM, no network.
@@ -1947,12 +2011,17 @@ class App(_AppBase):
                 else:
                     from garmin_fit.plan_service import build_plan_draft
                     client = self._make_llm_client(for_generation=True)
+                    client.cancel_event = cancel_event
+                    client.progress_callback = lambda info: self.after(0, self._on_llm_progress, info)
                     result = build_plan_draft(client, plan_text, max_retries=1)
+                if cancel_event.is_set():
+                    raise GenerationCancelled("cancelled")  # API mode cannot abort mid-request
 
                 yaml_text = result.yaml_text or ""
                 warnings  = result.warnings or []
                 repairs   = result.repairs or []
                 errors = result.validation_errors or []
+                failed_segments = getattr(result, "failed_segments", None) or []
 
                 # Count workouts from yaml_text
                 try:
@@ -1966,7 +2035,7 @@ class App(_AppBase):
                         self._yaml_out.delete("1.0", "end")
                         self._yaml_out.config(state="disabled")
                         self._set_progress(f"❌ YAML не создан: {errors[0]}", RED)
-                        self._gen_btn.config(state="normal")
+                        self._llm_ui_idle()
                         self._end_operation(False)
                         self._log("\n[Ошибки генерации]")
                         for error in errors:
@@ -1979,13 +2048,23 @@ class App(_AppBase):
                     self._yaml_out.config(state="disabled")
 
                     status = f"✅ {'Разобрано без LLM' if marked else 'Готово'} — {n} тренировок"
+                    color = GREEN
+                    if failed_segments:
+                        status = (f"⚠ Готово {n} из {n + len(failed_segments)} тренировок; "
+                                  "остальные не распознаны — см. лог")
+                        color = YELLOW
                     if repairs:
                         status += f", {len(repairs)} правок"
                     if warnings:
                         status += f", {len(warnings)} предупреждений"
-                    self._set_progress(status, GREEN)
-                    self._gen_btn.config(state="normal")
+                    self._set_progress(status, color)
+                    self._llm_ui_idle()
                     self._end_operation(True)
+
+                    if failed_segments:
+                        self._log("\n[Не удалось сгенерировать — исправьте текст или впишите вручную]")
+                        for item in failed_segments:
+                            self._log(f"  {item.get('header', '')}: {item.get('error', '')}")
 
                     if repairs:
                         self._log("\n[Авто-правки]")
@@ -2007,15 +2086,22 @@ class App(_AppBase):
 
                 def on_api_err():
                     self._set_progress(f"❌ {msg}", RED)
-                    self._gen_btn.config(state="normal")
+                    self._llm_ui_idle()
                     self._end_operation(False)
                 self.after(0, on_api_err)
+
+            except GenerationCancelled:
+                def on_cancel():
+                    self._set_progress("⏹ Генерация отменена", MUTED)
+                    self._llm_ui_idle()
+                    self._end_operation(False)
+                self.after(0, on_cancel)
 
             except Exception as exc:
                 msg = str(exc)  # capture before Python clears exc at end of except block
                 def on_err():
                     self._set_progress(f"❌ Ошибка: {msg}", RED)
-                    self._gen_btn.config(state="normal")
+                    self._llm_ui_idle()
                     self._end_operation(False)
                 self.after(0, on_err)
 

@@ -89,4 +89,5 @@ class PlanApiClient:
             validation_errors=body.get("validation_errors", []),
             error_categories=body.get("error_categories", {}),
             attempts=body.get("attempts", 0),
+            failed_segments=body.get("failed_segments", []),
         )

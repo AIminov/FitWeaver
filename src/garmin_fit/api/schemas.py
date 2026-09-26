@@ -36,6 +36,7 @@ class GeneratedYamlResultResponse(BaseModel):
     validation_errors: list[str] = Field(default_factory=list)
     error_categories: dict[str, list[str]] = Field(default_factory=dict)
     attempts: int = 0
+    failed_segments: list[dict[str, Any]] = Field(default_factory=list)
 
     @classmethod
     def from_result(cls, result: GeneratedYamlResult) -> "GeneratedYamlResultResponse":
@@ -48,6 +49,7 @@ class GeneratedYamlResultResponse(BaseModel):
             validation_errors=result.validation_errors,
             error_categories=result.error_categories,
             attempts=result.attempts,
+            failed_segments=result.failed_segments,
         )
 
 

@@ -7,12 +7,14 @@ Includes normalization, repair, structured validation, and retry feedback.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import yaml
@@ -21,6 +23,18 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 1          # single retry is enough; extra retries trigger thinking mode
 SUSPICIOUS_SEGMENT_RETRIES = 1  # one focused retry for missing source facts
+# Keep a local model loaded between requests (Ollama unloads after 5 min idle by
+# default, so every return to the app paid the full model load again).
+DEFAULT_OLLAMA_KEEP_ALIVE = "30m"
+# Plans with more workouts than this and no per-workout headers go to the model
+# in one request; its output budget (num_predict) rarely fits them.
+LARGE_UNSEGMENTED_PLAN_WORKOUTS = 8
+# Shared plan notes (zones, paces) prepended to every segment are capped so a
+# long preamble does not multiply prompt size by the number of workouts.
+MAX_SHARED_CONTEXT_CHARS = 800
+# Bump when the segment post-processing changes so stale cached workouts are
+# not reused (prompt/model/options changes already change the cache key).
+SEGMENT_CACHE_VERSION = 1
 SEGMENT_HEADER_DATE_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?:====\s*ТРЕНИРОВКА\s*====\s*)?"
     r"(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
@@ -91,6 +105,13 @@ class GeneratedYamlResult:
     validation_errors: list[str] = field(default_factory=list)
     error_categories: dict[str, list[str]] = field(default_factory=dict)
     attempts: int = 0
+    # Segmented generation keeps the workouts that succeeded; the ones that
+    # failed are listed here ({index, header, error, source}) for the user.
+    failed_segments: list[dict[str, Any]] = field(default_factory=list)
+
+
+class GenerationCancelled(RuntimeError):
+    """Raised when the caller's cancel_event is set during generation."""
 
 
 @dataclass(slots=True)
@@ -127,6 +148,8 @@ class UnifiedLLMClient:
         request_timeout_sec: int = 300,
         trace_callback: Callable[[dict[str, Any]], None] | None = None,
         ollama_options: dict[str, Any] | None = None,
+        ollama_keep_alive: str | None = DEFAULT_OLLAMA_KEEP_ALIVE,
+        segment_cache_dir: str | Path | None = None,
     ):
         self.model = model
         self.api_type = api_type
@@ -157,6 +180,46 @@ class UnifiedLLMClient:
         }
         if ollama_options:
             self.ollama_options.update(ollama_options)
+        self.ollama_keep_alive = ollama_keep_alive
+        self.segment_cache_dir = Path(segment_cache_dir) if segment_cache_dir else None
+        # Optional hooks set by interactive callers (GUI):
+        #   progress_callback(dict) -- {"stage", "segment", "total", "tokens"}
+        #   cancel_event -- threading.Event; setting it raises GenerationCancelled
+        self.progress_callback: Callable[[dict[str, Any]], None] | None = None
+        self.cancel_event: Any = None
+        self._segmenting = False
+
+    def _check_cancelled(self) -> None:
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            raise GenerationCancelled("Generation cancelled")
+
+    def _report_progress(self, **info: Any) -> None:
+        if self.progress_callback is None:
+            return
+        try:
+            self.progress_callback(info)
+        except Exception as exc:  # a display problem must not stop generation
+            logger.debug("progress callback failed: %s", exc)
+
+    def warm_up(self, timeout: int = 120) -> bool:
+        """Load the model ahead of the first request (Ollama only).
+
+        An empty generate request loads the model and keeps it for
+        ``ollama_keep_alive``; on a CPU the load itself can take many seconds.
+        """
+        if self.api_type != "ollama":
+            return False
+        import requests
+
+        payload: dict[str, Any] = {"model": self.model}
+        if self.ollama_keep_alive:
+            payload["keep_alive"] = self.ollama_keep_alive
+        try:
+            response = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=timeout)
+            return response.status_code == 200
+        except Exception as exc:
+            logger.info("Model warm-up failed: %s", exc)
+            return False
 
     def set_trace_context(self, **context: Any) -> None:
         """Set non-sensitive fields attached to subsequent trace events."""
@@ -223,7 +286,10 @@ class UnifiedLLMClient:
         if workouts_hint > 0 and analysis.expected_workouts == 0:
             analysis.expected_workouts = workouts_hint
 
-        if 1 < analysis.expected_workouts <= 10 and analysis.workout_blocks:
+        # One request per workout whenever the source has per-workout headers:
+        # small models are far more reliable on one workout at a time, output
+        # stays inside num_predict, and a failure costs one workout, not all.
+        if len(analysis.workout_blocks) > 1:
             return self._generate_segmented_yaml_draft(
                 analysis=analysis,
                 max_retries=max_retries,
@@ -231,6 +297,17 @@ class UnifiedLLMClient:
                 validate_plan_data_detailed=validate_plan_data_detailed,
                 group_issues_by_category=group_issues_by_category,
             )
+
+        size_warning = None
+        if analysis.expected_workouts > LARGE_UNSEGMENTED_PLAN_WORKOUTS:
+            size_warning = (
+                f"The plan has about {analysis.expected_workouts} workouts but no per-workout date "
+                "headers, so it is sent in one request and the answer may be cut off. Split it into "
+                "dated workouts or use the marked format (docs/MARKED_PLAN_FORMAT.md)."
+            )
+            logger.warning(size_warning)
+        if not self._segmenting:
+            self._report_progress(stage="segment", segment=1, total=1)
 
         system_prompt = get_system_prompt(
             include_text_variations=False,
@@ -306,6 +383,8 @@ class UnifiedLLMClient:
                 logger.warning(f"Validation warning: {warning}")
 
             if not prepared.validation_errors and prepared.yaml_text and prepared.data is not None:
+                if size_warning:
+                    prepared.warnings.insert(0, size_warning)
                 logger.info(f"Valid YAML generated on attempt {attempt}")
                 self._emit_trace(
                     "generation_finished",
@@ -340,7 +419,7 @@ class UnifiedLLMClient:
             error_categories=last_categories,
         )
         return GeneratedYamlResult(
-            warnings=[],
+            warnings=[size_warning] if size_warning else [],
             repairs=analysis.changes,
             ambiguities=analysis.ambiguities,
             validation_errors=last_errors,
@@ -375,6 +454,7 @@ class UnifiedLLMClient:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
+        self._check_cancelled()
         self._last_call_metrics = {}
         self._emit_trace(
             "llm_request",
@@ -406,38 +486,69 @@ class UnifiedLLMClient:
         return None
 
     def _call_ollama(self, messages: list, timeout: int) -> Optional[str]:
+        """Call Ollama /api/chat with streaming.
+
+        Streaming lets the caller cancel mid-generation (a CPU answer can take
+        minutes) and see progress in tokens; the final chunk carries the same
+        timing metrics as a non-streamed response.
+        """
         import requests
 
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": False,
+            "stream": True,
             "think": False,
             "options": dict(self.ollama_options),
         }
+        if self.ollama_keep_alive:
+            payload["keep_alive"] = self.ollama_keep_alive
 
         try:
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
                 timeout=timeout,
+                stream=True,
             )
-
             if response.status_code != 200:
                 logger.error(f"Ollama API error: {response.status_code}")
                 return None
 
-            response_data = response.json()
-            for key in (
-                "model", "created_at", "done_reason", "total_duration", "load_duration",
-                "prompt_eval_count", "prompt_eval_duration", "prompt_eval_cached_count",
-                "eval_count", "eval_duration",
-            ):
-                if key in response_data:
-                    self._last_call_metrics[key] = response_data[key]
-            content = response_data.get("message", {}).get("content", "")
+            parts: list[str] = []
+            chunks = 0
+            try:
+                for raw_line in response.iter_lines():
+                    if self.cancel_event is not None and self.cancel_event.is_set():
+                        raise GenerationCancelled("Generation cancelled")
+                    if not raw_line:
+                        continue
+                    chunk = json.loads(raw_line)
+                    if chunk.get("error"):
+                        logger.error(f"Ollama error: {chunk['error']}")
+                        return None
+                    piece = (chunk.get("message") or {}).get("content", "")
+                    if piece:
+                        parts.append(piece)
+                        chunks += 1
+                        if chunks % 10 == 0:
+                            self._report_progress(stage="generating", tokens=chunks)
+                    if chunk.get("done"):
+                        for key in (
+                            "model", "created_at", "done_reason", "total_duration", "load_duration",
+                            "prompt_eval_count", "prompt_eval_duration", "prompt_eval_cached_count",
+                            "eval_count", "eval_duration",
+                        ):
+                            if key in chunk:
+                                self._last_call_metrics[key] = chunk[key]
+                        break
+            finally:
+                response.close()
+            content = "".join(parts)
             return content if content else None
 
+        except GenerationCancelled:
+            raise
         except requests.exceptions.Timeout:
             logger.error("Timeout waiting for Ollama response")
             return None
@@ -926,43 +1037,72 @@ class UnifiedLLMClient:
         validate_plan_data_detailed,
         group_issues_by_category,
     ) -> GeneratedYamlResult:
-        merged_workouts: list[dict[str, Any]] = []
-        warnings: list[str] = []
+        """Generate one workout per request and merge the results.
+
+        A failed workout no longer discards the ones that succeeded: they are
+        returned as a valid plan and the failures are listed in
+        ``failed_segments`` (and as warnings) so only those need fixing.
+        """
         repairs: list[str] = list(analysis.changes)
         ambiguities: list[str] = list(analysis.ambiguities)
-        attempts = 0
-
-        for index, block_text in enumerate(analysis.workout_blocks, start=1):
-            logger.info(
-                f"Segmented LLM generation for workout {index}/{analysis.expected_workouts}..."
+        shared_context = (getattr(analysis, "shared_context", "") or "").strip()
+        if len(shared_context) > MAX_SHARED_CONTEXT_CHARS:
+            logger.info("Shared plan notes truncated to %d chars per segment", MAX_SHARED_CONTEXT_CHARS)
+            shared_context = shared_context[:MAX_SHARED_CONTEXT_CHARS]
+        total = len(analysis.workout_blocks)
+        self._segmenting = True
+        try:
+            return self._generate_segments(
+                analysis, total, shared_context, max_retries, repairs, ambiguities,
+                repair_plan_data, validate_plan_data_detailed, group_issues_by_category,
             )
+        finally:
+            self._segmenting = False
+
+    def _generate_segments(
+        self, analysis, total, shared_context, max_retries, repairs, ambiguities,
+        repair_plan_data, validate_plan_data_detailed, group_issues_by_category,
+    ) -> GeneratedYamlResult:
+        merged_workouts: list[dict[str, Any]] = []
+        merged_sources: list[str] = []
+        failed: list[dict[str, Any]] = []
+        attempts = 0
+        for index, block_text in enumerate(analysis.workout_blocks, start=1):
+            self._report_progress(stage="segment", segment=index, total=total)
+            self._check_cancelled()
+            logger.info(f"Segmented LLM generation for workout {index}/{total}...")
             segment_fact = self._extract_single_workout_fact(block_text)
             segment_workout, segment_error = self._generate_and_validate_segment_workout(
                 block_text=block_text,
                 fact=segment_fact,
                 max_retries=max_retries,
                 segment_index=index,
+                shared_context=shared_context,
             )
-            if segment_error:
-                return GeneratedYamlResult(
-                    warnings=warnings,
-                    repairs=repairs,
-                    ambiguities=ambiguities,
-                    validation_errors=[segment_error],
-                    error_categories={"segmented_generation_error": [segment_error]},
-                    attempts=attempts,
-                )
-            if segment_workout is None:
-                return GeneratedYamlResult(
-                    warnings=warnings,
-                    repairs=repairs,
-                    ambiguities=ambiguities,
-                    validation_errors=[f"segment {index}: empty result"],
-                    error_categories={"segmented_generation_error": [f"segment {index}: empty result"]},
-                    attempts=attempts,
-                )
             attempts += max_retries  # Upper bound approximation for nested generation.
+            if segment_error or segment_workout is None:
+                error = segment_error or f"segment {index}: empty result"
+                logger.warning(error)
+                failed.append({
+                    "index": index,
+                    "header": block_text.splitlines()[0].strip() if block_text.strip() else "",
+                    "error": error,
+                    "source": block_text,
+                })
+                continue
             merged_workouts.append(segment_workout)
+            merged_sources.append(block_text)
+
+        if not merged_workouts:
+            errors = [item["error"] for item in failed]
+            return GeneratedYamlResult(
+                repairs=repairs,
+                ambiguities=ambiguities,
+                validation_errors=errors,
+                error_categories={"segmented_generation_error": errors},
+                attempts=attempts,
+                failed_segments=failed,
+            )
 
         merged_yaml = yaml.safe_dump(
             {"workouts": merged_workouts},
@@ -974,15 +1114,74 @@ class UnifiedLLMClient:
             merged_yaml,
             analysis_repairs=repairs,
             analysis_ambiguities=ambiguities,
-            expected_workout_count=analysis.expected_workouts,
-            source_text=getattr(analysis, "text", ""),
+            expected_workout_count=len(merged_workouts),
+            source_text="\n\n".join(merged_sources) if failed else getattr(analysis, "text", ""),
             repair_plan_data=repair_plan_data,
             validate_plan_data_detailed=validate_plan_data_detailed,
             group_issues_by_category=group_issues_by_category,
         )
-        merged_result.warnings = warnings + merged_result.warnings
+        failure_warnings = [
+            f"Workout {item['index']} ({item['header']}) was not generated: {item['error']}"
+            for item in failed
+        ]
+        merged_result.warnings = failure_warnings + merged_result.warnings
+        merged_result.failed_segments = failed
         merged_result.attempts = attempts
         return merged_result
+
+    @staticmethod
+    def _with_shared_context(block_text: str, shared_context: str) -> str:
+        """Prepend plan-wide notes (zones, paces) that a single workout may refer to."""
+        if not shared_context:
+            return block_text
+        return f"Plan-wide notes (apply to every workout):\n{shared_context}\n\n{block_text}"
+
+    def _segment_cache_path(self, prompt_text: str) -> Path | None:
+        if self.segment_cache_dir is None:
+            return None
+        from ..plan_processing import normalize_source_text
+        from .prompt import get_system_prompt
+
+        system_prompt = get_system_prompt(
+            include_text_variations=False,
+            source_text=normalize_source_text(prompt_text).text,
+        )
+        key_material = json.dumps(
+            [
+                SEGMENT_CACHE_VERSION,
+                self.api_type,
+                self.model,
+                self.openai_mode,
+                sorted(self.ollama_options.items()),
+                system_prompt,
+                prompt_text,
+            ],
+            ensure_ascii=False,
+            default=str,
+        )
+        digest = hashlib.sha256(key_material.encode("utf-8")).hexdigest()
+        return self.segment_cache_dir / f"{digest}.json"
+
+    def _load_cached_segment(self, path: Path | None) -> dict[str, Any] | None:
+        if path is None or not path.exists():
+            return None
+        try:
+            workout = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.info("Ignoring unreadable segment cache %s: %s", path.name, exc)
+            return None
+        return workout if isinstance(workout, dict) else None
+
+    def _store_cached_segment(self, path: Path | None, workout: dict[str, Any]) -> None:
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(workout, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as exc:
+            logger.info("Could not write segment cache %s: %s", path.name, exc)
 
     @staticmethod
     def _build_source_expectations_prompt(analysis) -> str:
@@ -1068,8 +1267,15 @@ class UnifiedLLMClient:
         fact: SourceWorkoutFact | None,
         max_retries: int,
         segment_index: int,
+        shared_context: str = "",
     ) -> tuple[dict[str, Any] | None, str | None]:
-        prompt_text = block_text
+        prompt_text = self._with_shared_context(block_text, shared_context)
+        cache_path = self._segment_cache_path(prompt_text)
+        cached = self._load_cached_segment(cache_path)
+        if cached is not None:
+            logger.info(f"segment {segment_index}: reused cached result")
+            self._report_progress(stage="cached", segment=segment_index)
+            return cached, None
         last_error: str | None = None
 
         for retry_idx in range(SUSPICIOUS_SEGMENT_RETRIES + 1):
@@ -1080,8 +1286,9 @@ class UnifiedLLMClient:
                 if retry_idx >= SUSPICIOUS_SEGMENT_RETRIES:
                     return None, last_error
                 logger.warning(last_error)
-                prompt_text = self._build_segment_fact_retry_input(
-                    block_text, fact, [details]
+                prompt_text = self._with_shared_context(
+                    self._build_segment_fact_retry_input(block_text, fact, [details]),
+                    shared_context,
                 )
                 continue
 
@@ -1108,13 +1315,17 @@ class UnifiedLLMClient:
             self._repair_missing_source_repeat(workout, fact)
             suspicious = self._detect_suspicious_workout_against_fact(workout, fact)
             if not suspicious:
+                self._store_cached_segment(cache_path, workout)
                 return workout, None
 
             last_error = f"segment {segment_index}: suspicious output ({'; '.join(suspicious[:3])})"
             if retry_idx >= SUSPICIOUS_SEGMENT_RETRIES:
                 break
             logger.warning(last_error)
-            prompt_text = self._build_segment_fact_retry_input(block_text, fact, suspicious)
+            prompt_text = self._with_shared_context(
+                self._build_segment_fact_retry_input(block_text, fact, suspicious),
+                shared_context,
+            )
 
         return None, last_error or f"segment {segment_index}: suspicious output"
 
