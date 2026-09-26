@@ -45,7 +45,7 @@ class TestLlmEvalHarness(unittest.TestCase):
         result = validate_source_markers(source)
 
         self.assertTrue(any("distance or duration" in issue for issue in result["needs_user_input"]))
-        self.assertTrue(any("no matching start" in issue for issue in result["errors"]))
+        self.assertTrue(any("без открытого повтора" in issue for issue in result["errors"]))
 
     def test_raw_candidate_checks_schema_and_marked_structure(self):
         result = check_raw_candidate(VALID_RESPONSE, VALID_SOURCE)

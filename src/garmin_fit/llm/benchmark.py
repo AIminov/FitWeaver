@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -245,8 +244,9 @@ def save_report(report: dict[str, Any], suite_path: Path) -> Path:
 
 
 def main() -> int:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+    from .._shared_cli import configure_console_encoding
+
+    configure_console_encoding()
     parser = argparse.ArgumentParser(description="Run LLM quality benchmark for workout YAML generation")
     parser.add_argument("--suite", type=str, default=str(DEFAULT_SUITE), help="Path to benchmark suite YAML")
     parser.add_argument("--mode", choices=["existing", "generate"], default="existing")

@@ -16,7 +16,6 @@ from pathlib import Path
 from ..config import ARTIFACTS_DIR, PLAN_DIR
 from .client import MAX_RETRIES, UnifiedLLMClient
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # Default paths
@@ -51,6 +50,9 @@ def find_plan_file() -> Path:
 
 
 def main():
+    from .._shared_cli import configure_logging
+
+    configure_logging()  # at call time, not import time: importing must not reconfigure logging
     parser = argparse.ArgumentParser(
         description="Generate YAML workout plans from text using local LLM"
     )

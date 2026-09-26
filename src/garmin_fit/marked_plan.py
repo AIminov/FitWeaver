@@ -109,6 +109,9 @@ _TRANSLIT = str.maketrans({
 class ParseIssue:
     line: int
     message: str
+    # Stable identifier for callers that react to specific issues
+    # (e.g. "missing_measure"); empty for purely informational ones.
+    code: str = ""
 
     def __str__(self) -> str:
         return f"строка {self.line}: {self.message}" if self.line else self.message
@@ -345,16 +348,18 @@ def _finalize_workout(workout: MarkedWorkout, hr_zones: dict[str, Any], plan: Ma
                 plan.warnings.append(ParseIssue(line, f"не удалось прочитать общую длительность «{value}»"))
             workout.total_minutes = round(seconds / 60, 1) if seconds else None
 
-    for step in _iter_steps(workout.items):
+    for step in iter_marked_steps(workout.items):
         _finalize_step(step, hr_zones, plan)
 
 
-def _iter_steps(items: list[MarkedItem]):
+def iter_marked_steps(items: list[MarkedItem]):
+    """Yield every step of a workout's item tree in execution-source order."""
     for item in items:
         if isinstance(item, MarkedStep):
             yield item
         else:
-            yield from _iter_steps(item.items)
+            yield from iter_marked_steps(item.items)
+
 
 
 def _finalize_step(step: MarkedStep, hr_zones: dict[str, Any], plan: MarkedPlan) -> None:
@@ -406,9 +411,11 @@ def _finalize_step(step: MarkedStep, hr_zones: dict[str, Any], plan: MarkedPlan)
     step.target = targets[0] if targets else None
 
     if step.km is None and step.seconds is None:
-        plan.warnings.append(
-            ParseIssue(step.line, "не указаны дистанция или длительность: шаг завершается кнопкой круга")
-        )
+        plan.warnings.append(ParseIssue(
+            step.line,
+            "не указаны дистанция или длительность: шаг завершается кнопкой круга",
+            code="missing_measure",
+        ))
         if step.target is not None:
             plan.warnings.append(ParseIssue(step.line, "цель шага без дистанции/длительности не используется"))
             step.target = None

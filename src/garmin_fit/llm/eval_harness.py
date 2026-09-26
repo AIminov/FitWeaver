@@ -9,7 +9,6 @@ import json
 import logging
 import platform
 import statistics
-import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,12 +102,18 @@ def load_suite(path: Path) -> dict[str, Any]:
 
 
 def validate_source_markers(source_text: str) -> dict[str, Any]:
-    """Report malformed marked input before paying for an LLM request."""
+    """Report malformed marked input before paying for an LLM request.
+
+    Uses the same parser as the LLM-free path (marked_plan), so the harness
+    and the app agree on what a valid marked plan is.
+    """
+    from ..marked_plan import WORKOUT_MARKER, is_marked_plan, parse_marked_plan
+
     lines = [line.strip() for line in source_text.splitlines()]
-    marked = STEP_MARKER in lines
+    marked = is_marked_plan(source_text)
     result: dict[str, Any] = {
         "marked_format": marked,
-        "workout_markers": sum(line.startswith("==== ТРЕНИРОВКА") for line in lines),
+        "workout_markers": sum(line.startswith(WORKOUT_MARKER[:15]) for line in lines),
         "step_markers": sum(line == STEP_MARKER for line in lines),
         "errors": [],
         "warnings": [],
@@ -121,63 +126,15 @@ def validate_source_markers(source_text: str) -> dict[str, Any]:
         result["warnings"].append("source is unmarked; source-level structural checks are limited")
         return result
 
-    in_workout = False
-    in_step = False
-    in_repeat = False
-    step_has_measure = False
-
-    def close_step(line_number: int | None = None) -> None:
-        nonlocal in_step, step_has_measure
-        if in_step and not step_has_measure:
-            prefix = f"line {line_number}: " if line_number else ""
+    plan = parse_marked_plan(source_text)
+    result["errors"] = [str(issue) for issue in plan.errors]
+    for issue in plan.warnings:
+        if issue.code == "missing_measure":
             result["needs_user_input"].append(
-                prefix + "step has no distance or duration; user input is required"
+                f"line {issue.line}: step has no distance or duration; user input is required"
             )
-        in_step = False
-        step_has_measure = False
-
-    for line_number, line in enumerate(lines, 1):
-        if line.startswith("==== ТРЕНИРОВКА"):
-            if in_repeat:
-                result["errors"].append(f"line {line_number}: workout starts before repeat is closed")
-            close_step(line_number)
-            in_workout = True
-            continue
-        if line == STEP_MARKER:
-            if not in_workout:
-                result["errors"].append(f"line {line_number}: step is outside a workout")
-            close_step(line_number)
-            in_step = True
-            step_has_measure = False
-            continue
-        if line.startswith("**** ПОВТОР:"):
-            if not in_workout:
-                result["errors"].append(f"line {line_number}: repeat is outside a workout")
-            if in_repeat:
-                result["errors"].append(f"line {line_number}: nested repeats are unsupported")
-            close_step(line_number)
-            in_repeat = True
-            continue
-        if line.startswith("**** КОНЕЦ ПОВТОРА"):
-            if not in_repeat:
-                result["errors"].append(f"line {line_number}: repeat end has no matching start")
-            in_repeat = False
-            close_step(line_number)
-            continue
-        if line.startswith("****"):
-            result["errors"].append(f"line {line_number}: unknown marker {line!r}")
-            continue
-        if in_step and line:
-            if line.lower().startswith(("дистанция:", "длительность:")):
-                step_has_measure = True
-            if line.lower().startswith("тип:") and "сбу" in line.lower():
-                step_has_measure = True
-
-    if result["workout_markers"] == 0:
-        result["errors"].append("marked steps require at least one workout marker")
-    if in_repeat:
-        result["errors"].append("repeat has no closing marker")
-    close_step()
+        else:
+            result["warnings"].append(str(issue))
     return result
 
 
@@ -659,8 +616,9 @@ def run_suite(
 
 
 def main() -> int:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+    from .._shared_cli import configure_console_encoding
+
+    configure_console_encoding()
     parser = argparse.ArgumentParser(description="Run the FitWeaver LLM evaluation harness")
     parser.add_argument("--suite", help="YAML suite manifest")
     parser.add_argument(

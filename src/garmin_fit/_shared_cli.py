@@ -1,12 +1,35 @@
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 
+def configure_console_encoding() -> None:
+    """Never crash on Cyrillic output.
+
+    Redirected stdout (a file or pipe, e.g. the packaged exe run by a script)
+    defaults to the Windows ANSI code page, where printing Russian text raised
+    UnicodeEncodeError. Redirected streams switch to UTF-8; interactive
+    consoles keep their encoding but replace characters they cannot show.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:  # None (windowed exe) or a GUI capture stream
+            continue
+        try:
+            if stream.isatty():
+                reconfigure(errors="replace")
+            else:
+                reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
 def configure_logging() -> None:
+    configure_console_encoding()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 

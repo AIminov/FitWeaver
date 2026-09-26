@@ -227,6 +227,9 @@ def _print_menu() -> None:
 # ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
+	from ._shared_cli import configure_console_encoding
+
+	configure_console_encoding()
 	build_parser().parse_args(argv)
 
 	while True:

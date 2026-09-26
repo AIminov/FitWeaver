@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-STEP_MARKER = "**** ШАГ ****"
+from ..marked_plan import STEP_MARKER, MarkedStep, iter_marked_steps, parse_marked_plan
+
 _TARGET_FIELDS = {
     "hr": {"hr_low", "hr_high"},
     "pace": {"pace_fast", "pace_slow"},
@@ -28,28 +29,18 @@ _DURATION_VALUE = re.compile(
 )
 
 
+def _source_step_lines(step: MarkedStep) -> list[str]:
+    return [f"{label}: {value}" if label else value for _line, label, value in step.fields]
+
+
 def _source_steps(source_text: str) -> list[list[str]]:
-    steps: list[list[str]] = []
-    current: list[str] | None = None
-    for raw_line in source_text.splitlines():
-        line = raw_line.strip()
-        if line == STEP_MARKER:
-            if current is not None:
-                steps.append(current)
-            current = []
-        elif line.startswith("==== ТРЕНИРОВКА"):
-            if current is not None:
-                steps.append(current)
-                current = None
-        elif line.startswith("****"):
-            if current is not None:
-                steps.append(current)
-                current = None
-        elif current is not None:
-            current.append(line)
-    if current is not None:
-        steps.append(current)
-    return steps
+    """Fact lines of every marked step, in order (structure from marked_plan)."""
+    plan = parse_marked_plan(source_text)
+    return [
+        _source_step_lines(step)
+        for workout in plan.workouts
+        for step in iter_marked_steps(workout.items)
+    ]
 
 
 def _pace_seconds(value: str) -> int:
@@ -154,57 +145,29 @@ def _source_step_intensity(lines: list[str]) -> str | None:
 
 
 def _source_workout_shapes(source_text: str) -> list[list[tuple[str, int | None, int | None]]]:
-    """Return each marked workout as (step kind or repeat, offset, count) rows."""
+    """Return each marked workout as (step kind or repeat, offset, count) rows.
+
+    Uses the same parser and repeat compilation rules as the LLM-free path
+    (marked_plan), so nested repeats and "ПОВТОР: 1 РАЗ" behave identically.
+    """
+    plan = parse_marked_plan(source_text)
     workouts: list[list[tuple[str, int | None, int | None]]] = []
-    current_workout: list[tuple[str, int | None, int | None]] | None = None
-    current_step: list[str] | None = None
-    repeat_start: int | None = None
-    repeat_count: int | None = None
-
-    def flush_step() -> None:
-        nonlocal current_step
-        if current_step is not None and current_workout is not None:
-            current_workout.append((_source_step_shape(current_step), None, None))
-        current_step = None
-
-    for raw_line in source_text.splitlines():
-        line = raw_line.strip()
-        if line.startswith("==== ТРЕНИРОВКА"):
-            flush_step()
-            if current_workout is not None:
-                workouts.append(current_workout)
-            current_workout = []
-            repeat_start = None
-            repeat_count = None
-            continue
-        if current_workout is None:
-            continue
-        repeat_match = re.fullmatch(
-            r"\*{4}\s*ПОВТОР:\s*(\d+)\s+РАЗ\s*\*{4}", line, re.IGNORECASE
-        )
-        if repeat_match:
-            flush_step()
-            repeat_start = len(current_workout)
-            repeat_count = int(repeat_match.group(1))
-            continue
-        if line == STEP_MARKER:
-            flush_step()
-            current_step = []
-            continue
-        if line.startswith("****"):
-            flush_step()
-            if "КОНЕЦ ПОВТОРА" in line.upper() and repeat_start is not None and repeat_count is not None:
-                current_workout.append(("repeat", repeat_start, repeat_count))
-                repeat_start = None
-                repeat_count = None
-            continue
-        if current_step is not None:
-            current_step.append(line)
-
-    flush_step()
-    if current_workout is not None:
-        workouts.append(current_workout)
+    for workout in plan.workouts:
+        rows: list[tuple[str, int | None, int | None]] = []
+        _append_shape_rows(workout.items, rows)
+        workouts.append(rows)
     return workouts
+
+
+def _append_shape_rows(items, rows: list[tuple[str, int | None, int | None]]) -> None:
+    for item in items:
+        if isinstance(item, MarkedStep):
+            rows.append((_source_step_shape(_source_step_lines(item)), None, None))
+            continue
+        start = len(rows)  # YAML index of the group's first body step
+        _append_shape_rows(item.items, rows)
+        if item.count > 1 and len(rows) > start:
+            rows.append(("repeat", start, item.count))
 
 
 def _generated_step_shape(step: dict[str, Any]) -> str:
@@ -558,39 +521,15 @@ def sanitize_marked_source_targets(
             generated_step["cad_low"], generated_step["cad_high"] = expected_values
 
     # Aggregate summaries are optional metadata. Keep them only when the marked
-    # source explicitly supplies a workout-level value.
-    explicit_distance: float | None = None
-    explicit_duration_min: float | None = None
-    in_step = False
-    for raw_line in source_text.splitlines():
-        line = raw_line.strip()
-        if line == STEP_MARKER:
-            in_step = True
-            continue
-        if line.startswith("****"):
-            in_step = False
-            continue
-        if in_step or not re.match(r"^(?:общая дистанция|общая длительность|итого|total)\b", line, re.IGNORECASE):
-            continue
-        distance_match = _DISTANCE_VALUE.search(line)
-        duration_match = _DURATION_VALUE.search(line)
-        if distance_match:
-            value = float(distance_match.group("value").replace(",", "."))
-            unit = distance_match.group("unit").lower()
-            explicit_distance = value if unit in {"км", "km"} else value / 1000
-        if duration_match:
-            value = float(duration_match.group("value").replace(",", "."))
-            unit = duration_match.group("unit").lower()
-            explicit_duration_min = value / 60 if unit in {"сек", "секунд", "секунда", "секунды", "s"} else value
-            if unit in {"ч", "час", "часа", "часов"}:
-                explicit_duration_min = value * 60
-
+    # source explicitly supplies them, per workout.
+    source_workouts = parse_marked_plan(source_text).workouts
     for workout_index, workout in enumerate(workouts):
         if not isinstance(workout, dict):
             continue
+        source_workout = source_workouts[workout_index] if workout_index < len(source_workouts) else None
         for field, expected in (
-            ("distance_km", explicit_distance),
-            ("estimated_duration_min", explicit_duration_min),
+            ("distance_km", source_workout.total_km if source_workout else None),
+            ("estimated_duration_min", source_workout.total_minutes if source_workout else None),
         ):
             if expected is None:
                 if workout.get(field) is not None:

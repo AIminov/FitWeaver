@@ -67,5 +67,22 @@ class RunStepTests(unittest.TestCase):
         self.assertTrue(workflow._confirm("Continue? ", assume_yes=True))
 
 
+class ConsoleEncodingTests(unittest.TestCase):
+    def test_redirected_stdout_switches_to_utf8(self):
+        import io
+        import sys
+        from unittest.mock import patch
+
+        from garmin_fit._shared_cli import configure_console_encoding
+
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252")
+        with patch.object(sys, "stdout", stream):
+            configure_console_encoding()
+            print("тренировка")
+            stream.flush()
+        self.assertEqual(raw.getvalue().decode("utf-8").strip(), "тренировка")
+
+
 if __name__ == "__main__":
     unittest.main()
