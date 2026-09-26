@@ -115,9 +115,58 @@ def _split_lines(block_text: str) -> list[str]:
         # Several sentences on one line: split at ". " before a capital/digit.
         for part in re.split(r"(?<=[^\d])\.\s+(?=[А-ЯA-Z0-9])", raw.strip()):
             part = part.strip().rstrip(".").strip()
-            if part:
-                lines.append(part)
+            # Coach shorthand chains segments with " + " (outside parentheses).
+            # A cycle line ("5 циклов: A + B") keeps its " + " -- it joins work and recovery.
+            chained = " + " in part and not _INTERVAL_RE.match(part)
+            for segment in _split_plus(part) if chained else [part]:
+                segment = _expand_shorthand(segment.strip())
+                if segment:
+                    lines.append(segment)
     return lines
+
+
+def _split_plus(text: str) -> list[str]:
+    parts, depth, current = [], 0, []
+    tokens = re.split(r"(\s\+\s|[()\[\]])", text)
+    for token in tokens:
+        if token in ("(", "["):
+            depth += 1
+        elif token in (")", "]"):
+            depth -= 1
+        if token == " + " and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(token)
+    parts.append("".join(current))
+    return parts
+
+
+# Coach shorthand -> the formal wording the rules below understand. Only
+# unambiguous forms: "р2"/"з1"/"темп5" (letter first) are kilometres, while
+# "10р" could be 10 minutes or 10 km and is left alone (-> LLM).
+_SHORTHAND = [
+    (re.compile(r"^р\s*(\d+(?:[.,]\d+)?)(?=\s|\(|$)", re.IGNORECASE), r"Разминка \1 км"),
+    (re.compile(r"^з\s*(\d+(?:[.,]\d+)?)(?=\s|\(|$)", re.IGNORECASE), r"Заминка \1 км"),
+    (re.compile(r"^темп\s*(\d+(?:[.,]\d+)?)(?=\s|\(|$)", re.IGNORECASE), r"Темп \1 км"),
+    # dotted pace range "4.50-5.00" -> "4:50-5:00"
+    (re.compile(r"(?<![\d.:])(\d{1,2})\.(\d{2})\s*-\s*(\d{1,2})\.(\d{2})(?![\d.:])"), r"\1:\2-\3:\4"),
+    # "6х800" (no unit, >= 100) -> metres
+    (re.compile(r"^(\d{1,2})\s*[xх×]\s*(\d{3,5})(?!\s*(?:м|км|m|km|мин|сек|с)\b)(?![\d.,])", re.IGNORECASE),
+     r"\1x\2 м"),
+    # "отд 400" -> recovery 400 m, "отд90с" / "отд 60с" -> recovery seconds
+    (re.compile(r"\bотд\.?\s*(\d{3,4})(?!\s*(?:м|км|с|сек|мин)\b)(?![\d.,])", re.IGNORECASE),
+     r"восстановление \1 м"),
+    (re.compile(r"\bотд\.?\s*(\d{1,3})\s*(?:с|сек)\b!?", re.IGNORECASE), r"восстановление \1 сек"),
+    # "пульс165-172" -> "пульс 165-172"
+    (re.compile(r"пульс(?=\d)", re.IGNORECASE), "пульс "),
+]
+
+
+def _expand_shorthand(segment: str) -> str:
+    for pattern, replacement in _SHORTHAND:
+        segment = pattern.sub(replacement, segment)
+    return segment
 
 
 def _convert(block_text: str) -> str:
@@ -134,7 +183,7 @@ def _convert(block_text: str) -> str:
         weekday = (first.group("weekday") or "").lower()
         weekday = _WEEKDAY_NAMES.get(weekday, weekday)
         header_date = first.group("date") + (f" ({weekday})" if weekday else "")
-        rest = first.group("rest").strip()
+        rest = _expand_shorthand(first.group("rest").strip())
         lines = lines[1:]
         if rest:
             lines.insert(0, rest)
@@ -263,7 +312,9 @@ def _simple_step(line: str, pending_role: str | None) -> list[str]:
 
 def _interval_steps(count: int, rest: str) -> list[str]:
     """``N x work[, recovery]`` or ``N циклов: work + recovery``."""
-    parts = re.split(r"\s*[,+/]\s*(?=[^\d]*\d)", rest, maxsplit=1)
+    parts = re.split(
+        r"\s*[,+/]\s*(?=[^\d]*\d)|\s+(?=(?:восстановлени|отдых)\w*\s+\d)", rest, maxsplit=1
+    )
     work = parts[0]
     lines = [f"**** ПОВТОР: {count} РАЗ ****"]
     lines += _step_lines(work, "работа")

@@ -50,6 +50,18 @@ class FreeTextRulesTests(unittest.TestCase):
         self.assertEqual(steps[3]["intensity"], "recovery")
         self.assertEqual(steps[4], {"type": "repeat", "back_to_offset": 2, "count": 5})
 
+    def test_coach_shorthand(self):
+        steps = parse_workout_with_rules(
+            "14.04 вт: р2(5.45-6.00) + 6х800 4.20-4.30 отд 400 трусцой(5.30-6.00) + з1(5.45-6.00)"
+        )["steps"]
+        self.assertEqual([s.get("km") for s in steps], [2.0, 0.8, 0.4, None, 1.0])
+        self.assertEqual(steps[1]["pace_fast"], "4:20")
+        self.assertEqual(steps[3], {"type": "repeat", "back_to_offset": 1, "count": 6})
+
+    def test_ambiguous_shorthand_is_left_to_the_llm(self):
+        # "10р" may mean 10 minutes or 10 km of warmup.
+        self.assertIsNone(free_text_to_marked("10р + 5 км (4:50-5:00) + 10з"))
+
     def test_hr_cap_is_kept_as_a_note_not_an_invented_range(self):
         workout = parse_workout_with_rules("Лёгкий бег 8 км, пульс до 140")
         self.assertEqual(workout["steps"], [{"type": "dist_open", "km": 8.0}])
@@ -61,7 +73,14 @@ class FreeTextRulesTests(unittest.TestCase):
         self.assertIsNone(free_text_to_marked("3 серии по 4x400м, между сериями 3 минуты"))
         self.assertIsNone(free_text_to_marked("5 км по самочувствию"))
 
-    def test_golden_dataset_never_parses_unclear_cases_and_keeps_coverage(self):
+    def test_golden_dataset_precision_and_coverage(self):
+        """Parsed workouts agree with the reference on every fact they state.
+
+        The only tolerated difference is a missing target where the reference
+        adds one the text does not give (e.g. a warmup pace copied from another
+        line, or an upper HR cap turned into hr_low 80): these rules never
+        invent values. Unclear or unsupported cases are never parsed.
+        """
         data = yaml.safe_load(GOLDEN.read_text(encoding="utf-8"))
         parsed_valid = 0
         for group in data["groups"]:
@@ -69,9 +88,33 @@ class FreeTextRulesTests(unittest.TestCase):
                 workout = parse_workout_with_rules(variant["text"])
                 if group["status"] != "VALID":
                     self.assertIsNone(workout, variant["id"])
-                elif workout is not None:
-                    parsed_valid += 1
-        self.assertGreaterEqual(parsed_valid, 11)
+                    continue
+                if workout is None:
+                    continue
+                parsed_valid += 1
+                got = [_facts(step) for step in workout["steps"]]
+                want = [_facts(step) for step in group["canonical"]["workouts"][0]["steps"]]
+                self.assertEqual(len(got), len(want), variant["id"])
+                for ours, reference in zip(got, want):
+                    self.assertEqual(ours[:-1], reference[:-1], variant["id"])
+                    self.assertIn(ours[-1], (reference[-1], None), variant["id"])
+        self.assertGreaterEqual(parsed_valid, 15)
+
+
+def _facts(step):
+    """(kind, measure..., target) of a YAML step; target None when absent."""
+    if step["type"] == "repeat":
+        return ("repeat", step["back_to_offset"], step["count"], None)
+    if step["type"] == "sbu_block":
+        drills = tuple((d["name"], d.get("seconds"), d.get("reps")) for d in step.get("drills") or [])
+        return ("sbu", drills, None)
+    target = None
+    if "hr_low" in step and step["hr_low"] != 80:
+        target = ("hr", step["hr_low"], step["hr_high"])
+    elif "pace_fast" in step:
+        target = ("pace", step["pace_fast"], step["pace_slow"])
+    km = round(float(step["km"]), 3) if step.get("km") is not None else None
+    return ("step", km, step.get("seconds"), target)
 
 
 class RulesInClientTests(unittest.TestCase):

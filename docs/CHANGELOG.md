@@ -10,9 +10,10 @@
   in words and unsupported structures (series, ladders) go to the LLM as before. The result
   goes through the marked-format compiler and validation.
 - GUI, Plan API and `garmin-fit-llm` try the rules per workout first (`use_rules`); the eval
-  harness keeps them off so LLM scores measure the model. On the golden dataset the rules parse
-  12 of 59 valid variants (all formal-style), never parse any of the 18 unclear/unsupported
-  cases, and differ from the reference only where the reference invents facts.
+  harness keeps them off so LLM scores measure the model. Unambiguous coach shorthand is expanded
+  first (`р2`, `з1`, `темп5`, `6х800`, `отд 400`, dotted paces, `+` chains). On the golden dataset
+  the rules parse 15 of 59 valid variants, never parse any of the 18 unclear/unsupported cases,
+  and differ from the reference only where the reference adds a target the text does not give.
 
 ## 2026-09-26 - Review generated plans as text
 
