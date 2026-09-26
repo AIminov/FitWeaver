@@ -11,6 +11,7 @@ import yaml
 
 from .llm.client import GeneratedYamlResult, UnifiedLLMClient
 from .llm.prompt import get_sbu_drills_prompt
+from .marked_plan import compile_marked_text, is_marked_plan
 from .plan_domain import plan_from_data
 from .plan_processing import repair_plan_data
 from .plan_validator import validate_plan_data
@@ -21,9 +22,38 @@ def build_plan_draft(
     plan_text: str,
     *,
     max_retries: int = 3,
+    hr_zones: dict[str, Any] | None = None,
 ) -> GeneratedYamlResult:
-    """Generate a previewable YAML draft from raw plan text."""
+    """Generate a previewable YAML draft from raw plan text.
+
+    Text in the marked format is compiled deterministically and never reaches
+    the LLM; only free text is sent to ``llm_client``.
+    """
+    if is_marked_plan(plan_text):
+        return build_marked_plan_draft(plan_text, hr_zones=hr_zones)
     return llm_client.generate_yaml_draft(plan_text, max_retries=max_retries)
+
+
+def build_marked_plan_draft(
+    plan_text: str,
+    *,
+    hr_zones: dict[str, Any] | None = None,
+) -> GeneratedYamlResult:
+    """Compile marked plan text to a YAML draft without an LLM."""
+    compiled = compile_marked_text(plan_text, hr_zones=hr_zones)
+    if compiled.data is None:
+        return GeneratedYamlResult(
+            warnings=compiled.warnings,
+            validation_errors=compiled.errors,
+            error_categories={"marked_source": compiled.errors},
+        )
+    yaml_text = yaml.safe_dump(
+        compiled.data,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,
+    )
+    return GeneratedYamlResult(yaml_text=yaml_text, data=compiled.data, warnings=compiled.warnings)
 
 
 def count_workouts(data: dict[str, Any] | None) -> int:

@@ -1931,14 +1931,25 @@ class App(_AppBase):
         self._yaml_out.delete("1.0", "end")
         self._yaml_out.config(state="disabled")
 
+        from garmin_fit.marked_plan import is_marked_plan
+        marked = is_marked_plan(plan_text)
+        hr_zones = self._builder_hr_zones() if marked else {}
+        if marked:
+            self._set_progress("⏳ Разбираю размеченный план (без LLM)…")
+
         def worker():
             from garmin_fit.api_client import PlanApiError
             try:
-                client = self._make_llm_client(for_generation=True)
-                if self.llm_conn_mode.get() == "api":
+                if marked:
+                    # Marked text is compiled deterministically: no LLM, no network.
+                    from garmin_fit.plan_service import build_marked_plan_draft
+                    result = build_marked_plan_draft(plan_text, hr_zones=hr_zones)
+                elif self.llm_conn_mode.get() == "api":
+                    client = self._make_llm_client(for_generation=True)
                     result = client.build_plan_draft(plan_text, max_retries=1)
                 else:
                     from garmin_fit.plan_service import build_plan_draft
+                    client = self._make_llm_client(for_generation=True)
                     result = build_plan_draft(client, plan_text, max_retries=1)
 
                 yaml_text = result.yaml_text or ""
@@ -1970,7 +1981,7 @@ class App(_AppBase):
                     self._yaml_out.insert("end", yaml_text)
                     self._yaml_out.config(state="disabled")
 
-                    status = f"✅ Готово — {n} тренировок"
+                    status = f"✅ {'Разобрано без LLM' if marked else 'Готово'} — {n} тренировок"
                     if repairs:
                         status += f", {len(repairs)} правок"
                     if warnings:

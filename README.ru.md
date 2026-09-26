@@ -47,9 +47,13 @@ python fitweaver_gui.py
 ## Pipeline
 
 ```
-Текст плана  →  LLM  →  YAML  →  direct build  ─┬─  .fit  →  USB  →  Часы
-                                                 └─  Garmin Connect Calendar  →  Синхронизация
+Размеченный текст  →  парсер (без LLM) ─┐
+Свободный текст    →  LLM ──────────────┴→  YAML  →  direct build  ─┬─  .fit  →  USB  →  Часы
+                                                                     └─  Garmin Connect Calendar  →  Синхронизация
 ```
+
+Текст в [размеченном формате](docs/MARKED_PLAN_FORMAT.md) (`**** ШАГ ****`, `**** ПОВТОР: N РАЗ ****`)
+разбирается детерминированно — мгновенно и без LLM. Пример: `examples/marked_plan_example.txt`.
 
 Полный workflow не требует промежуточных Python-шаблонов.
 Режимы `--templates-only` и `--build-only` сохранены как legacy/debug инструменты.
@@ -308,7 +312,11 @@ python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1
 python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --workouts 48
 ```
 
-Или можно написать YAML вручную по образцу из `docs/YAML_GUIDE.md`.
+Или можно написать план в [размеченном формате](docs/MARKED_PLAN_FORMAT.md) и собрать YAML без LLM:
+```bash
+python -m garmin_fit.cli parse-marked plan.txt --output Plan/plan.yaml
+```
+Либо написать YAML вручную по образцу из `docs/YAML_GUIDE.md`.
 
 **4.** Соберите FIT-файлы:
 ```bash
@@ -337,6 +345,7 @@ python fitweaver_gui.py              # Основной локальный сц�
 ```bash
 python -m garmin_fit.cli run                          # Полный цикл
 python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
+python -m garmin_fit.cli parse-marked plan.txt --output Plan/plan.yaml  # размеченный текст → YAML без LLM
 python -m garmin_fit.cli validate-fit
 python -m garmin_fit.cli doctor
 python -m garmin_fit.cli doctor --llm --api openai --url http://127.0.0.1:1234/v1
@@ -485,6 +494,7 @@ python -m garmin_fit.bot
 ## Документация
 
 - [YAML Guide](docs/YAML_GUIDE.md)
+- [Размеченный формат плана](docs/MARKED_PLAN_FORMAT.md) — ввод без LLM
 - [Garmin Payload Spec](docs/GARMIN_PAYLOAD_SPEC.md) — проверенные имена полей API (ID, targetValueOne/Two, description)
 - [Garmin Calendar](docs/GARMIN_CALENDAR.md) — настройка и детали облачной загрузки
 - [Project Flow](docs/PROJECT_FLOW.md)

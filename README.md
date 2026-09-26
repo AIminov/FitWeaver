@@ -47,9 +47,13 @@ The GUI has **Simple** and **Expert** modes. In the packaged Windows build, ship
 ## Pipeline
 
 ```
-Plan text  →  LLM  →  YAML  →  direct build  ─┬─  .fit  →  USB  →  Watch
-                                               └─  Garmin Connect Calendar  →  Watch sync
+Marked text  →  parser (no LLM) ─┐
+Free text    →  LLM ─────────────┴→  YAML  →  direct build  ─┬─  .fit  →  USB  →  Watch
+                                                              └─  Garmin Connect Calendar  →  Watch sync
 ```
+
+Text in the [marked format](docs/MARKED_PLAN_FORMAT.md) (`**** ШАГ ****`, `**** ПОВТОР: N РАЗ ****`)
+is compiled deterministically — instantly and without an LLM. Example: `examples/marked_plan_example.txt`.
 
 The full workflow requires no intermediate Python templates.
 `--templates-only` and `--build-only` modes are retained as legacy/debug tools.
@@ -309,6 +313,10 @@ If workout count is not auto-detected, specify explicitly:
 python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1 --workouts 48
 ```
 
+Or write the plan in the [marked format](docs/MARKED_PLAN_FORMAT.md) and compile it without an LLM:
+```bash
+python -m garmin_fit.cli parse-marked plan.txt --output Plan/plan.yaml
+```
 Or write the YAML manually using `docs/YAML_GUIDE.md` as a reference.
 
 **4.** Build FIT files:
@@ -486,6 +494,7 @@ python -m garmin_fit.bot
 ## Documentation
 
 - [YAML Guide](docs/YAML_GUIDE.md)
+- [Marked plan format](docs/MARKED_PLAN_FORMAT.md) — LLM-free input
 - [Garmin Payload Spec](docs/GARMIN_PAYLOAD_SPEC.md) — confirmed API field names (IDs, targetValueOne/Two, description)
 - [Garmin Calendar](docs/GARMIN_CALENDAR.md) — cloud upload setup and details
 - [Project Flow](docs/PROJECT_FLOW.md)

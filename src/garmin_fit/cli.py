@@ -32,6 +32,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validation mode for FIT output",
     )
 
+    marked_parser = subparsers.add_parser(
+        "parse-marked",
+        help="Compile a plan in the marked text format to YAML without an LLM",
+    )
+    marked_parser.add_argument("input", metavar="TEXT_PATH", help="Marked plan text file (UTF-8)")
+    marked_parser.add_argument("--output", metavar="YAML_PATH", help="Write YAML here (default: stdout)")
+    marked_parser.add_argument("--year", type=int, metavar="YEAR", help="Year for dates written without one")
+    marked_parser.add_argument(
+        "--profile",
+        metavar="PROFILE_YAML",
+        help="User profile YAML with hr_zones, used to resolve 'Пульс: Z2'",
+    )
+
     doctor_parser = subparsers.add_parser("doctor", help="Run environment diagnostics")
     doctor_parser.add_argument("--llm", action="store_true", help="Run LLM connectivity smoke checks")
     doctor_parser.add_argument("--api", choices=["ollama", "openai"], default="openai")
@@ -117,6 +130,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             validate_strict=validate_strict,
             run_id=run_id,
         )
+    if command == "parse-marked":
+        return _parse_marked(args)
     if command == "doctor":
         doctor_url = args.url or ("http://localhost:11434" if args.api == "ollama" else "http://192.168.1.107:8080/v1")
         doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "/home/amir/.lmstudio/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ4_XS.gguf")
@@ -164,6 +179,39 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser.error(f"Unsupported command: {command}")
     return 2
+
+
+def _parse_marked(args: argparse.Namespace) -> int:
+    import sys
+    from pathlib import Path
+
+    import yaml
+
+    from .marked_plan import compile_marked_text
+
+    text = Path(args.input).read_text(encoding="utf-8")
+    hr_zones = None
+    if args.profile:
+        profile = yaml.safe_load(Path(args.profile).read_text(encoding="utf-8")) or {}
+        hr_zones = profile.get("hr_zones") if isinstance(profile, dict) else None
+
+    result = compile_marked_text(text, hr_zones=hr_zones, default_year=args.year)
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    if result.data is None:
+        for error in result.errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    yaml_text = yaml.safe_dump(result.data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    if args.output:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(yaml_text, encoding="utf-8")
+        print(f"Wrote {len(result.data['workouts'])} workout(s) to {output}", file=sys.stderr)
+    else:
+        sys.stdout.write(yaml_text)
+    return 0
 
 
 if __name__ == "__main__":

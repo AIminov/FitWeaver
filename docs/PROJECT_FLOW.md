@@ -3,14 +3,17 @@
 ## Актуальный end-to-end pipeline
 
 1. Пользователь дает план в `.txt`, `.md` или сразу в `.yaml`.
-2. LLM-пайплайн преобразует текст в YAML и сохраняет его в `Plan/*.yaml`.
+2. Текст в [размеченном формате](MARKED_PLAN_FORMAT.md) (есть строки `**** ШАГ ****`)
+   компилируется в YAML детерминированным парсером `marked_plan.py` — без LLM; repeat/offset
+   вычисляются кодом. Свободный текст преобразует в YAML LLM-пайплайн. Результат сохраняется
+   в `Plan/*.yaml`. Маршрутизация — в `plan_service.build_plan_draft()` (GUI, Plan API).
 3. Pipeline готовит build artifacts: repaired YAML и machine-readable build report.
 4. Полный workflow `python -m garmin_fit.cli run` строит FIT напрямую из YAML/domain objects.
 5. `python -m garmin_fit.cli validate-fit` валидирует все файлы в `Output_fit/`.
 6. При успехе выполняется автоархивация.
 
 ```text
- text/md -> YAML -> repaired YAML/report -> domain objects -> FIT -> validation -> archive
+ marked text -> marked_plan parser -- free text/md -> LLM ----------------+-> YAML -> repaired YAML/report -> domain objects -> FIT -> validation -> archive
 ```
 
 ## Legacy / debug режимы

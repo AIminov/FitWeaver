@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-26 - Deterministic parser for the marked plan format
+
+### Added
+- `src/garmin_fit/marked_plan.py`: plans written in the marked format (`==== ТРЕНИРОВКА ====`,
+  `**** ШАГ ****`, `**** ПОВТОР: N РАЗ **** … **** КОНЕЦ ПОВТОРА ****`) are parsed into a step
+  tree and compiled to Garmin YAML without an LLM. Repeat offsets/counts (nesting included) are
+  computed by code; missing facts are never invented and every simplification is reported with
+  its source line. `render_marked_plan()` renders the tree back to canonical marked text.
+- `plan_service.build_plan_draft()` routes marked text to the parser (GUI, Plan API); only free
+  text reaches the LLM. The GUI LLM tab compiles marked text offline and reports
+  "Разобрано без LLM"; HR zones `Z1–Z5` resolve from the active profile.
+- `garmin-fit parse-marked TEXT [--output YAML] [--year] [--profile]` CLI command.
+- User guide `docs/MARKED_PLAN_FORMAT.md` and `examples/marked_plan_example.txt`.
+
 ## 2026-09-24 - Simpler profile setup
 
 ### Changed

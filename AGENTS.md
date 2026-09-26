@@ -18,6 +18,24 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Журнал сессий
 
+### 2026-09-26 — детерминированный парсер размеченного формата
+Аудит проекта (тесты и ruff чистые) нашёл три ошибки Garmin Connect: вложенный repeat дублирует
+тело внутренней группы в `garmin_step_mapper._map_repeat` (тест закрепляет это как норму);
+`extract_date_from_filename` переносит прошедшие даты на следующий год (ломает `skip_past`,
+падает на 29.02); маппер молча выкидывает шаги, которые не смог преобразовать. Исправления
+отложены в Next tasks — пользователь выбрал начать с парсера. По eval-артефактам: на CPU ~80%
+времени LLM уходит на генерацию ответа (~2.6 ток/с), поэтому вывод модели нужно сокращать.
+
+Добавлен `src/garmin_fit/marked_plan.py`: размеченный текст → дерево шагов → Garmin YAML без
+LLM. Repeat и offset (включая вложенные) вычисляет код; недостающее не додумывается (open_step,
+неполная цель отбрасывается), каждое упрощение — предупреждение с номером строки, структурные
+проблемы — ошибки. `render_marked_plan()` возвращает канонический текст (round-trip проверен).
+`plan_service.build_plan_draft()` направляет размеченный текст в парсер (GUI, Plan API); GUI
+разбирает его офлайн с HR-зонами профиля; CLI — `garmin-fit parse-marked`. Все 10 golden-входов
+компилируются мгновенно. Решения: Telegram-бот вне приоритетов; цель — маленькие модели на CPU.
+Документация: `docs/MARKED_PLAN_FORMAT.md`, `examples/marked_plan_example.txt`, README, PROJECT_FLOW,
+CHANGELOG. Тесты: 390 passed, ruff чистый. Exe не пересобирались.
+
 ### 2026-09-25 — режим локального LLM-клиента в GUI
 Сохранённое изменение GUI переключает `UnifiedLLMClient` с принудительного
 `openai_mode="completions"` на `openai_mode="auto"`. Это позволяет сначала использовать
@@ -825,12 +843,18 @@ smoke-тест (headless `App()`: 3 панели в PanedWindow, hint сраба
 **Git identity:** `git config --global user.email "iminov@gmail.com" && git config --global user.name "AIminov"`  
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
-**Next tasks (agreed, start here):**
-1. Headless/manual smoke-test of the new Предпросмотр/Применить mode and the automatic YAML validation after load.
-2. Real remote-hosting smoke test of the Plan API: API on one machine, GUI/bot on another (only localhost verified so far).
-3. End-to-end Calendar dry-run/upload payload tests.
-4. Decide and document the minimum supported Python (`requires-python` says >=3.10, ruff/CI target 3.13).
-5. See `TODO.md` for the full backlog — it is the authoritative list.
+**Next tasks (agreed 2026-09-26, start here):**
+1. Fix Garmin Connect correctness bugs found in the 2026-09-26 review: nested `repeat` duplicates
+   the inner body in `garmin_step_mapper._map_repeat`; `extract_date_from_filename` rolls past
+   dates to next year (breaks `skip_past`, crashes on 02-29); the mapper silently drops steps it
+   cannot map. Add a YAML → FIT vs Garmin-payload equivalence test.
+2. LLM path for free text: make the model emit a short line format (or marked text) that
+   `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
+   (~2.6 tok/s measured). Compare on the golden suite with `garmin-fit-llm-eval`.
+3. Rule-based pre-parser for common free-text phrases so many workouts skip the LLM entirely.
+4. GUI: show the compiled plan back as marked text for review (`render_marked_plan`).
+5. See `TODO.md` for the full backlog — it is the authoritative list. The Telegram bot is
+   deprioritized (optional feature, no work unless asked).
 
 **Working style preferences:**
 - Communicate in Russian, code/commits in English
@@ -853,7 +877,7 @@ pip install -e ".[build]"        # add PyInstaller -- needed to package the desk
 ## Common Commands
 
 ```bash
-# Run all tests (313 passed, 9 skipped without the api extra, as of 2026-09-02)
+# Run all tests (390 passed with the api extra, as of 2026-09-26)
 python3 -m pytest tests/
 
 # Run a single test file
@@ -874,6 +898,9 @@ python -m garmin_fit.cli run
 # Validate YAML plan
 python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 
+# Marked plan text → YAML without an LLM
+python -m garmin_fit.cli parse-marked plan.txt --output Plan/plan.yaml --profile user_profile.yaml
+
 # LLM generation (LM Studio or Ollama)
 python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1
 
@@ -891,18 +918,26 @@ python3 Scripts/telegram_bot.py
 ## Pipeline
 
 ```
-text/md → LLM → YAML (Plan/) → direct FIT build → validation → archive
-                                                 ↘ Garmin Calendar upload (optional)
-                                                 ↘ ZIP via Telegram bot (optional)
+marked text  → marked_plan.py (deterministic, no LLM) ─┐
+free text/md → LLM ─────────────────────────────────────┴→ YAML (Plan/) → direct FIT build → validation → archive
+                                                                                           ↘ Garmin Calendar upload (optional)
+                                                                                           ↘ ZIP via Telegram bot (optional, deprioritized)
 ```
+
+Routing lives in `plan_service.build_plan_draft()`: any text containing a `**** ШАГ ****` line is
+compiled by `marked_plan.compile_marked_text()`; only free text reaches the LLM.
 
 ---
 
 ## LLM model compatibility
 
-**Recommended:** `qwen3-27b` (or any Qwen3) — natively supports `enable_thinking: false`.  
-**Broken:** `google/gemma-4-e4b` — ignores `enable_thinking: false`, enters thinking mode on retry, hangs 3000+ sec.  
-Config: `bot_config.yaml` → `llm_model`.
+- **Target:** small models that run locally on a laptop CPU without GPU (Qwen3 8B IQ4_XS class
+  via Ollama / llama.cpp). Golden-suite strict pass (2026-09-25): Unsloth Qwen3 8B IQ4_XS 8/10,
+  `qwen3:8b` 6/10; ~45–200 s per workout, ~80% of it generating output tokens.
+- **Marked text needs no LLM at all** — see `docs/MARKED_PLAN_FORMAT.md` / `marked_plan.py`.
+- Qwen3 natively supports `enable_thinking: false`.
+- **Broken:** `google/gemma-4-e4b` — ignores `enable_thinking: false`, enters thinking mode on retry, hangs 3000+ sec.
+- Config: `bot_config.yaml` → `llm_model`; the GUI keeps its own LLM settings.
 
 ---
 
@@ -1062,7 +1097,8 @@ Key modules:
 - `plan_validator.py` — semantic validation (imports helpers from `plan_schema.py`)
 - `plan_domain.py` — domain objects (`WorkoutStep`, `Workout`, `WorkoutPlan`, `Drill`); logs warnings on dropped non-Mapping items
 - `plan_processing.py` — YAML repair, name normalization
-- `plan_service.py` — service layer (LLM draft, SBU custom drills, preview)
+- `plan_service.py` — service layer (LLM draft, SBU custom drills, preview); routes marked text to `marked_plan`
+- `marked_plan.py` — deterministic parser/compiler for the marked text format (step tree → YAML, repeat offsets computed, `render_marked_plan()` back to text); `garmin-fit parse-marked` CLI
 - `workout_utils.py` — FIT step builders + canonical `build_yaml_to_fit_index()`
 - `build_from_plan.py` — direct YAML→FIT builder (default path)
 - `generate_from_yaml.py` — legacy template-based builder (debug path)
@@ -1109,6 +1145,7 @@ Compact version injected into prompt with `get_system_prompt(include_json_schema
 ## Docs
 
 - `docs/YAML_GUIDE.md` — full YAML reference
+- `docs/MARKED_PLAN_FORMAT.md` — marked plan text format (LLM-free input)
 - `docs/CHANGELOG.md` — version history
 - `docs/PROJECT_FLOW.md` — pipeline details
 - `docs/TELEGRAM_SETUP.md` — bot setup and troubleshooting
