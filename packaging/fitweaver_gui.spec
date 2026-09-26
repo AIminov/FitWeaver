@@ -33,6 +33,22 @@ SRC_DIR = REPO_ROOT / "src"
 
 block_cipher = None
 
+# The desktop exes never run the Telegram bot or the Plan API (those stay
+# Python services), and several heavy packages are only optional extras of
+# dependencies (openai's pandas/numpy helpers, httpx's CLI via rich/pygments,
+# pytest pulled in through anyio). Leaving them out shrinks the onefile exe,
+# which is unpacked on every start.
+SERVICE_MODULES = ("garmin_fit.telegram_bot", "garmin_fit.bot", "garmin_fit.api", "garmin_fit.api_cli")
+HEAVY_EXCLUDES = [
+    "telegram", "fastapi", "starlette", "uvicorn",
+    "pandas", "numpy", "openpyxl", "xlsxwriter", "lxml", "matplotlib",
+    "pytest", "_pytest", "py", "pygments", "rich", "IPython",
+]
+
+
+def _app_module(name):
+    return not any(name == m or name.startswith(m + ".") for m in SERVICE_MODULES)
+
 # LLM prompt contract/examples/input-format rules read via Path(__file__).parent in
 # garmin_fit/llm/prompt.py -- read-only bundled resources, not writable
 # state, so PyInstaller's own module-relative path resolution handles them
@@ -44,13 +60,14 @@ ctk_datas = collect_data_files("customtkinter")
 # `from garmin_fit.plan_store import PlanStore`). PyInstaller's static
 # bytecode analysis can silently miss some of these -- force-include every
 # garmin_fit submodule so newly added modules can't hit the same silent gap.
-garmin_fit_submodules = collect_submodules("garmin_fit")
+garmin_fit_submodules = [m for m in collect_submodules("garmin_fit") if _app_module(m)]
 
 a = Analysis(
     [str(REPO_ROOT / "fitweaver_gui.py")],
     pathex=[str(SRC_DIR)],
     datas=llm_datas + ctk_datas,
     hiddenimports=garmin_fit_submodules,
+    excludes=HEAVY_EXCLUDES + list(SERVICE_MODULES),
     noarchive=False,
 )
 pyz = PYZ(a.pure)

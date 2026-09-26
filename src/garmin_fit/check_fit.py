@@ -12,29 +12,24 @@ Validates FIT workout files and performs quality checks:
 """
 
 import logging
-import os
-import subprocess
 import sys
 from pathlib import Path
 
 try:
-    from .config import OUTPUT_DIR, ROOT
+    from .config import OUTPUT_DIR
     from .state_manager import from_fit_timestamp
 except ImportError:
-    from config import OUTPUT_DIR, ROOT
+    from config import OUTPUT_DIR
     from state_manager import from_fit_timestamp
 
 _LARGE_FILE_BYTES = 1_000_000  # 1 MB — typical Garmin workout FIT files are <50 KB
 
 try:
     from garmin_fit_sdk import Decoder, Stream
-except ImportError:
-    print("ERROR: garmin-fit-sdk not installed")
-    print("Install with: pip install garmin-fit-sdk")
-    sys.exit(1)
+except ImportError as exc:  # raise, never sys.exit(): the GUI imports this in-process
+    raise ImportError("garmin-fit-sdk is not installed: pip install garmin-fit-sdk") from exc
 
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -192,46 +187,23 @@ def validate_fit_file(file_path, strict=True):
 
 def _validate_with_local_sdk_python(file_path: Path) -> tuple[bool, str]:
     """
-    Validate FIT with vendored SDK package in sdk/py.
+    FIT header and CRC integrity check with the Garmin FIT SDK.
+
+    Runs in-process with the installed garmin-fit-sdk (the same version as the
+    vendored sdk/py copy). It used to start a separate Python process per file
+    against sdk/py -- ~0.1 s per workout, and impossible in the packaged exe.
 
     Returns:
         (ok, details)
     """
-    sdk_py = ROOT / "sdk" / "py"
-    local_pkg = sdk_py / "garmin_fit_sdk" / "__init__.py"
-    if not local_pkg.exists():
-        return True, "local sdk/py package is unavailable; check skipped"
-
-    script = (
-        "from garmin_fit_sdk import Decoder, Stream\n"
-        f"s = Stream.from_file(r'''{str(file_path)}''')\n"
-        "d = Decoder(s)\n"
-        "ok = bool(d.is_fit() and d.check_integrity())\n"
-        "print('OK' if ok else 'FAIL')\n"
-    )
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(sdk_py) + os.pathsep + env.get("PYTHONPATH", "")
-
     try:
-        proc = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=30,
-        )
+        decoder = Decoder(Stream.from_file(str(file_path)))
+        ok = bool(decoder.is_fit() and decoder.check_integrity())
     except Exception as exc:
-        return False, f"local sdk/py validation execution failed: {exc}"
-
-    stdout = (proc.stdout or "").strip()
-    stderr = (proc.stderr or "").strip()
-    if proc.returncode != 0:
-        details = stderr or stdout or f"exit code {proc.returncode}"
-        return False, f"local sdk/py validation failed: {details}"
-    if stdout != "OK":
-        return False, f"local sdk/py validation returned unexpected result: {stdout or 'EMPTY'}"
-    return True, "local sdk/py check passed"
+        return False, f"SDK integrity check failed: {exc}"
+    if not ok:
+        return False, "SDK integrity check failed: not a FIT file or CRC mismatch"
+    return True, "SDK integrity check passed"
 
 
 def print_validation_results(file_path, results):
@@ -381,4 +353,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     raise SystemExit(main())

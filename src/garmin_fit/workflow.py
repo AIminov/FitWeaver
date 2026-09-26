@@ -287,13 +287,8 @@ def workflow_doctor(
         issues.append(f"temp directory is not writable: {exc}")
         logger.error(f"[FAIL] temp directory is not writable: {exc}")
 
-    # Vendored SDK availability check
-    local_sdk = ROOT / "sdk" / "py" / "garmin_fit_sdk" / "__init__.py"
-    if local_sdk.exists():
-        logger.info("[OK] vendored sdk/py package found")
-    else:
-        issues.append("vendored sdk/py package not found")
-        logger.error("[FAIL] vendored sdk/py package not found")
+    # FIT integrity checks use the installed garmin-fit-sdk (checked above);
+    # the vendored sdk/py copy is reference material only.
 
     if llm_check:
         logger.info("")

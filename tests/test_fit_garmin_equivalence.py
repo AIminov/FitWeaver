@@ -111,6 +111,31 @@ class FitGarminEquivalenceTests(unittest.TestCase):
         self.assertEqual(len(fit[4:]), 6 * 2)
 
 
+class GarminImportRoundTripTests(unittest.TestCase):
+    def test_uploaded_nested_workout_imports_back_to_the_same_steps(self):
+        from garmin_fit.garmin_step_mapper import map_workout
+        from garmin_fit.garmin_workout_import import workout_from_garmin
+
+        steps = [
+            {"type": "dist_pace", "km": 2.0, "pace_fast": "5:45", "pace_slow": "6:00", "intensity": "warmup"},
+            {"type": "dist_hr", "km": 0.4, "hr_low": 175, "hr_high": 182, "intensity": "active"},
+            {"type": "time_step", "seconds": 90, "intensity": "recovery"},
+            {"type": "repeat", "back_to_offset": 1, "count": 4},
+            {"type": "time_step", "seconds": 180, "intensity": "recovery"},
+            {"type": "repeat", "back_to_offset": 1, "count": 3},
+            {"type": "time_cadence", "seconds": 300, "cad_low": 170, "cad_high": 180, "intensity": "cooldown"},
+        ]
+        workout = _workout(steps)
+        imported = workout_from_garmin(map_workout(workout), date="2026-10-01")
+
+        def shape(step):
+            return (step.step_type, step.km, step.seconds, step.hr_low, step.hr_high,
+                    step.pace_fast, step.pace_slow, step.cad_low, step.cad_high,
+                    step.back_to_offset, step.count, step.intensity if step.step_type != "repeat" else None)
+
+        self.assertEqual([shape(s) for s in imported.steps], [shape(s) for s in workout.steps])
+
+
 class FitUnitConversionTests(unittest.TestCase):
     def test_distance_is_rounded_not_truncated(self):
         # 1.15 * 100 == 114.99999999999999 in floating point.

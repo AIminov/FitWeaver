@@ -82,6 +82,34 @@ def _convert_step(item: Mapping[str, Any]) -> WorkoutStep:
     return WorkoutStep(**base)
 
 
+def _append_items(items: list[Any], steps: list[WorkoutStep]) -> None:
+    """Flatten Garmin steps; a RepeatGroup becomes its body plus a repeat row.
+
+    Nested groups (e.g. 3 sets of 4 x 400 m) flatten recursively: each repeat
+    row points back to the YAML index of its own body's first step, which is
+    the same encoding the FIT builder and the Garmin mapper use.
+    """
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise ValueError("В тренировке Garmin есть неизвестный формат шага")
+        kind = _step_type(item)
+        if kind == "RepeatGroup":
+            children = item.get("workoutSteps")
+            if not isinstance(children, list) or not children:
+                raise ValueError("Повтор Garmin пустой или повреждён")
+            count = int(item.get("numberOfIterations") or item.get("endConditionValue") or 0)
+            if count < 1:
+                raise ValueError("У повтора Garmin неверно указано число повторений")
+            anchor = len(steps)
+            _append_items(children, steps)
+            if count > 1:
+                steps.append(WorkoutStep(step_type="repeat", back_to_offset=anchor, count=count))
+        elif kind == "ExecutableStep":
+            steps.append(_convert_step(item))
+        else:
+            raise ValueError(f"Тип блока Garmin «{kind}» пока нельзя редактировать")
+
+
 def workout_from_garmin(payload: Mapping[str, Any], *, date: str) -> Workout:
     """Import supported Garmin steps; fail closed rather than silently dropping data."""
     segments = payload.get("workoutSegments")
@@ -95,30 +123,7 @@ def workout_from_garmin(payload: Mapping[str, Any], *, date: str) -> Workout:
         segment_steps = segment.get("workoutSteps")
         if not isinstance(segment_steps, list):
             continue
-        for item in segment_steps:
-            if not isinstance(item, Mapping):
-                raise ValueError("В тренировке Garmin есть неизвестный формат шага")
-            kind = _step_type(item)
-            if kind == "RepeatGroup":
-                children = item.get("workoutSteps")
-                if not isinstance(children, list) or not children:
-                    raise ValueError("Повтор Garmin пустой или повреждён")
-                if any(isinstance(child, Mapping) and _step_type(child) == "RepeatGroup"
-                       for child in children):
-                    raise ValueError("Вложенные повторы Garmin нельзя безопасно открыть")
-                anchor = len(steps)
-                for child in children:
-                    if not isinstance(child, Mapping):
-                        raise ValueError("В повторе Garmin есть неизвестный формат шага")
-                    steps.append(_convert_step(child))
-                count = int(item.get("numberOfIterations") or item.get("endConditionValue") or 0)
-                if count < 2:
-                    raise ValueError("У повтора Garmin неверно указано число повторений")
-                steps.append(WorkoutStep(step_type="repeat", back_to_offset=anchor, count=count))
-            elif kind == "ExecutableStep":
-                steps.append(_convert_step(item))
-            else:
-                raise ValueError(f"Тип блока Garmin «{kind}» пока нельзя редактировать")
+        _append_items(segment_steps, steps)
 
     if not steps:
         raise ValueError("В Garmin-тренировке нет поддерживаемых шагов")

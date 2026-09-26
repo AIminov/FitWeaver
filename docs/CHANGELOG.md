@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-26 - Smaller exes, nested Garmin import, constant-time API token check
+
+### Changed
+- The PyInstaller specs leave out the Telegram bot and Plan API modules and heavy optional
+  packages the desktop apps never import (pandas, numpy, pytest, telegram, fastapi, uvicorn,
+  rich, pygments, openpyxl, …): `FitWeaver.exe` shrinks from 65 MB to about 36 MB, which also
+  shortens the onefile unpacking on every start.
+- Garmin workouts with nested repeat groups (e.g. 3 sets of 4 × 400 m, as the app now uploads
+  them) can be opened in the builder; a round-trip test checks YAML → Garmin → YAML.
+- FIT integrity (`is_fit` + CRC) is checked in-process with the installed garmin-fit-sdk instead
+  of one Python subprocess per file against the vendored `sdk/py` copy (same SDK version):
+  12 files 1.37 s → 0.01 s. `doctor` no longer requires the vendored copy (it failed in the exe).
+- `check_fit` no longer configures logging or calls `sys.exit` when imported (the GUI imports it
+  in-process).
+
+### Security
+- The Plan API compares the `X-Api-Token` header in constant time (`hmac.compare_digest`).
+
 ## 2026-09-26 - Common workout lines parsed without the LLM
 
 ### Added

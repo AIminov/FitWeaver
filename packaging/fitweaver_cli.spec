@@ -18,6 +18,22 @@ SRC_DIR = REPO_ROOT / "src"
 
 block_cipher = None
 
+# The desktop exes never run the Telegram bot or the Plan API (those stay
+# Python services), and several heavy packages are only optional extras of
+# dependencies (openai's pandas/numpy helpers, httpx's CLI via rich/pygments,
+# pytest pulled in through anyio). Leaving them out shrinks the onefile exe,
+# which is unpacked on every start.
+SERVICE_MODULES = ("garmin_fit.telegram_bot", "garmin_fit.bot", "garmin_fit.api", "garmin_fit.api_cli")
+HEAVY_EXCLUDES = [
+    "telegram", "fastapi", "starlette", "uvicorn",
+    "pandas", "numpy", "openpyxl", "xlsxwriter", "lxml", "matplotlib",
+    "pytest", "_pytest", "py", "pygments", "rich", "IPython",
+]
+
+
+def _app_module(name):
+    return not any(name == m or name.startswith(m + ".") for m in SERVICE_MODULES)
+
 llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md"])
 
 # The GUI-only modules are dropped from the force-include list, and the toolkits
@@ -27,7 +43,7 @@ llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*
 # tkinter into this console exe -- which never touches either.
 _GUI_ONLY = {"garmin_fit.gui_theme", "garmin_fit.gui_validation"}
 garmin_fit_submodules = [
-    m for m in collect_submodules("garmin_fit") if m not in _GUI_ONLY
+    m for m in collect_submodules("garmin_fit") if m not in _GUI_ONLY and _app_module(m)
 ]
 
 a = Analysis(
@@ -35,7 +51,7 @@ a = Analysis(
     pathex=[str(SRC_DIR)],
     datas=llm_datas,
     hiddenimports=garmin_fit_submodules,
-    excludes=["tkinter", "_tkinter", "customtkinter", "PIL"],
+    excludes=["tkinter", "_tkinter", "customtkinter", "PIL"] + HEAVY_EXCLUDES + list(SERVICE_MODULES),
     noarchive=False,
 )
 pyz = PYZ(a.pure)
