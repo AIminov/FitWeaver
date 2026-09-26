@@ -106,6 +106,9 @@ class SourceWorkoutFact:
     hr_cap: int | None = None
 
 
+_WEEKDAY_ORDER = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
 class UnifiedLLMClient:
     """
     LLM client with retry-validation loop.
@@ -1185,23 +1188,32 @@ class UnifiedLLMClient:
         if not (1 <= day <= 31 and 1 <= month <= 12):
             return None
 
-        year = 2025
+        weekday = UnifiedLLMClient._normalize_weekday_token(match.group("weekday"))
+        if weekday is None:
+            title_prefix = re.split(r"\s*[—–-]\s*", match.group("title") or "", maxsplit=1)[0]
+            weekday = UnifiedLLMClient._normalize_weekday_token(title_prefix)
+
         raw_year = match.group("year")
         if raw_year:
             year = int(raw_year)
             if year < 100:
                 year += 2000
-        try:
-            parsed_date = date(year, month, day)
-        except ValueError:
-            return None
+            try:
+                parsed_date = date(year, month, day)
+            except ValueError:
+                return None
+        else:
+            # No year in the header: take the nearest real date (matching the
+            # weekday when one is written), never a fixed calendar year.
+            from ..garmin_step_mapper import infer_date
 
-        weekday = UnifiedLLMClient._normalize_weekday_token(match.group("weekday"))
+            weekday_index = _WEEKDAY_ORDER.index(weekday) if weekday in _WEEKDAY_ORDER else None
+            parsed_date = infer_date(month, day, weekday=weekday_index)
+            if parsed_date is None:
+                return None
+
         if weekday is None:
-            title_prefix = re.split(r"\s*[—–-]\s*", match.group("title") or "", maxsplit=1)[0]
-            weekday = UnifiedLLMClient._normalize_weekday_token(title_prefix)
-        if weekday is None:
-            weekday = parsed_date.strftime("%a")
+            weekday = _WEEKDAY_ORDER[parsed_date.weekday()]
 
         return {
             "month": month,

@@ -299,20 +299,27 @@ def _parse_header(rest: str, workout: MarkedWorkout, line: int, plan: MarkedPlan
 
     workout.title = title
     day, month = int(match.group("day")), int(match.group("month"))
+    weekday_text = (match.group("weekday") or "").strip().casefold()
+    expected = _WEEKDAY_ALIASES.get(weekday_text)
     raw_year = match.group("year")
-    if raw_year:
-        year = int(raw_year) + (2000 if len(raw_year) == 2 else 0)
-    else:
-        year = default_year or date.today().year
-        plan.warnings.append(ParseIssue(line, f"в дате не указан год, использован {year}"))
     try:
-        workout.date = date(year, month, day)
+        if raw_year:
+            workout.date = date(int(raw_year) + (2000 if len(raw_year) == 2 else 0), month, day)
+        elif default_year:
+            workout.date = date(default_year, month, day)
+        else:
+            from .garmin_step_mapper import infer_date
+
+            # Nearest real date to today, preferring the written weekday.
+            workout.date = infer_date(month, day, weekday=expected)
+            if workout.date is None:
+                raise ValueError(head)
     except ValueError:
         plan.errors.append(ParseIssue(line, f"некорректная дата «{head}»"))
         return
+    if not raw_year:
+        plan.warnings.append(ParseIssue(line, f"в дате не указан год, использован {workout.date.year}"))
 
-    weekday_text = (match.group("weekday") or "").strip().casefold()
-    expected = _WEEKDAY_ALIASES.get(weekday_text)
     if weekday_text and expected is not None and expected != workout.date.weekday():
         actual = _WEEKDAYS_RU[workout.date.weekday()]
         plan.warnings.append(

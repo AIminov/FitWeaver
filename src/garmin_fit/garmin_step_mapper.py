@@ -502,25 +502,42 @@ def extract_date_from_filename(
     weekday_token = (match.group(3) or "").title()
     weekday = _WEEKDAY_TOKENS.index(weekday_token) if weekday_token in _WEEKDAY_TOKENS else None
 
-    def make(y: int) -> datetime.date | None:
+    if year is not None:
         try:
-            return datetime.date(y, month, day)
+            return datetime.date(year, month, day).isoformat()
         except ValueError:
+            logger.warning("Invalid date %02d-%02d in %r for year %d", month, day, filename, year)
             return None
 
-    if year is not None:
-        explicit = make(year)
-        if explicit is None:
-            logger.warning("Invalid date %02d-%02d in %r for year %d", month, day, filename, year)
-        return explicit.isoformat() if explicit else None
-
-    reference = today or datetime.date.today()
-    candidates = [d for d in (make(reference.year + delta) for delta in (-1, 0, 1)) if d]
-    if not candidates:
+    inferred = infer_date(month, day, weekday=weekday, today=today)
+    if inferred is None:
         logger.warning("Invalid date %02d-%02d in %r", month, day, filename)
         return None
+    return inferred.isoformat()
+
+
+def infer_date(
+    month: int,
+    day: int,
+    weekday: int | None = None,
+    today: datetime.date | None = None,
+) -> datetime.date | None:
+    """Pick the year for a day/month written without one.
+
+    Candidates are last, this and next year; when ``weekday`` (0=Mon) is known,
+    years whose date falls on that weekday are preferred. The candidate closest
+    to ``today`` wins (ties go to the future). Returns None for impossible
+    dates such as 02-30.
+    """
+    reference = today or datetime.date.today()
+    candidates = []
+    for delta in (-1, 0, 1):
+        try:
+            candidates.append(datetime.date(reference.year + delta, month, day))
+        except ValueError:
+            continue
+    if not candidates:
+        return None
     if weekday is not None:
-        matching = [d for d in candidates if d.weekday() == weekday]
-        candidates = matching or candidates
-    best = min(candidates, key=lambda d: (abs((d - reference).days), d < reference))
-    return best.isoformat()
+        candidates = [d for d in candidates if d.weekday() == weekday] or candidates
+    return min(candidates, key=lambda d: (abs((d - reference).days), d < reference))

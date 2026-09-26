@@ -142,5 +142,36 @@ class CalendarUploadSafetyTests(unittest.TestCase):
         self.assertIn("unsupported_kind", result.error)
 
 
+class YearInferenceTests(unittest.TestCase):
+    TODAY = datetime.date(2026, 9, 26)
+
+    def test_infer_date_nearest_and_weekday(self):
+        from garmin_fit.garmin_step_mapper import infer_date
+
+        self.assertEqual(infer_date(9, 25, today=self.TODAY), datetime.date(2026, 9, 25))
+        self.assertEqual(infer_date(1, 5, today=self.TODAY), datetime.date(2027, 1, 5))
+        # 2027-01-05 is a Tuesday, 2026-01-05 a Monday.
+        self.assertEqual(infer_date(1, 5, weekday=0, today=self.TODAY), datetime.date(2026, 1, 5))
+        self.assertIsNone(infer_date(2, 30, today=self.TODAY))
+
+    def test_llm_segment_header_without_year_is_not_pinned_to_2025(self):
+        from garmin_fit.garmin_step_mapper import infer_date
+        from garmin_fit.llm.client import UnifiedLLMClient
+
+        info = UnifiedLLMClient._extract_segment_header_info("01.10 — Лёгкий бег 8 км")
+        expected = infer_date(10, 1)
+        self.assertEqual(info["weekday"], expected.strftime("%a"))
+        self.assertEqual(info["week"], expected.isocalendar()[1])
+
+    def test_header_weekday_round_trips_through_filename_date(self):
+        """The weekday the LLM path writes must lead extract_date back to the same date."""
+        from garmin_fit.garmin_step_mapper import extract_date_from_filename, infer_date
+        from garmin_fit.llm.client import UnifiedLLMClient
+
+        info = UnifiedLLMClient._extract_segment_header_info("01.10 — Лёгкий бег 8 км")
+        name = f"W{info['week']:02d}_10-01_{info['weekday']}_Easy"
+        self.assertEqual(extract_date_from_filename(name), infer_date(10, 1).isoformat())
+
+
 if __name__ == "__main__":
     unittest.main()
