@@ -186,7 +186,7 @@ python -m garmin_fit.cli parse-marked plan.txt --output Plan/my_plan.yaml
 You can also ask for YAML following [YAML_GUIDE](https://github.com/AIminov/FitWeaver/blob/main/docs/YAML_GUIDE.md);
 then check the repeat indices (`back_to_offset`) carefully.
 
-**2.** Save the resulting YAML to `Plan/`:
+**2.** If you got YAML, save it to `Plan/`:
 ```
 Plan/my_plan.yaml
 ```
