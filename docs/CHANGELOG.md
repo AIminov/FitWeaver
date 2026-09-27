@@ -16,6 +16,9 @@
   (and could pick the wrong year); the date now wins, the weekday only helps choose the year when
   the year is missing.
 - `уд/мин` in a step (`пульс 125–140 уд/мин`) no longer counts as a unit without a number.
+- The rules accepted a warmup written after an unlabelled main step (`5 км 4:50-5:00, разминка
+  2 км`) and a title naming an interval set (`Интервалы 6x800м`) that the lines below never
+  stated; both now go to the LLM instead of being built in the wrong order or without the set.
 
 ## 2026-09-27 - `garmin-fit to-marked`
 

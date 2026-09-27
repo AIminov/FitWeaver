@@ -291,6 +291,8 @@ def _convert(block_text: str) -> str:
 
     if not body:
         raise _NotUnderstood
+    if title and _INTERVAL_TITLE_RE.search(title) and not any(line.startswith("**** ПОВТОР") for line in body):
+        raise _NotUnderstood  # "Интервалы 6x800" names a set that the lines below never state
     _check_role_order(body)
     header = f"==== ТРЕНИРОВКА ==== {header_date}" + (f" — {title}" if title else "")
     return "\n".join([header, *meta, "", *body]) + "\n"
@@ -319,7 +321,12 @@ def _has_unit_without_number(line: str) -> bool:
 
 def _check_role_order(body: list[str]) -> None:
     """Warmup must come first and cooldown last; otherwise the text's order is not the run's."""
-    roles = [line.split(": ", 1)[1] for line in body if line.startswith("Тип: ")]
+    roles: list[str | None] = []  # one per step; a step without a role counts as "other"
+    for line in body:
+        if line == "**** ШАГ ****":
+            roles.append(None)
+        elif line.startswith("Тип: ") and roles:
+            roles[-1] = line.split(": ", 1)[1]
     seen_other = False
     for index, role in enumerate(roles):
         if role == "разминка" and seen_other:

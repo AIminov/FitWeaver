@@ -81,6 +81,12 @@ class FreeTextRulesTests(unittest.TestCase):
         # a real unit without its number still goes to the LLM
         self.assertIsNone(parse_workout_with_rules("Разминка километр, потом 5 км 5:00-5:10"))
 
+    def test_warmup_written_after_an_unlabelled_step_goes_to_the_llm(self):
+        self.assertIsNone(parse_workout_with_rules("5 км 4:50-5:00, разминка 2 км, заминка 1 км"))
+
+    def test_interval_title_without_the_set_in_the_lines_goes_to_the_llm(self):
+        self.assertIsNone(parse_workout_with_rules("08.10.2026 (Чт) — Интервалы 6x800м\nРазминка 2 км, заминка 1 км"))
+
     def test_cadence_is_not_mistaken_for_heart_rate(self):
         for text in ("Бег 5 км, каденс 175-185", "Бег 5 км (175-185 шаг/мин)"):
             steps = parse_workout_with_rules(text)["steps"]
