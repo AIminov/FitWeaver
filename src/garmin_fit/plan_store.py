@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 
-from .fileio import atomic_write_text
+from .fileio import atomic_write_text, prune_directory
 from .plan_domain import Drill, Workout, WorkoutPlan, WorkoutStep, plan_from_data, plan_to_data
 from .plan_processing import repair_plan_data
 from .plan_validator import validate_plan_data
@@ -101,6 +101,7 @@ class PlanStore:
         digest = hashlib.sha1(str(resolved).casefold().encode("utf-8")).hexdigest()[:12]
         directory = Path(cache_dir) if cache_dir is not None else ARTIFACTS_DIR / "workdb"
         directory.mkdir(parents=True, exist_ok=True)
+        prune_directory(directory, "*.workdb", 50)
         return directory / f"{resolved.stem}_{digest}.workdb"
 
     @classmethod

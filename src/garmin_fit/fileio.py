@@ -29,3 +29,23 @@ def atomic_write_text(path: str | Path, text: str, encoding: str = "utf-8") -> N
         except OSError:
             pass
         raise
+
+
+def prune_directory(directory: str | Path, pattern: str, keep: int) -> int:
+    """Delete all but the ``keep`` most recently modified files matching ``pattern``.
+
+    For app-owned caches only (LLM segment cache, plan staging DBs). Returns
+    the number of files removed; errors on individual files are ignored.
+    """
+    folder = Path(directory)
+    if not folder.is_dir():
+        return 0
+    files = sorted(folder.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    removed = 0
+    for stale in files[keep:]:
+        try:
+            stale.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed

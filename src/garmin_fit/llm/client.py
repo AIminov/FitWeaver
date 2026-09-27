@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional
 
 import yaml
 
+from ..fileio import prune_directory
 from . import source_facts, yaml_cleanup
 from .source_facts import (  # noqa: F401 -- re-exported names
     _WEEKDAY_ORDER,
@@ -46,6 +47,7 @@ MAX_SHARED_CONTEXT_CHARS = 800
 # Bump when the segment post-processing changes so stale cached workouts are
 # not reused (prompt/model/options changes already change the cache key).
 SEGMENT_CACHE_VERSION = 1
+SEGMENT_CACHE_MAX_FILES = 500  # newest cached workouts kept; older ones are pruned
 
 
 @dataclass(slots=True)
@@ -981,6 +983,7 @@ class UnifiedLLMClient:
             tmp = path.with_suffix(".tmp")
             tmp.write_text(json.dumps(workout, ensure_ascii=False), encoding="utf-8")
             tmp.replace(path)
+            prune_directory(path.parent, "*.json", SEGMENT_CACHE_MAX_FILES)
         except OSError as exc:
             logger.info("Could not write segment cache %s: %s", path.name, exc)
 
