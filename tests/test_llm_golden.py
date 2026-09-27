@@ -33,18 +33,45 @@ class GoldenSuiteTests(unittest.TestCase):
         bad = evaluate_case_expectations({"workouts": [{"steps": changed}]}, case)
         self.assertFalse(all(result.passed for result in bad))
 
-    def test_missing_target_is_tolerated_but_a_wrong_one_is_not(self):
+    def test_missing_reference_only_target_is_tolerated(self):
         reference = [{"type": "dist_hr", "km": 2.0, "hr_low": 130, "hr_high": 145}]
-        self.assertEqual(compare_to_canonical([{"type": "dist_open", "km": 2.0}], reference), [])
+        self.assertEqual(compare_to_canonical(
+            [{"type": "dist_open", "km": 2.0}], reference,
+            source_text="Разминка 2 км", allow_missing_targets=True,
+        ), [])
+        self.assertTrue(compare_to_canonical(
+            [{"type": "dist_open", "km": 2.0}], reference,
+            source_text="Разминка 2 км, пульс 130-145", allow_missing_targets=True,
+        ))
         wrong = [{"type": "dist_hr", "km": 2.0, "hr_low": 120, "hr_high": 145}]
         self.assertTrue(compare_to_canonical(wrong, reference))
 
     def test_cap_floor_60_and_reference_80_are_the_same_cap(self):
         reference = [{"type": "dist_hr", "km": 8.0, "hr_low": 80, "hr_high": 140}]
         ours = [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 140}]
-        self.assertEqual(compare_to_canonical(ours, reference, allow_missing_targets=False), [])
+        self.assertEqual(compare_to_canonical(ours, reference, source_text="пульс до 140"), [])
+        self.assertTrue(compare_to_canonical(ours, reference, source_text="пульс 80-140"))
         other_cap = [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 150}]
         self.assertTrue(compare_to_canonical(other_cap, reference))
+
+    def test_wrong_intensity_and_omitted_explicit_target_fail(self):
+        reference = [{"type": "dist_hr", "km": 8.0, "hr_low": 120, "hr_high": 140,
+                      "intensity": "warmup"}]
+        missing = [{"type": "dist_open", "km": 8.0, "intensity": "warmup"}]
+        wrong_intensity = [{"type": "dist_hr", "km": 8.0, "hr_low": 120, "hr_high": 140,
+                            "intensity": "cooldown"}]
+        self.assertTrue(compare_to_canonical(
+            missing, reference, source_text="Разминка 8 км, пульс 120-140",
+            allow_missing_targets=True,
+        ))
+        self.assertTrue(compare_to_canonical(wrong_intensity, reference))
+
+        case = {"expected_steps": reference}
+        checks = evaluate_case_expectations(
+            {"workouts": [{"steps": missing}]}, case,
+            source_text="Разминка 8 км, пульс 120-140", check_source_facts=False,
+        )
+        self.assertFalse(all(check.passed for check in checks))
 
 
 if __name__ == "__main__":

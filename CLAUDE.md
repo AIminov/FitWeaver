@@ -19,7 +19,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Last session summary
 
-**As of 2026-09-26** — Plans in the marked text format are compiled to YAML by a deterministic parser (`marked_plan.py`) with no LLM; the GUI, the Plan API and the new `garmin-fit parse-marked` CLI use it automatically, and only free text goes to the LLM. Product direction: small LLMs on a laptop CPU (no GPU); the Telegram bot is deprioritized. Desktop GUI: 4 tabs (План / LLM / Конструктор / Garmin Connect), simple/expert mode, per-email profiles, Garmin calendar editing, dual standalone exes. Suite: 390 passed (with the api extra). All architecture decisions (Plan API, SQLite staging, workout builder, error hints, drag&drop) are stable and in code. The per-session log lives in `AGENTS.md` («Журнал сессий»); `version.txt` keeps the version history; for detailed implementation notes see the git log (`git log --oneline src/`).
+**As of 2026-09-27** — Marked plans compile to YAML without an LLM; common free-text workouts use conservative rules before an LLM. Garmin repeat mapping, GUI commands and golden evaluation have been revised. Product direction: small LLMs on a laptop CPU; the Telegram bot is deprioritized. Desktop GUI has four tabs, simple/expert mode, per-email profiles and Garmin calendar editing. Suite: 470 passed, 34 subtests (with the API extra). The per-session log lives in `AGENTS.md`; `version.txt` keeps version history.
 
 ---
 
@@ -32,17 +32,18 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Git identity:** `git config --global user.email "iminov@gmail.com" && git config --global user.name "AIminov"`  
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
-**Next tasks (agreed 2026-09-26, start here):**
+**Next tasks (updated 2026-09-27, start here):**
 1. Live checks that need hardware/accounts: rebuild both exes and click through the LLM tab
    (marked text, progress/cancel) and sidebar commands; Garmin duplicate-skip against real
-   calendar names; OpenAI `auto` mode against a live server.
+   calendar names, HR 60–N alert behaviour on a watch, and OpenAI `auto` mode against a server.
 2. LLM path for free text: make the model emit a short line format (or marked text) that
    `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
    (~2.6 tok/s measured). Compare on the golden suite (`docs/golden_dataset/`) with
    `garmin-fit-llm-eval`; do not change prompts without a measurement.
-3. Rule-based pre-parser for common free-text phrases so many workouts skip the LLM entirely.
-4. Code quality: one parser for the marked format (`marked_source_checks` → `marked_plan`),
-   retire the legacy exec-based builder, extract GUI state logic from `fitweaver_gui.py`.
+3. Refine the golden scorer's target-to-step alignment when the same range appears on multiple
+   reference steps; add more conservative rules for common free-text phrasing.
+4. Code quality: consolidate marked-format parsing and extract GUI state logic from
+   `fitweaver_gui.py`.
 5. `TODO.md` lists every open task (only open ones). The Telegram bot is deprioritized.
 
 **Working style preferences:**
@@ -173,8 +174,10 @@ steps:
 
 An upper-only cap ("пульс до 140", "не выше 140", "HR <= 140") is encoded as `hr_low: 60,
 hr_high: 140` everywhere (`plan_domain.HR_CAP_FLOOR_BPM`, agreed with the user 2026-09-27):
-60 is a typical resting HR, so the watch alerts only above the cap. Any other incomplete target
-(lower-only bound, single pace value except the agreed ±10 s/km widening) is never completed.
+60 is a fixed lower bound, not the user's measured resting HR. Both bounds are sent to FIT and
+Garmin Connect; verify alert behaviour below 60 on a real watch before claiming the target acts
+as an upper-only alert. Any other incomplete target (lower-only bound, single pace value except
+the agreed ±10 s/km widening) is never completed.
 
 ## sbu_block expansion
 

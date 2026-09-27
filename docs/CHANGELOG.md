@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-27 - Free-text safety and golden scoring
+
+### Fixed
+- Commas inside decimal distances (`1,5 км`) are no longer treated as step separators.
+- The rules parser sends negated running instructions to the LLM instead of creating a workout;
+  `без разминки` no longer labels the main step as a warmup.
+- Golden scoring requires every source-stated numeric target to survive, catches differing
+  explicit step intensities, and compares HR ranges exactly unless the source states an
+  upper-only cap. The offline evaluation harness now passes source text to this check.
+- `docs/YAML_GUIDE.md` now uses the agreed 60–N HR cap and explains that 60 is an actual lower
+  target bound sent to Garmin, not a measured resting heart rate.
+
 ## 2026-09-27 - Plan writing guide
 
 ### Added

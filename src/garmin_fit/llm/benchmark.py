@@ -138,6 +138,7 @@ def evaluate_case_expectations(
     case: dict[str, Any],
     *,
     source_text: str | None = None,
+    check_source_facts: bool = True,
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
     if not isinstance(data, dict):
@@ -172,7 +173,10 @@ def evaluate_case_expectations(
     if isinstance(expected_steps, list) and len(workouts) == 1 and isinstance(workouts[0], dict):
         from .golden import compare_to_canonical
 
-        problems = compare_to_canonical(workouts[0].get("steps") or [], expected_steps)
+        problems = compare_to_canonical(
+            workouts[0].get("steps") or [], expected_steps,
+            source_text=source_text, allow_missing_targets=True,
+        )
         results.append(
             CheckResult(
                 severity="error",
@@ -185,7 +189,7 @@ def evaluate_case_expectations(
         result = evaluate_single_check(workouts, check)
         results.append(result)
 
-    if source_text:
+    if source_text and check_source_facts:
         facts = UnifiedLLMClient._extract_workout_facts_from_source_text(source_text)
         for fact in facts:
             passed, message = UnifiedLLMClient._evaluate_workouts_against_source_fact(workouts, fact)

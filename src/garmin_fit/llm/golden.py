@@ -5,21 +5,21 @@ workout texts with a reference ("canonical") Garmin YAML. Comparison works on
 facts -- step kind, distance/duration, repeat structure and target -- so key
 order or equivalent spellings do not matter.
 
-An upper-only heart-rate cap is encoded as ``hr_low: 60`` here and as
-``hr_low: 80`` in the reference; both compare as the same cap (by hr_high).
+Some references add targets that the source text does not state. Those may be
+omitted, but a target explicitly stated by the source must survive. An
+upper-only heart-rate cap may use a different lower bound in an older
+reference; that exception applies only when the source actually states a cap.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 DEFAULT_GOLDEN_PATH = Path(__file__).resolve().parents[3] / "docs" / "golden_dataset" / "golden_examples_v1.yaml"
-_CAP_FLOORS = (60, 80)
-
-
 def step_facts(step: dict[str, Any]) -> tuple:
     """(kind, measure..., target) of one YAML step; target is None when absent."""
     kind = step.get("type")
@@ -31,9 +31,7 @@ def step_facts(step: dict[str, Any]) -> tuple:
         )
         return ("sbu", drills, None)
     target = None
-    if step.get("hr_low") in _CAP_FLOORS:
-        target = ("hr_cap", step.get("hr_high"))
-    elif step.get("hr_low") is not None:
+    if step.get("hr_low") is not None:
         target = ("hr", step.get("hr_low"), step.get("hr_high"))
     elif step.get("pace_fast") is not None:
         target = ("pace", str(step.get("pace_fast")), str(step.get("pace_slow")))
@@ -45,13 +43,18 @@ def step_facts(step: dict[str, Any]) -> tuple:
 
 
 def compare_to_canonical(
-    steps: list[dict[str, Any]], canonical: list[dict[str, Any]], *, allow_missing_targets: bool = True
+    steps: list[dict[str, Any]],
+    canonical: list[dict[str, Any]],
+    *,
+    source_text: str | None = None,
+    allow_missing_targets: bool = False,
 ) -> list[str]:
     """Differences between generated steps and the reference; empty list when they agree.
 
-    With ``allow_missing_targets`` a generated step may omit a target the
-    reference has (the reference sometimes adds targets the text does not
-    state); a *different* target is always a difference.
+    A missing reference target is tolerated only when explicitly requested
+    and the generated workout still includes every occurrence stated by the
+    source. References sometimes copy one stated target to other steps.
+    Without source text, the comparison is exact.
     """
     got = [step_facts(step) for step in steps]
     want = [step_facts(step) for step in canonical]
@@ -62,19 +65,82 @@ def compare_to_canonical(
         if ours[:-1] != reference[:-1]:
             problems.append(f"step {index}: expected {reference[:-1]}, got {ours[:-1]}")
         elif ours[-1] != reference[-1] and not (
-            allow_missing_targets and (ours[-1] is None or _cap_of_reference_range(ours[-1], reference[-1]))
+            _source_cap_equivalent(ours[-1], reference[-1], source_text)
+            or (
+                ours[-1] is None
+                and allow_missing_targets
+                and source_text is not None
+            )
         ):
             problems.append(f"step {index}: expected target {reference[-1]}, got {ours[-1]}")
+        if ours[0] == "step" and reference[0] == "step":
+            got_intensity = steps[index].get("intensity")
+            expected_intensity = canonical[index].get("intensity")
+            if got_intensity and expected_intensity and got_intensity != expected_intensity:
+                problems.append(
+                    f"step {index}: expected intensity {expected_intensity}, got {got_intensity}"
+                )
+    if allow_missing_targets and source_text:
+        for target in {fact[-1] for fact in want if fact[0] == "step" and fact[-1] is not None}:
+            stated = _stated_target_count(target, source_text)
+            if not stated:
+                continue
+            reference_count = sum(fact[-1] == target for fact in want)
+            required = min(stated, reference_count)
+            actual = sum(
+                fact[-1] == target or _source_cap_equivalent(fact[-1], target, source_text)
+                for fact in got
+            )
+            if actual < required:
+                problems.append(
+                    f"source states target {target} {required} time(s), generated {actual}"
+                )
     return problems
 
 
-def _cap_of_reference_range(ours: tuple | None, reference: tuple | None) -> bool:
-    """Our upper-only cap vs a reference range with the same top: the reference
-    invented the lower bound ("не выше 138" -> 120-138), the cap is the fact."""
+def _source_states_hr_cap(source_text: str | None, high: object) -> bool:
+    if not source_text or not isinstance(high, int):
+        return False
+    return bool(re.search(
+        rf"(?:\bдо\b|не\s+выше|не\s+более|\bмакс(?:имум)?\.?|<=?|≤)\s*{high}(?!\d)",
+        source_text, re.IGNORECASE,
+    ))
+
+
+def _source_cap_equivalent(
+    ours: tuple | None, reference: tuple | None, source_text: str | None
+) -> bool:
+    """A reference may invent the lower bound for an explicit upper-only cap."""
     return (
         ours is not None and reference is not None
-        and ours[0] == "hr_cap" and reference[0] == "hr" and ours[1] == reference[2]
+        and ours[0] == reference[0] == "hr"
+        and ours[1] == 60 and ours[2] == reference[2]
+        and _source_states_hr_cap(source_text, ours[2])
     )
+
+
+def _stated_target_count(reference: tuple, source_text: str) -> int:
+    """Count numeric source targets matching this reference target."""
+    kind = reference[0]
+    text = source_text.replace("–", "-").replace("—", "-").replace("−", "-")
+    if kind == "hr":
+        low, high = reference[1:3]
+        if _source_states_hr_cap(text, high):
+            return len(re.findall(
+                rf"(?:\bдо\b|не\s+выше|не\s+более|\bмакс(?:имум)?\.?|<=?|≤)\s*{high}(?!\d)",
+                text, re.IGNORECASE,
+            ))
+        return len(re.findall(rf"(?<!\d){low}\s*-\s*{high}(?!\d)", text))
+    if kind == "cadence":
+        low, high = reference[1:3]
+        return len(re.findall(rf"(?<!\d){low}\s*-\s*{high}(?!\d)", text))
+    if kind == "pace":
+        fast, slow = reference[1:3]
+        normalized = re.sub(r"(?<=\d)\.(?=\d{2}\b)", ":", text)
+        return len(re.findall(
+            rf"(?<!\d){re.escape(fast)}\s*-\s*{re.escape(slow)}(?!\d)", normalized,
+        ))
+    return 0
 
 
 def build_suite_from_golden(golden_path: Path, out_dir: Path, *, suite_name: str = "golden-v1") -> Path:

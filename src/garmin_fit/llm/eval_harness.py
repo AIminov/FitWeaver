@@ -278,7 +278,9 @@ def evaluate_case(
         final_yaml_errors.append("pipeline returned no serialized YAML")
 
     data = result.data if isinstance(result.data, dict) else None
-    expectation_results = evaluate_case_expectations(data, case, source_text=None)
+    expectation_results = evaluate_case_expectations(
+        data, case, source_text=source_text, check_source_facts=False,
+    )
     hard_check_failures = [
         check.message
         for check in expectation_results

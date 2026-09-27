@@ -73,6 +73,8 @@ _ROLE_WORDS = [
 _UNSUPPORTED_RE = re.compile(
     r"сери[яиейю]|повтор|лесенк|каждый|кажд|быстрее|медленнее|прогресс|или\b|если\b|до отказа|"
     r"между сериями|по самочувствию|ощущени|"
+    # A prohibition is not an instruction to create a running workout.
+    r"\bне\s+(?:бежать|бегать|пробегать|тренироваться)\b|"
     # effort described only in words: the user should give a number
     r"комфортно|тяжел|трудно|разговар|разговор|усили|"
     # not running at all
@@ -153,7 +155,9 @@ def _join_wrapped(raw_lines: list[str]) -> list[str]:
 
 
 _CLAUSE_SPLIT_RE = re.compile(
-    r"\s*[,;]\s*(?:(?:а\s+)?затем|потом|после этого|и)?\s*|\s+(?:затем|потом|после этого)\s+",
+    # A comma between digits belongs to a decimal distance ("1,5 км").
+    r"\s*(?:,(?!\d)|;)\s*(?:(?:а\s+)?затем|потом|после этого|и)?\s*|"
+    r"\s+(?:затем|потом|после этого)\s+",
     re.IGNORECASE,
 )
 _RECOVERY_START_RE = re.compile(r"^(?:отдых|восстановлени|трусц|между|спуск)", re.IGNORECASE)
@@ -359,6 +363,12 @@ def _role_only(line: str) -> str | None:
 
 
 def _role_of(text: str) -> str | None:
+    # "без разминки" describes an absent step, not the role of this step.
+    text = re.sub(
+        r"\bбез\s+(?:отдельной\s+)?(?:разминк\w*|заминк\w*)"
+        r"(?:\s+и\s+(?:разминк\w*|заминк\w*))?",
+        " ", text, flags=re.IGNORECASE,
+    )
     for pattern, role in _ROLE_WORDS:
         if pattern.search(text):
             return role

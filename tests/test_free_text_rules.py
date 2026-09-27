@@ -99,6 +99,23 @@ class FreeTextRulesTests(unittest.TestCase):
     def test_unexplained_number_falls_back_to_llm(self):
         self.assertIsNone(free_text_to_marked("Разминка 2 км, потом 3 ускорения"))
 
+    def test_decimal_comma_in_one_line_plan_stays_in_the_measure(self):
+        workout = parse_workout_with_rules("Разминка 1,5 км, затем 2 км работа")
+        self.assertIsNotNone(workout)
+        self.assertEqual([step["km"] for step in workout["steps"]], [1.5, 2.0])
+        self.assertEqual(workout["steps"][0]["intensity"], "warmup")
+
+    def test_negated_run_never_becomes_a_workout_by_rules(self):
+        self.assertIsNone(parse_workout_with_rules("Не бежать 8 км"))
+        self.assertIsNone(parse_workout_with_rules("Сегодня не бегать 5 км"))
+
+    def test_absent_warmup_is_not_the_role_of_the_main_step(self):
+        workout = parse_workout_with_rules(
+            "10 км ровно в марафонском темпе, пульс 150-162, без разминки отдельно"
+        )
+        self.assertIsNotNone(workout)
+        self.assertNotEqual(workout["steps"][0].get("intensity"), "warmup")
+
     def test_unsupported_structure_falls_back_to_llm(self):
         self.assertIsNone(free_text_to_marked("3 серии по 4x400м, между сериями 3 минуты"))
         self.assertIsNone(free_text_to_marked("5 км по самочувствию"))
@@ -125,7 +142,8 @@ class FreeTextRulesTests(unittest.TestCase):
                 if variant["id"] in KNOWN_REFERENCE_DEVIATIONS:
                     continue
                 problems = compare_to_canonical(
-                    workout["steps"], group["canonical"]["workouts"][0]["steps"]
+                    workout["steps"], group["canonical"]["workouts"][0]["steps"],
+                    source_text=variant["text"], allow_missing_targets=True,
                 )
                 self.assertEqual(problems, [], variant["id"])
         self.assertGreaterEqual(parsed_valid, 26)

@@ -54,12 +54,13 @@ garmin-fit-llm-eval --suite Build_artifacts\llm_eval\golden_suite\suite.yaml --m
   --api ollama --url http://localhost:11434 --model "qwen3:8b"
 ```
 
-`expected_steps` is checked fact by fact (`llm/golden.py`): step kinds, distances/durations and
-repeat structure must match; a target may be missing (the reference sometimes adds targets the
-text does not state) but never different. An upper-only HR cap compares by its top value:
-the app encodes it as `hr_low: 60`, the reference as `hr_low: 80`, and a reference range with the
-same top (an invented lower bound) also matches. The harness never enables the deterministic rules
-(`free_text_rules.py`), so scores measure the model.
+`expected_steps` is checked fact by fact (`llm/golden.py`): measures, repeat structure and
+targets must match, and differing explicit step intensities fail. A reference target may be
+omitted only when the source states fewer occurrences of that target than the reference uses;
+an explicitly stated target must appear in the generated steps. The `hr_low: 60` encoding of
+an upper-only HR cap may differ from an older reference's lower bound only when the source
+actually says `до N` / `не выше N`. An explicit HR range is compared exactly. The harness
+never enables the deterministic rules (`free_text_rules.py`), so scores measure the model.
 
 ## Commands
 
@@ -100,7 +101,8 @@ copied into the trace. Model replies are stored to make failures inspectable.
 - The strict pass is a deterministic acceptance signal, not a full measure of
   coaching quality.
 - Add suite checks for semantic facts that matter in a dataset, especially
-  repeat body/count/order, target preservation, and expected step types.
+  repeat body/count/order and target-to-step alignment when the same target
+  appears on several reference steps.
 - Live runs currently identify the model by the configured name. Record the
   Ollama model digest/size alongside each run when `/api/tags` is available.
 - Comparison reports require the same paired cases/trials and source text;
