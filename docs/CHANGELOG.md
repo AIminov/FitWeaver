@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-27 - No more cache files beside the user's plans
+
+### Changed
+- The GUI's plan staging database lives in `Build_artifacts/workdb/` (named by a hash of the plan
+  path) instead of `<plan>.yaml.workdb` next to the plan; an old sibling file is removed when the
+  plan is opened (it is a disposable cache rebuilt from the YAML on every open).
+- Removed unused GUI helpers that wrote `Plan/_gui_draft_*.yaml` files.
+
 ## 2026-09-27 - Building FIT files no longer moves the plan or the FIT files
 
 ### Fixed

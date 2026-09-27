@@ -38,12 +38,13 @@ pytestmark = pytest.mark.skipif(not _tk_available(), reason="no display for Tk")
 def test_gui_main_flows(tmp_path):
     sys.path.insert(0, str(ROOT))
     import fitweaver_gui
-    from garmin_fit import logging_utils, profile_store
+    from garmin_fit import config, logging_utils, profile_store
 
     stubs = [
         patch.object(fitweaver_gui, "SESSION_FILE", tmp_path / ".gui_session.json"),
         patch.object(fitweaver_gui, "PROJECT_ROOT", tmp_path),
         patch.object(profile_store, "PROFILES_ROOT", tmp_path / "profiles"),
+        patch.object(config, "ARTIFACTS_DIR", tmp_path / "artifacts"),
         patch.object(logging_utils, "setup_file_logging", lambda *a, **k: None),
         patch("urllib.request.urlopen", side_effect=OSError("offline in tests")),
         patch.object(fitweaver_gui.messagebox, "showwarning", lambda *a, **k: None),
@@ -80,6 +81,17 @@ def test_gui_main_flows(tmp_path):
                     app.after(50, poll)
             app.after(50, poll)
 
+        plan_copy = tmp_path / "plans" / "plan.yaml"
+        plan_copy.parent.mkdir()
+        plan_copy.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+
+        def step_load_plan():
+            app.yaml_path.set(str(plan_copy))
+            app._reload_yaml()
+            results["loaded_workouts"] = len(app.workouts)
+            results["sibling_files"] = sorted(p.name for p in plan_copy.parent.iterdir())
+            step_marked()
+
         def step_marked():
             app._nb.select(1)
             app._plan_text.delete("1.0", "end")
@@ -111,7 +123,7 @@ def test_gui_main_flows(tmp_path):
             app.pass_var.set("")
             app.quit()
 
-        app.after(200, step_marked)
+        app.after(200, step_load_plan)
         app.mainloop()
         app.destroy()
     finally:
@@ -119,6 +131,8 @@ def test_gui_main_flows(tmp_path):
             stub.stop()
 
     assert not results.get("timeout"), results
+    assert results["loaded_workouts"] >= 1
+    assert results["sibling_files"] == ["plan.yaml"]  # no *.workdb beside the user's plan
     assert "Разобрано без LLM — 3 тренировки" in results["status"]
     assert str(results["yaml"]).startswith("workouts:")
     assert str(results["text_view"]).lstrip().startswith("==== ТРЕНИРОВКА")

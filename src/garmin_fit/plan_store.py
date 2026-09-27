@@ -8,6 +8,7 @@ file it was loaded from, so nothing outside the GUI needs to know it exists.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -85,6 +86,22 @@ class PlanStore:
         self._conn = conn
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._yaml_path: Path | None = None
+
+    @staticmethod
+    def workdb_path_for(yaml_path: Path, cache_dir: Path | None = None) -> Path:
+        """Where the staging DB for a plan lives: the app's own cache, not the plan's folder.
+
+        The DB is rebuilt from the YAML on every open, so it is a disposable
+        cache; keeping it beside the plan used to litter the user's folders
+        with ``*.yaml.workdb`` files.
+        """
+        from .config import ARTIFACTS_DIR
+
+        resolved = Path(yaml_path).resolve()
+        digest = hashlib.sha1(str(resolved).casefold().encode("utf-8")).hexdigest()[:12]
+        directory = Path(cache_dir) if cache_dir is not None else ARTIFACTS_DIR / "workdb"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"{resolved.stem}_{digest}.workdb"
 
     @classmethod
     def open(cls, db_path: Path) -> "PlanStore":

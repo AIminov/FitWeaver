@@ -441,3 +441,16 @@ class PlanStoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkdbLocationTests(unittest.TestCase):
+    def test_workdb_lives_in_the_cache_not_beside_the_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = Path(tmp) / "plans" / "my_plan.yaml"
+            cache = Path(tmp) / "cache"
+            first = PlanStore.workdb_path_for(plan, cache_dir=cache)
+            self.assertEqual(first.parent, cache)
+            self.assertTrue(first.name.startswith("my_plan_"))
+            self.assertEqual(PlanStore.workdb_path_for(plan, cache_dir=cache), first)
+            other = PlanStore.workdb_path_for(Path(tmp) / "other" / "my_plan.yaml", cache_dir=cache)
+            self.assertNotEqual(other, first)

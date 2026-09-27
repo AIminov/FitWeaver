@@ -1519,8 +1519,11 @@ class App(_AppBase):
             if self._store is not None:
                 self._store.close()
 
-            workdb_path = Path(str(path) + ".workdb")
-            self._store = PlanStore.open(workdb_path)
+            legacy_workdb = Path(str(path) + ".workdb")
+            if legacy_workdb.exists():
+                # Staging cache that older versions kept beside the plan.
+                legacy_workdb.unlink(missing_ok=True)
+            self._store = PlanStore.open(PlanStore.workdb_path_for(Path(path)))
             repairs = self._store.load_from_yaml(Path(path))
 
             data = plan_to_data(self._store.get_plan())
@@ -2164,31 +2167,6 @@ class App(_AppBase):
             self._reload_yaml()
             self._set_progress(f"Сохранено: {Path(path).name}", GREEN)
             self._nb.select(0)
-
-    def _yaml_save_temp(self) -> str | None:
-        text = self._generated_yaml.strip()
-        if not text:
-            messagebox.showwarning("Нет YAML", "Сначала сгенерируйте YAML.")
-            return None
-        plan_dir = PROJECT_ROOT / "Plan"
-        plan_dir.mkdir(exist_ok=True)
-        tmp = plan_dir / f"_gui_draft_{datetime.datetime.now().strftime('%H%M%S')}.yaml"
-        tmp.write_text(text, encoding="utf-8")
-        self.yaml_path.set(str(tmp))
-        self._reload_yaml()
-        return str(tmp)
-
-    def _yaml_to_build(self):
-        path = self._yaml_save_temp()
-        if path:
-            self._nb.select(0)
-            self._cmd_build()
-
-    def _yaml_to_garmin(self):
-        path = self._yaml_save_temp()
-        if path:
-            self._nb.select(0)
-            self._cmd_upload()
 
     # ── Builder tab (visual, no-LLM workout construction) ─────────────────────
     def _build_builder_tab(self, parent):
