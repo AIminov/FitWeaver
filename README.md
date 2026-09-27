@@ -47,13 +47,24 @@ works on its own; `garmin-fit-cli.exe` is an optional command-line companion.
 ## Pipeline
 
 ```
-Marked text  →  parser (no LLM) ─┐
-Free text    →  LLM ─────────────┴→  YAML  →  direct build  ─┬─  .fit  →  USB  →  Watch
-                                                              └─  Garmin Connect Calendar  →  Watch sync
+Marked text          →  parser (no LLM) ──────┐
+Usual workout lines  →  rules (no LLM) ───────┼→  YAML  →  build  ─┬─  .fit  →  USB  →  Watch
+Free text            →  LLM (per workout) ────┘                   └─  Garmin Connect Calendar
 ```
 
-Text in the [marked format](docs/MARKED_PLAN_FORMAT.md) (`**** ШАГ ****`, `**** ПОВТОР: N РАЗ ****`)
-is compiled deterministically — instantly and without an LLM. Example: `examples/marked_plan_example.txt`.
+### Ways to give a plan
+
+1. **Marked format** — the most reliable: compiled instantly, repeats and indices computed by
+   code. Format: [docs/MARKED_PLAN_FORMAT.md](docs/MARKED_PLAN_FORMAT.md), example:
+   `examples/marked_plan_example.txt`.
+2. **Usual dated lines** — workouts like `14.04 вт: р2(5.45-6.00) + 6х800 4.20-4.30 отд 400 + з1`
+   or `Разминка: 2 км (5:45-6:00)` / `6x800м по 4:20-4:30, восстановление 400 м` are parsed by
+   rules without an LLM. A workout is taken only when every line and number is understood;
+   the rest go to the LLM.
+3. **Free text** — through the LLM, one workout per request. The result can be shown as marked
+   text, corrected and rebuilt without the LLM.
+
+A heart-rate cap ("пульс до 140") is stored as the range 60–140: the watch alerts above the cap.
 
 
 ---
@@ -113,7 +124,7 @@ python -m garmin_fit.llm.request_cli \
 python -m garmin_fit.llm.request_cli \
   --plan Plan/my_plan.md \
   --api ollama \
-  --model llama3
+  --model qwen3:8b
 ```
 
 > **Optional:** If your plan uses zone names ("Z2", "easy pace") instead of explicit bpm values,
@@ -449,7 +460,8 @@ python -m garmin_fit.llm.request_cli \
 
 | Model | Notes |
 |-------|-------|
-| `qwen3.8-27b` | ✅ Recommended local model — use the exact ID returned by `/v1/models` |
+| `qwen3:8b` / Unsloth Qwen3 8B IQ4_XS | ✅ Project target — a laptop without GPU. Golden set: 6/10 and 8/10 strict passes; ~45–200 s per workout |
+| `qwen3.8-27b` | ✅ More accurate but needs a strong machine — use the exact ID returned by `/v1/models` |
 | `qwen/qwen3.5-4b` | ✅ Good — faster, smaller VRAM |
 | `google/gemma-4-*` | ⚠️ **Avoid** — ignores `enable_thinking: false`; on retry enters a reasoning loop that hangs for 3000+ seconds |
 
