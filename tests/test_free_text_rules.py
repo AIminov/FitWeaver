@@ -104,7 +104,7 @@ class FreeTextRulesTests(unittest.TestCase):
                     workout["steps"], group["canonical"]["workouts"][0]["steps"]
                 )
                 self.assertEqual(problems, [], variant["id"])
-        self.assertGreaterEqual(parsed_valid, 24)
+        self.assertGreaterEqual(parsed_valid, 26)
 
 
 class RulesInClientTests(unittest.TestCase):

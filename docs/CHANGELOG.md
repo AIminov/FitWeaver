@@ -10,7 +10,7 @@
   punctuation (`пульс 135-145,`) are recognised.
 - New precision guards: a unit without a number (`километр заминки`, `км разминки`, `беги час`)
   and a warmup mentioned after the main work (or cooldown before it) send the workout to the LLM.
-- Golden dataset: 25 of 59 valid variants parsed (was 15), none of the unclear/unsupported cases;
+- Golden dataset: 26 of 59 valid variants parsed (was 15), none of the unclear/unsupported cases;
   all agree with the reference except one where the reference drops a stated distance.
 
 ## 2026-09-27 - Upper-only HR caps become 60-cap

@@ -54,7 +54,8 @@ _INTERVAL_RE = re.compile(
 _INTERVAL_TITLE_RE = re.compile(r"^[А-Яа-яA-Za-z][^\d]*\d+\s*[xх×]\s*\d", re.IGNORECASE)
 # "Пороговая тренировка: разминка 2 км, ..." -- a title before the first step.
 _COLON_TITLE_RE = re.compile(r"^(?P<title>[А-ЯA-Zа-яa-z«\"][^:\d]{2,60}?)\s*:\s*(?P<rest>.*\d.*)$")
-_SUMMARY_RE = re.compile(r"^\s*(?:итого|всего)\s*:?\s*(?P<rest>.*)$", re.IGNORECASE)
+# "Итого: 10 км" -- the colon matters: "всего 20 минут бега" is a step, not a summary.
+_SUMMARY_RE = re.compile(r"^\s*(?:итого|всего)\s*:\s*(?P<rest>.*)$", re.IGNORECASE)
 _SBU_RE = re.compile(r"^\s*сбу\s*:?\s*(?P<rest>.+)$", re.IGNORECASE)
 _DRILL_RE = re.compile(
     r"^\s*(?P<name>[^\d,;]+?)\s+(?P<seconds>\d+)\s*(?:с|сек)\s*[xх×]\s*(?P<reps>\d+)\s*$",
