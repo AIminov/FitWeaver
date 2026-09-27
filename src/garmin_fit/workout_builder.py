@@ -27,6 +27,9 @@ def compute_repeat_step(
     """Given an in-memory draft step list and a selected range, return the
     repeat WorkoutStep to insert after end_position. The caller never
     computes or stores back_to_offset itself -- it's always start_position.
+
+    The range may contain whole existing repeat groups (nested sets such as
+    3 x (4 x 400 m)); a range that cuts through a group is rejected.
     """
     n = len(steps)
     if not (0 <= start_position <= end_position < n):
@@ -37,22 +40,37 @@ def compute_repeat_step(
     for pos, step in enumerate(steps):
         if step.step_type != "repeat":
             continue
-        if start_position <= pos <= end_position:
-            raise ValueError(
-                "selected range contains an existing repeat step; "
-                "nested repeats are not supported"
-            )
         try:
             offset = int(step.back_to_offset)
         except (TypeError, ValueError):
-            offset = None
-        if offset is not None and start_position <= offset <= end_position:
+            raise ValueError(f"repeat at position {pos} has an invalid back_to_offset") from None
+        inside = start_position <= offset and pos <= end_position
+        outside = pos < start_position or offset > end_position
+        encloses = offset <= start_position and pos > end_position
+        if not (inside or outside or encloses):
             raise ValueError(
-                "selected range overlaps an existing repeat group's start; "
-                "nested/overlapping repeats are not supported"
+                "the selection cuts through an existing repeat group; "
+                "select the whole group (its steps and its repeat row) or none of it"
             )
 
     return WorkoutStep(step_type="repeat", back_to_offset=start_position, count=count)
+
+
+def insert_repeat_into_draft(
+    steps: list[WorkoutStep], start_position: int, end_position: int, count: int
+) -> WorkoutStep:
+    """Insert a repeat over [start, end] right after end and keep other repeats valid.
+
+    Every existing repeat whose body starts after the insertion point points
+    one row further down afterwards (the new repeat row shifts those steps).
+    """
+    repeat = compute_repeat_step(steps, start_position, end_position, count)
+    insert_at = end_position + 1
+    for step in steps[insert_at:]:
+        if step.step_type == "repeat" and int(step.back_to_offset) >= insert_at:
+            step.back_to_offset = int(step.back_to_offset) + 1
+    steps.insert(insert_at, repeat)
+    return repeat
 
 
 def delete_step_from_draft(steps: list[WorkoutStep], position: int) -> None:

@@ -497,20 +497,18 @@ class PlanStore:
         if count <= 0:
             raise ValueError("count must be positive")
 
-        for _id, pos, step_type, back_to_offset in steps:
-            if step_type != "repeat":
-                continue
-            if start_position <= pos <= end_position:
-                raise ValueError(
-                    "selected range contains an existing repeat step; "
-                    "nested repeats are not supported"
-                )
-            offset = self._offset_of(back_to_offset)
-            if offset is not None and start_position <= offset <= end_position:
-                raise ValueError(
-                    "selected range overlaps an existing repeat group's start; "
-                    "nested/overlapping repeats are not supported"
-                )
+        # Same rule as the builder: whole groups may nest, cutting through one may not.
+        from .workout_builder import compute_repeat_step
+
+        compute_repeat_step(
+            [
+                WorkoutStep(step_type=step_type, back_to_offset=self._offset_of(back_to_offset))
+                for _id, _pos, step_type, back_to_offset in steps
+            ],
+            start_position,
+            end_position,
+            count,
+        )
 
         new_step = WorkoutStep(step_type="repeat", back_to_offset=start_position, count=count)
         return self.insert_step(workout_id, end_position + 1, new_step)

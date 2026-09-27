@@ -6,6 +6,7 @@ from garmin_fit.workout_builder import (
     TEMPLATES,
     compute_repeat_step,
     delete_step_from_draft,
+    insert_repeat_into_draft,
     validate_draft,
 )
 
@@ -42,10 +43,25 @@ class ComputeRepeatStepTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compute_repeat_step(self.steps, start_position=1, end_position=2, count=0)
 
-    def test_rejects_range_containing_existing_repeat_step(self):
+    def test_range_containing_a_whole_group_nests_it(self):
+        # 3 x (4 x (work + recovery)): the outer range holds the inner group and its repeat row.
+        steps = self.steps[:3] + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]
+        insert_repeat_into_draft(steps, 1, 3, 3)
+        self.assertEqual([(s.step_type, s.back_to_offset, s.count) for s in steps[3:]],
+                         [("repeat", 1, 4), ("repeat", 1, 3)])
+        self.assertEqual(validate_draft("W40_10-01_Thu_Sets", "W40_10-01_Thu_Sets", steps)[0], [])
+
+    def test_rejects_range_cutting_through_a_group(self):
         steps = self.steps + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]
         with self.assertRaises(ValueError):
-            compute_repeat_step(steps, start_position=0, end_position=4, count=2)
+            compute_repeat_step(steps, start_position=2, end_position=4, count=2)
+
+    def test_insert_before_a_group_shifts_its_offset(self):
+        steps = self.steps[:3] + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]
+        insert_repeat_into_draft(steps, 0, 0, 2)
+        self.assertEqual([(s.step_type, s.back_to_offset) for s in steps if s.step_type == "repeat"],
+                         [("repeat", 0), ("repeat", 2)])
+        self.assertEqual(steps[2].step_type, "dist_hr")  # the group's first step, as before
 
     def test_rejects_range_overlapping_existing_repeat_group_start(self):
         steps = self.steps + [WorkoutStep(step_type="repeat", back_to_offset=1, count=4)]

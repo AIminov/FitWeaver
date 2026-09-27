@@ -2458,7 +2458,7 @@ class App(_AppBase):
         self._builder_render_editor()
 
     def _builder_add_repeat(self):
-        from garmin_fit.workout_builder import compute_repeat_step
+        from garmin_fit.workout_builder import insert_repeat_into_draft
         start, end = self._builder_range_start, self._builder_range_end
         if start is None or end is None:
             return
@@ -2469,11 +2469,10 @@ class App(_AppBase):
             messagebox.showwarning("Некорректно", "Количество повторов должно быть числом.")
             return
         try:
-            repeat_step = compute_repeat_step(self._builder_steps, lo, hi, count)
+            insert_repeat_into_draft(self._builder_steps, lo, hi, count)
         except ValueError as exc:
             messagebox.showwarning("Нельзя повторить", str(exc))
             return
-        self._builder_steps.insert(hi + 1, repeat_step)
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
@@ -2482,8 +2481,15 @@ class App(_AppBase):
         start, end = self._builder_range_start, self._builder_range_end
         valid = False
         if start is not None and end is not None and self._builder_steps:
+            from garmin_fit.workout_builder import compute_repeat_step
+
             lo, hi = min(start, end), max(start, end)
-            valid = all(self._builder_steps[i].step_type != "repeat" for i in range(lo, hi + 1))
+            try:
+                # Whole existing groups may be nested; a cut through one may not.
+                compute_repeat_step(self._builder_steps, lo, hi, 2)
+                valid = True
+            except ValueError:
+                valid = False
         self._builder_repeat_btn.config(state="normal" if valid else "disabled")
 
     def _builder_summarize(self, idx: int, step) -> str:

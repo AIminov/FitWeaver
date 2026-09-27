@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-27 - Builder: nested sets, correct repeat indices
+
+### Fixed
+- Adding a repeat in the builder above an existing repeat group did not shift that group's
+  `back_to_offset`, so the lower repeat pointed at the new repeat row instead of its first step
+  and the workout changed silently. `workout_builder.insert_repeat_into_draft` inserts and shifts.
+
+### Added
+- The builder and `PlanStore.add_repeat_over_range` accept a range that contains whole repeat
+  groups, so nested sets like 3 × (4 × 400 m) can be built; a range that cuts through a group is
+  still rejected. Both use one rule (`compute_repeat_step`).
+
 ## 2026-09-27 - No more cache files beside the user's plans
 
 ### Changed

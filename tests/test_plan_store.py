@@ -362,13 +362,23 @@ class PlanStoreTests(unittest.TestCase):
         self.assertEqual(repeat_step.count, 6)
         self.assertGreater(new_step_id, 0)
 
-    def test_add_repeat_over_range_rejects_range_containing_existing_repeat_step(self):
+    def test_add_repeat_over_range_nests_a_whole_group(self):
         store = self._open_store()
         store.load_from_yaml(self.yaml_path)
         workout_id = self._workout_ids(store)[0]  # already has a repeat step at position 3
 
+        store.add_repeat_over_range(workout_id, 0, 3, count=2)
+        steps = store.get_plan().workouts[0].steps
+        self.assertEqual((steps[4].step_type, steps[4].back_to_offset, steps[4].count), ("repeat", 0, 2))
+        self.assertEqual(store.validate()[0], [])
+
+    def test_add_repeat_over_range_rejects_cutting_through_a_group(self):
+        store = self._open_store()
+        store.load_from_yaml(self.yaml_path)
+        workout_id = self._workout_ids(store)[0]
+        existing = store.get_plan().workouts[0].steps[3]
         with self.assertRaises(ValueError):
-            store.add_repeat_over_range(workout_id, 0, 3, count=2)
+            store.add_repeat_over_range(workout_id, int(existing.back_to_offset) + 1, 3, count=2)
 
     def test_add_drill_delete_drill_move_drill_renumber(self):
         store = self._open_store()
