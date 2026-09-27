@@ -18,6 +18,12 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 import yaml
 
+from garmin_fit.gui_messages import (
+    garmin_error_message,
+    hint_for_line,
+    ru_count,
+    ru_workouts,
+)
 from garmin_fit.gui_theme import configure_customtkinter, configure_ttk, load_customtkinter
 from garmin_fit.gui_validation import parse_builder_value, parse_repeat_count
 
@@ -48,25 +54,6 @@ BG3    = "#313244"
 FG     = "#cdd6f4"
 ACCENT = "#89b4fa"
 MUTED  = "#6c7086"
-
-
-def ru_count(n: int, one: str, few: str, many: str) -> str:
-    """'1 тренировка', '3 тренировки', '5 тренировок'."""
-    n = int(n)
-    tail = n % 100
-    if 11 <= tail <= 14:
-        word = many
-    elif n % 10 == 1:
-        word = one
-    elif 2 <= n % 10 <= 4:
-        word = few
-    else:
-        word = many
-    return f"{n} {word}"
-
-
-def ru_workouts(n: int) -> str:
-    return ru_count(n, "тренировка", "тренировки", "тренировок")
 GREEN  = "#a6e3a1"
 RED    = "#f38ba8"
 PURPLE = "#cba6f7"
@@ -132,34 +119,6 @@ _STEP_TYPE_FIELDS = {
 MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь",
               "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 DAYS_RU   = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
-
-# Friendly-language hints shown under recognized CLI/subprocess error lines in
-# the log panel -- purely a GUI-side presentation layer, doesn't touch the
-# underlying CLI error text (power users running `python -m garmin_fit.cli`
-# directly still see the raw messages). Checked in order; first match wins.
-_ERROR_HINTS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"YAML (plan|file) not found", re.I),
-     "Проверьте путь к файлу — убедитесь, что он указан верно и файл существует."),
-    (re.compile(r"No YAML training plan found in"),
-     "В папке Plan рядом с программой нет ни одного .yaml-файла. "
-     "Выберите план через «Обзор…» или сначала сохраните его."),
-    (re.compile(r"Connection check failed|Cannot connect to (Ollama|OpenAI-compatible|API at)", re.I),
-     "Не удаётся подключиться к LLM. Проверьте, что сервер запущен, "
-     "и что адрес/порт в настройках подключения указаны верно."),
-    (re.compile(r"Timeout waiting for.*response", re.I),
-     "LLM слишком долго не отвечает. Попробуйте план покороче или проверьте, что модель загружена."),
-    (re.compile(r"Authentication failed", re.I),
-     "Не удалось войти в Garmin Connect — проверьте логин и пароль."),
-    (re.compile(r"(garmin-auth|garminconnect) not installed", re.I),
-     "Не хватает модуля для работы с Garmin Connect. Переустановите приложение "
-     "или сообщите разработчику."),
-    (re.compile(r"YAML validation errors found|VALIDATION ERRORS"),
-     "В плане есть ошибки — прокрутите лог немного выше, там подробности по каждой."),
-    (re.compile(r"No FIT files (found|generated)"),
-     "FIT-файлы не были созданы. Проверьте, что план прошёл валидацию без ошибок."),
-    (re.compile(r"temp directory is not writable"),
-     "Нет прав на запись во временную папку Windows — проверьте права доступа."),
-]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1696,15 +1655,13 @@ class App(_AppBase):
     # plain-language explanation + suggested next step for recognized
     # failures, for users who don't want to parse raw CLI/Python output.
     def _maybe_hint(self, text: str) -> None:
-        stripped = text.strip()
-        for pattern, hint in _ERROR_HINTS:
-            if pattern.search(stripped):
-                self._log_w.config(state="normal")
-                self._log_w.insert("end", f"   💡 {hint}\n", ("hint",))
-                self._log_w.see("end")
-                self._log_w.config(state="disabled")
-                self._show_toast(hint, YELLOW, duration_ms=6000)
-                return
+        hint = hint_for_line(text.strip())
+        if hint:
+            self._log_w.config(state="normal")
+            self._log_w.insert("end", f"   💡 {hint}\n", ("hint",))
+            self._log_w.see("end")
+            self._log_w.config(state="disabled")
+            self._show_toast(hint, YELLOW, duration_ms=6000)
 
     def _show_toast(self, message: str, color: str = GREEN, duration_ms: int = 3000) -> None:
         toast = tk.Toplevel(self)
@@ -2902,7 +2859,7 @@ class App(_AppBase):
                     self.after(0, self._nb.select, 3)
                     self.after(0, self._gc_calendar_load)
             except Exception as exc:
-                message = self._gc_friendly_error(exc)
+                message = self._gc_friendly_error(exc, "загрузку тренировки")
                 self.after(0, self._result_var.set, f"Ошибка отправки: {message}")
                 self.after(0, self._log, f"[ERR] Отправка из конструктора: {message}")
                 self.after(0, self._record_gc_operation,
@@ -3030,7 +2987,7 @@ class App(_AppBase):
                 self.after(0, self._end_operation, True)
                 self.after(150, self._gc_calendar_load)
             except Exception as exc:
-                detail = self._gc_friendly_error(exc)
+                detail = self._gc_friendly_error(exc, "изменение тренировки")
                 self.after(0, self._result_var.set, f"Не удалось обновить Garmin: {detail}")
                 self.after(0, self._log, f"[ERR] Обновление Garmin: {detail}")
                 self.after(0, self._record_gc_operation, "Изменение тренировки", False, detail)
@@ -3254,7 +3211,7 @@ class App(_AppBase):
                            "Открытие тренировки Garmin", True, workout.name or "")
                 self.after(0, self._end_operation, True)
             except Exception as exc:
-                detail = self._gc_friendly_error(exc)
+                detail = self._gc_friendly_error(exc, "чтение тренировки")
                 self.after(0, self._gc_calendar_status_var.set,
                            f"Не удалось открыть для редактирования: {detail}")
                 self.after(0, self._record_gc_operation,
@@ -3316,7 +3273,7 @@ class App(_AppBase):
                            "Календарь Garmin", True, f"Получено событий: {len(events)}")
                 self.after(0, self._end_operation, True)
             except Exception as exc:
-                detail = self._gc_friendly_error(exc)
+                detail = self._gc_friendly_error(exc, "чтение календаря")
                 self.after(0, self._gc_calendar_status_var.set, f"Не удалось загрузить: {detail}")
                 self.after(0, self._record_gc_operation, "Календарь Garmin", False, detail)
                 self.after(0, self._log, f"[ERR] Календарь Garmin: {detail}")
@@ -3393,9 +3350,9 @@ class App(_AppBase):
                 self.after(0, self._end_operation, True)
             except Exception as exc:
                 self.after(0, self._gc_status.config,
-                           {"text": f"❌ {self._gc_friendly_error(exc)}", "fg": RED})
+                           {"text": f"❌ {self._gc_friendly_error(exc, 'вход')}", "fg": RED})
                 self.after(0, self._record_gc_operation,
-                           "Проверка подключения", False, self._gc_friendly_error(exc))
+                           "Проверка подключения", False, self._gc_friendly_error(exc, "вход"))
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -3598,15 +3555,8 @@ class App(_AppBase):
         if "aerobic"   in n or "аэроб" in n: return "aerobic"
         return ""
 
-    def _gc_friendly_error(self, exc: Exception) -> str:
-        msg = str(exc)
-        if "400" in msg and "ATP" in msg:
-            return "Тренировка привязана к Garmin ATP Plan — удалить через API невозможно.\nУдалите вручную в приложении Garmin Connect."
-        if "400" in msg:
-            return "Garmin отклонил удаление (400). Возможно, тренировка защищена или уже удалена."
-        if "401" in msg or "403" in msg:
-            return "Нет прав на удаление. Проверьте email/пароль."
-        return f"Ошибка: {exc}"
+    def _gc_friendly_error(self, exc: Exception, action: str = "операцию") -> str:
+        return garmin_error_message(exc, action)
 
     def _gc_delete_one(self, workout_id: str, row_widget: tk.Frame):
         if not self._begin_operation("Удаление тренировки из Garmin"):
@@ -3631,11 +3581,11 @@ class App(_AppBase):
                 self.after(0, self._gc_load)
             except Exception as exc:
                 self.after(0, messagebox.showerror,
-                           "Не удалось удалить", self._gc_friendly_error(exc))
+                           "Не удалось удалить", self._gc_friendly_error(exc, "удаление"))
                 self.after(0, self._gc_status.config,
                            {"text": "❌ Ошибка удаления", "fg": RED})
                 self.after(0, self._record_gc_operation,
-                           "Удаление тренировки", False, self._gc_friendly_error(exc))
+                           "Удаление тренировки", False, self._gc_friendly_error(exc, "удаление"))
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
