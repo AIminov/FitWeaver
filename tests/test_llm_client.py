@@ -142,7 +142,8 @@ class TestUnifiedLLMClient(unittest.TestCase):
         info = UnifiedLLMClient._extract_segment_header_info(
             "01.05.2026 (\u0427\u0442) \u2014 \u0414\u043b\u0438\u043d\u043d\u044b\u0439 \u0431\u0435\u0433\n20 \u043a\u043c"
         )
-        self.assertEqual(info["weekday"], "Thu")
+        # 01.05.2026 is a Friday: with an explicit year the date wins over a mistyped weekday.
+        self.assertEqual(info["weekday"], "Fri")
         self.assertEqual((info["day"], info["month"]), (1, 5))
 
         info = UnifiedLLMClient._extract_segment_header_info(
@@ -154,6 +155,23 @@ class TestUnifiedLLMClient(unittest.TestCase):
             "  ### 01.09.2026, \u0432торник \u2014 \u043b\u0451\u0433\u043a\u0438\u0439 \u0431\u0435\u0433\n5 \u043a\u043c"
         )
         self.assertEqual(info["weekday"], "Tue")
+
+    def test_segment_header_without_year_uses_weekday_to_pick_the_year(self):
+        from unittest.mock import patch
+
+        from garmin_fit import garmin_step_mapper
+
+        real_infer = garmin_step_mapper.infer_date
+
+        def infer_from_fixed_today(month, day, weekday=None, today=None):
+            import datetime
+
+            return real_infer(month, day, weekday=weekday, today=datetime.date(2026, 9, 27))
+
+        with patch.object(garmin_step_mapper, "infer_date", infer_from_fixed_today):
+            # 05.01 is a Monday in 2026 and a Tuesday in 2027.
+            info = UnifiedLLMClient._extract_segment_header_info("05.01 (Пн) — Лёгкий\n5 км")
+        self.assertEqual((info["weekday"], info["week"]), ("Mon", 2))
 
     def test_sanitize_yaml_candidate_fixes_common_completions_artifacts(self):
         candidate = (

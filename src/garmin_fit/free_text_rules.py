@@ -293,13 +293,18 @@ def _convert(block_text: str) -> str:
 
 
 _UNIT_WORD_RE = re.compile(
-    r"(?<![а-яa-z])(?:километр\w*|км|метр\w*|минут\w*|мин|секунд\w*|сек|час\w*)(?![а-яa-z])",
+    r"(?<![а-яa-z])(?:километр\w*|км|метр\w*|минут\w*|мин|секунд\w*|сек|час(?:а|ов)?)(?![а-яa-z])",
     re.IGNORECASE,
 )
 
 
+# Rate units name no amount of their own: "уд/мин", "мин/км", "шаг/мин".
+_RATE_UNIT_RE = re.compile(r"(?:уд|шаг\w*|мин|сек|км|м)\s*/\s*(?:мин|км|сек)\.?", re.IGNORECASE)
+
+
 def _has_unit_without_number(line: str) -> bool:
     """"километр заминки", "км разминки", "беги час": a unit whose amount is a word."""
+    line = _RATE_UNIT_RE.sub(" ", line)
     for match in _UNIT_WORD_RE.finditer(line):
         before = line[: match.start()].rstrip()
         if not re.search(r"\d(?:[.,]\d+)?\s*$", before) and not before.endswith(("x", "х", "×")):

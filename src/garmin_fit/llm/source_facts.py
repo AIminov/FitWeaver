@@ -132,8 +132,11 @@ def extract_segment_header_info(block_text: str) -> dict[str, Any] | None:
         if parsed_date is None:
             return None
 
-    if weekday is None:
-        weekday = _WEEKDAY_ORDER[parsed_date.weekday()]
+    # The date is the fact. A written weekday only helps choose the year when
+    # none is given; with an explicit year, a mistyped weekday ("01.05.2026 (Чт)",
+    # a Friday) must not reach the filename -- the year would later be re-derived
+    # from that weekday and the workout scheduled a year off.
+    weekday = _WEEKDAY_ORDER[parsed_date.weekday()]
 
     return {
         "month": month,
