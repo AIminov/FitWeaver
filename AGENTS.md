@@ -41,6 +41,12 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 - Garmin payload: `estimatedDurationInSecs` считается из шагов, если все длительности известны.
 - `tests/test_gui_smoke.py` — сценарии GUI под mainloop (на Windows CI выполняется).
 - CI: экшены v7 (Node 24). Живой замер LLM на golden-наборе пользователь отложил.
+- Конструктор: вставка повтора не сдвигала `back_to_offset` нижних групп (тихо искажала тренировку) —
+  исправлено; разрешены вложенные серии (целые группы), разрез группы запрещён; тот же rule в PlanStore.
+- `.workdb` перенесён из папки плана в `Build_artifacts/workdb/`; кэши ограничены (500/50 файлов).
+- Plan API использует кэш сегментов; `garmin-fit to-marked` — YAML → размеченный текст.
+- GUI-тест: без повторного создания Tk (нестабильный init.tcl на раннере), skip при TclError.
+- Exe пересобраны и проверены (GUI 34 МБ, CLI 24.5 МБ). Тесты: 458 passed.
 
 ### 2026-09-26 (продолжение 3) — исправление всех замечаний второго прохода
 - GUI выполняет команды CLI в своём процессе (`cli_runner.run_cli_captured`): проверка YAML
