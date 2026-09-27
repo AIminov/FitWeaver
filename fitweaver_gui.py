@@ -1781,6 +1781,15 @@ class App(_AppBase):
         elif args and args[0] == "garmin-calendar" and ok:
             self._result_var.set("Изменения применены в Garmin Connect.")
             self._set_result_actions("go_garmin")
+        elif args and args[0] in ("archive", "restore") and ok:
+            # "archive" moves plans out of Plan/: forget a plan that is no longer there.
+            current = self.yaml_path.get().strip()
+            if current and not Path(current).exists():
+                self.yaml_path.set("")
+                self._result_var.set("План перенесён в архив (Plan/plan_done). Выберите следующий план.")
+            elif args[0] == "restore":
+                self._result_var.set("FIT-файлы восстановлены из архива в Output_fit.")
+                self._set_result_actions("open_fit")
 
     def _append_garmin_args(self, args):
         if self.email_var.get(): args += ["--email",     self.email_var.get()]
