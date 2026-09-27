@@ -26,13 +26,13 @@ _WEEKDAY_WORDS = r"пн|вт|ср|чт|пт|сб|вс|понедельник|в�
 _DATE_HEADER_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?P<date>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)\s*"
     rf"(?:\(?\s*(?P<weekday>{_WEEKDAY_WORDS})\s*\)?)?"
-    r"\s*[,:—–-]?\s*(?P<rest>.*)$",
+    r"\s*(?P<sep>[,:—–-])?\s*(?P<rest>.*)$",
     re.IGNORECASE,
 )
 # "вт 3.03: ..." -- weekday before the date
 _WEEKDAY_FIRST_RE = re.compile(
     rf"^\s*(?P<weekday>{_WEEKDAY_WORDS})\.?\s+(?P<date>\d{{1,2}}\.\d{{1,2}}(?:\.\d{{2,4}})?)"
-    r"\s*[,:—–-]?\s*(?P<rest>.*)$",
+    r"\s*(?P<sep>[,:—–-])?\s*(?P<rest>.*)$",
     re.IGNORECASE,
 )
 # "чт: ..." -- weekday only, no date
@@ -74,7 +74,7 @@ _UNSUPPORTED_RE = re.compile(
     r"сери[яиейю]|повтор|лесенк|каждый|кажд|быстрее|медленнее|прогресс|или\b|если\b|до отказа|"
     r"между сериями|по самочувствию|ощущени|"
     # effort described only in words: the user should give a number
-    r"комфортно|тяжел|трудно|разговар|усили|"
+    r"комфортно|тяжел|трудно|разговар|разговор|усили|"
     # not running at all
     r"бассейн|плаван|вольн\w* стил|вело|йог|растяжк|\bзал\b|присед|жим|планк|отжиман|берпи|"
     r"пресс|\bкор\b|без бега|вместо бега|кругов",
@@ -248,12 +248,16 @@ def _convert(block_text: str) -> str:
     if header:
         rest = _expand_shorthand(header.group("rest").strip())
         lines = lines[1:]
-        if rest:
+        if rest and header.groupdict().get("sep") == "-" and not re.search(r"\d", rest):
+            # "12.10 (пн) — Восстановление": words after a dash name the workout,
+            # even when they are a step role ("Восстановление", "Ускорения").
+            title = rest
+        elif rest:
             lines.insert(0, rest)
 
-    if lines and _is_title(lines[0]):
+    if not title and lines and _is_title(lines[0]):
         title = lines.pop(0)
-    elif lines:
+    elif not title and lines:
         colon_title = _COLON_TITLE_RE.match(lines[0])
         if colon_title and not _role_only(colon_title.group("title")) and not re.match(
             r"^(?:сбу|итого|всего|другое)$", colon_title.group("title").strip(), re.IGNORECASE
@@ -293,7 +297,8 @@ def _convert(block_text: str) -> str:
 
 
 _UNIT_WORD_RE = re.compile(
-    r"(?<![а-яa-z])(?:километр\w*|км|метр\w*|минут\w*|мин|секунд\w*|сек|час(?:а|ов)?)(?![а-яa-z])",
+    r"(?<![а-яa-z])(?:километр(?!ов[аоуыейи]|овк)\w*|км|метр(?!ов[аоуыейи]|овк)\w*|минут(?!к|ок)\w*|мин|"
+    r"секунд\w*|сек|час(?:а|ов)?)(?![а-яa-z])",
     re.IGNORECASE,
 )
 

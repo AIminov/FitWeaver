@@ -68,6 +68,19 @@ class FreeTextRulesTests(unittest.TestCase):
         # "10р" may mean 10 minutes or 10 km of warmup.
         self.assertIsNone(free_text_to_marked("10р + 5 км (4:50-5:00) + 10з"))
 
+    def test_role_word_after_dash_is_the_title(self):
+        workout = parse_workout_with_rules("12.10.2026 (Пн) — Восстановление\nЛёгкий бег 8 км, пульс до 140\n")
+        self.assertEqual(workout["name"], "W42_10-12_Mon_Vosstanovlenie")
+        self.assertEqual(workout["steps"], [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 140}])
+
+    def test_unit_adjectives_in_a_title_are_not_units(self):
+        text = "14.10.2026 (Ср) — Километровые\nРазминка 2 км\n6x1 км 4:10-4:20, отдых 2 мин\nЗаминка 2 км\n"
+        workout = parse_workout_with_rules(text)
+        self.assertIsNotNone(workout)
+        self.assertEqual(workout["steps"][3], {"type": "repeat", "back_to_offset": 1, "count": 6})
+        # a real unit without its number still goes to the LLM
+        self.assertIsNone(parse_workout_with_rules("Разминка километр, потом 5 км 5:00-5:10"))
+
     def test_cadence_is_not_mistaken_for_heart_rate(self):
         for text in ("Бег 5 км, каденс 175-185", "Бег 5 км (175-185 шаг/мин)"):
             steps = parse_workout_with_rules(text)["steps"]

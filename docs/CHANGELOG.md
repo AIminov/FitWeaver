@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-27 - Rules: cadence, titles, dates
+
+### Fixed
+- `каденс 175-185` / `175-185 шаг/мин` was read by the rules as a heart-rate range; cadence is now
+  recognised by its label and becomes a cadence target.
+- A header title that is also a step role (`12.10 (пн) — Восстановление`, `— Ускорения`) was
+  taken as the role of the next step and the workout lost its name; words after the dash are now
+  the title.
+- Titles such as `Километровые`, `400-метровые`, `Минутки` were taken for a unit without a number
+  and sent the whole workout to the LLM.
+- `в разговорном темпе` (effort described in words) no longer passes the rules silently; like
+  `комфортно` / `трудно разговаривать` it goes to the LLM.
+- A dated header whose weekday does not match the date kept the wrong weekday in the LLM path
+  (and could pick the wrong year); the date now wins, the weekday only helps choose the year when
+  the year is missing.
+- `уд/мин` in a step (`пульс 125–140 уд/мин`) no longer counts as a unit without a number.
+
 ## 2026-09-27 - `garmin-fit to-marked`
 
 ### Added
