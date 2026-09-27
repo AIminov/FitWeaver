@@ -45,6 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="User profile YAML with hr_zones, used to resolve 'Пульс: Z2'",
     )
 
+    to_marked_parser = subparsers.add_parser(
+        "to-marked",
+        help="Render a YAML plan as marked text (edit it, then compile back with parse-marked)",
+    )
+    to_marked_parser.add_argument("plan", metavar="YAML_PATH", help="YAML plan to render")
+    to_marked_parser.add_argument("--output", metavar="TEXT_PATH", help="Write text here (default: stdout)")
+
     doctor_parser = subparsers.add_parser("doctor", help="Run environment diagnostics")
     doctor_parser.add_argument("--llm", action="store_true", help="Run LLM connectivity smoke checks")
     doctor_parser.add_argument("--api", choices=["ollama", "openai"], default="openai")
@@ -136,6 +143,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if command == "parse-marked":
         return _parse_marked(args)
+    if command == "to-marked":
+        return _to_marked(args)
     if command == "doctor":
         doctor_url = args.url or ("http://localhost:11434" if args.api == "ollama" else "http://127.0.0.1:1234/v1")
         doctor_model = args.model or ("gemma2:2b" if args.api == "ollama" else "qwen3.8-27b@iq3_xxs")
@@ -216,6 +225,28 @@ def _parse_marked(args: argparse.Namespace) -> int:
         print(f"Wrote {len(result.data['workouts'])} workout(s) to {output}", file=sys.stderr)
     else:
         sys.stdout.write(yaml_text)
+    return 0
+
+
+def _to_marked(args: argparse.Namespace) -> int:
+    import sys
+    from pathlib import Path
+
+    import yaml
+
+    from .marked_plan import plan_data_to_marked_text
+    from .plan_processing import repair_plan_data
+
+    data = yaml.safe_load(Path(args.plan).read_text(encoding="utf-8")) or {}
+    data, _repairs = repair_plan_data(data)
+    text = plan_data_to_marked_text(data)
+    if args.output:
+        from .fileio import atomic_write_text
+
+        atomic_write_text(args.output, text)
+        print(f"Wrote marked text to {args.output}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
     return 0
 
 

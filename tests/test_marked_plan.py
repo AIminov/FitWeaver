@@ -324,6 +324,18 @@ class IntegrationTests(unittest.TestCase):
             data = yaml.safe_load(output.read_text(encoding="utf-8"))
         self.assertEqual(data["workouts"][0]["filename"], "W39_09-25_Fri_Porogovaya_Trenirovka")
 
+    def test_cli_to_marked_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "plan.txt"
+            plan_yaml = Path(tmp) / "plan.yaml"
+            text_out = Path(tmp) / "back.txt"
+            source.write_text(THRESHOLD, encoding="utf-8")
+            self.assertEqual(cli.main(["parse-marked", str(source), "--output", str(plan_yaml)]), 0)
+            self.assertEqual(cli.main(["to-marked", str(plan_yaml), "--output", str(text_out)]), 0)
+            original = yaml.safe_load(plan_yaml.read_text(encoding="utf-8"))["workouts"][0]["steps"]
+            again = compile_marked_text(text_out.read_text(encoding="utf-8")).data["workouts"][0]["steps"]
+        self.assertEqual(again, original)
+
     def test_cli_parse_marked_fails_on_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "plan.txt"

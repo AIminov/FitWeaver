@@ -15,6 +15,8 @@
   garmin-fit parse-marked plan.txt --output Plan/plan.yaml --profile user_profile.yaml
   ```
   `--profile` нужен только для целей `Пульс: Z1…Z5`, `--year` — для дат без года.
+  Обратно: `garmin-fit to-marked Plan/plan.yaml --output plan.txt` — существующий YAML-план в виде
+  размеченного текста для правки.
   Без `--output` YAML выводится в stdout. Код возврата 1 означает ошибки в тексте.
 - **Plan API** (`POST /v1/generate-draft`): размеченный текст тоже компилируется без LLM.
 

@@ -91,6 +91,7 @@ python -m garmin_fit.cli validate-yaml --plan Plan/plan.yaml
 
 # Marked plan text → YAML without an LLM
 python -m garmin_fit.cli parse-marked plan.txt --output Plan/plan.yaml --profile user_profile.yaml
+python -m garmin_fit.cli to-marked Plan/plan.yaml --output plan.txt   # YAML → marked text
 
 # LLM generation (LM Studio or Ollama)
 python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1

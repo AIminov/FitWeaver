@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-27 - `garmin-fit to-marked`
+
+### Added
+- `garmin-fit to-marked PLAN.yaml [--output TEXT]` renders an existing YAML plan as marked text
+  for editing; `parse-marked` compiles it back to the same steps.
+
 ## 2026-09-27 - Builder: nested sets, correct repeat indices
 
 ### Fixed
