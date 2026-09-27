@@ -21,20 +21,6 @@ EXAMPLE = ROOT / "examples" / "marked_plan_example.txt"
 FIXTURE = ROOT / "tests" / "fixtures" / "direct_pipeline_basic.yaml"
 
 
-def _tk_available() -> bool:
-    try:
-        import tkinter
-
-        root = tkinter.Tk()
-        root.destroy()
-        return True
-    except Exception:
-        return False
-
-
-pytestmark = pytest.mark.skipif(not _tk_available(), reason="no display for Tk")
-
-
 def test_gui_main_flows(tmp_path):
     sys.path.insert(0, str(ROOT))
     import fitweaver_gui
@@ -54,7 +40,11 @@ def test_gui_main_flows(tmp_path):
     for stub in stubs:
         stub.start()
     try:
-        app = fitweaver_gui.App()
+        try:
+            app = fitweaver_gui.App()
+        except fitweaver_gui.tk.TclError as exc:
+            # No display (Linux CI) or a broken Tcl install on the runner.
+            pytest.skip(f"Tk is not usable here: {exc}")
         app.withdraw()
         log_lines: list[str] = []
         original_log = app._log
