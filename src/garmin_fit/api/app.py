@@ -29,11 +29,15 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.state.rate_limit_buckets = {}
 
     def _client() -> UnifiedLLMClient:
+        from ..config import ARTIFACTS_DIR
+
         return UnifiedLLMClient(
             model=settings.llm_model,
             base_url=settings.llm_url,
             api_type=settings.llm_api_type,
             request_timeout_sec=settings.llm_timeout_sec,
+            # Re-sent plans reuse workouts the model already generated.
+            segment_cache_dir=ARTIFACTS_DIR / "llm_segment_cache",
         )
 
     @app.post(
