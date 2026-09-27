@@ -24,7 +24,7 @@ import logging
 import re
 from typing import Any
 
-from .plan_domain import PACE_CONSTANT_VALUES, Workout, WorkoutStep
+from .plan_domain import PACE_CONSTANT_VALUES, Workout, WorkoutStep, drill_to_data
 from .sbu_block import DEFAULT_DRILLS as SBU_DEFAULT_DRILLS
 
 logger = logging.getLogger(__name__)
@@ -429,6 +429,45 @@ def map_steps(steps: list[WorkoutStep], language: str = "ru") -> list[dict[str, 
     return result
 
 
+def estimate_duration_seconds(steps: list[WorkoutStep]) -> float | None:
+    """Workout duration computed from the stated facts, or None when it cannot be.
+
+    Timed steps count their seconds, distance steps with a pace range count
+    distance x mid pace, SBU drills count reps x (work + the 90 s recovery the
+    payload uses), and repeats multiply their body. A step whose duration is
+    not stated (distance with HR only, lap-button step) makes the whole
+    estimate unknown -- nothing is guessed.
+    """
+    durations: list[float] = []
+    for index, step in enumerate(steps):
+        kind = step.step_type or ""
+        if kind == "repeat":
+            try:
+                back_to, count = int(step.back_to_offset), int(step.count)
+            except (TypeError, ValueError):
+                return None
+            if not 0 <= back_to < index:
+                return None
+            durations.append(sum(durations[back_to:index]) * (count - 1))
+        elif kind.startswith("time_") and step.seconds:
+            durations.append(float(step.seconds))
+        elif kind == "dist_pace" and step.km and step.pace_fast and step.pace_slow:
+            try:
+                mid_pace = (1000.0 / _pace_to_mps(str(step.pace_fast)) + 1000.0 / _pace_to_mps(str(step.pace_slow))) / 2
+            except (ValueError, ZeroDivisionError):
+                return None
+            durations.append(float(step.km) * mid_pace)
+        elif kind == "sbu_block":
+            drills = [drill_to_data(d) for d in step.drills] if step.drills else SBU_DEFAULT_DRILLS
+            durations.append(sum(
+                int(d.get("reps") or _SBU_DEFAULT_REPS) * (float(d.get("seconds") or 60) + _SBU_RECOVERY_SECS)
+                for d in drills
+            ))
+        else:
+            return None
+    return round(sum(durations)) if durations else None
+
+
 def map_workout(workout: Workout, language: str = "ru") -> dict[str, Any]:
     """
     Build a complete Garmin workout-service payload from a Workout domain object.
@@ -444,6 +483,8 @@ def map_workout(workout: Workout, language: str = "ru") -> dict[str, Any]:
             estimated_secs = float(workout.estimated_duration_min) * 60.0
         except (TypeError, ValueError):
             pass
+    if not estimated_secs:
+        estimated_secs = estimate_duration_seconds(workout.steps) or 0.0
 
     return {
         "workoutName": workout.filename or workout.name or "Workout",

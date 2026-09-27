@@ -136,6 +136,36 @@ class GarminImportRoundTripTests(unittest.TestCase):
         self.assertEqual([shape(s) for s in imported.steps], [shape(s) for s in workout.steps])
 
 
+class DurationEstimateTests(unittest.TestCase):
+    def test_estimate_from_times_paces_and_repeats(self):
+        from garmin_fit.garmin_step_mapper import estimate_duration_seconds
+
+        workout = _workout([
+            {"type": "time_step", "seconds": 600},
+            {"type": "dist_pace", "km": 1.0, "pace_fast": "4:00", "pace_slow": "4:20"},
+            {"type": "time_step", "seconds": 120},
+            {"type": "repeat", "back_to_offset": 1, "count": 5},
+        ])
+        # 600 + 5 x (250 + 120) = 2450
+        self.assertEqual(estimate_duration_seconds(workout.steps), 2450)
+
+    def test_unknown_step_duration_means_no_estimate(self):
+        from garmin_fit.garmin_step_mapper import estimate_duration_seconds, map_workout
+
+        workout = _workout([{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 140}])
+        self.assertIsNone(estimate_duration_seconds(workout.steps))
+        self.assertEqual(map_workout(workout)["estimatedDurationInSecs"], 0)
+
+    def test_stated_duration_wins(self):
+        from garmin_fit.garmin_step_mapper import map_workout
+
+        workout = _workout([{"type": "time_step", "seconds": 600}])
+        workout.estimated_duration_min = 45
+        self.assertEqual(map_workout(workout)["estimatedDurationInSecs"], 2700)
+        workout.estimated_duration_min = None
+        self.assertEqual(map_workout(workout)["estimatedDurationInSecs"], 600)
+
+
 class FitUnitConversionTests(unittest.TestCase):
     def test_distance_is_rounded_not_truncated(self):
         # 1.15 * 100 == 114.99999999999999 in floating point.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-27 - Garmin duration estimate from stated facts
+
+### Added
+- When a workout states no total duration, the Garmin payload's `estimatedDurationInSecs` is
+  computed from the steps: timed steps, distance × mid pace for pace steps, SBU drills, repeats
+  multiplied. If any step's duration is not stated (distance with HR only, lap-button step) the
+  estimate stays empty — nothing is guessed. YAML is unchanged (`estimated_duration_min` stays
+  null unless the source states it).
+
 ## 2026-09-27 - GUI smoke test in the suite
 
 ### Added
