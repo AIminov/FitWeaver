@@ -68,7 +68,7 @@ pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GU
 ## Common Commands
 
 ```bash
-# Run all tests (428 passed with the api extra, as of 2026-09-26)
+# Run all tests (452 passed with the api extra, as of 2026-09-27)
 python3 -m pytest tests/
 
 # Run a single test file
