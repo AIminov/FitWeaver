@@ -329,6 +329,11 @@ Key modules:
 - `runner.py` — interactive menu, 14 options, loop-based
 - `bot.py` / `telegram_bot.py` — Telegram bot entry point and async state machine
 - `llm/request_cli.py` — LLM generation CLI; `--workouts N` overrides expected count
+- `llm/client.py` — `UnifiedLLMClient`: transports (Ollama streaming, OpenAI-compatible), segmented generation, cache, retries
+- `llm/source_facts.py` — source-text heuristics (dated headers, interval counts, HR caps) that repair or flag model answers
+- `llm/yaml_cleanup.py` — cleanup of raw model answers before YAML parsing
+- `free_text_rules.py` — deterministic rules for common workout lines (tried before the LLM per workout)
+- `llm/golden.py` — golden-dataset suite builder and fact-level comparison
 - `llm/benchmark.py` — LLM quality benchmark; `DEFAULT_SUITE` uses `PROJECT_ROOT`
 - `check_fit.py` — FIT file validator; large file threshold in `_LARGE_FILE_BYTES`
 - `plan_store.py` — SQLite staging layer for the desktop GUI only; YAML stays canonical everywhere else. `PlanStore` writes back to the loaded YAML file after every mutation

@@ -9,15 +9,26 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 import yaml
+
+from . import source_facts, yaml_cleanup
+from .source_facts import (  # noqa: F401 -- re-exported names
+    _WEEKDAY_ORDER,
+    DISTANCE_KM_SOURCE_RE,
+    FILENAME_DATE_RE,
+    HR_CAP_RE,
+    IDENTIFIER_PREFIX_RE,
+    INTERVAL_SOURCE_RE,
+    SEGMENT_HEADER_DATE_RE,
+    WEEKDAY_TOKEN_ALIASES,
+    SourceWorkoutFact,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,64 +46,6 @@ MAX_SHARED_CONTEXT_CHARS = 800
 # Bump when the segment post-processing changes so stale cached workouts are
 # not reused (prompt/model/options changes already change the cache key).
 SEGMENT_CACHE_VERSION = 1
-SEGMENT_HEADER_DATE_RE = re.compile(
-    r"^\s*(?:#{1,6}\s*)?(?:====\s*ТРЕНИРОВКА\s*====\s*)?"
-    r"(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?"
-    r"(?:\s*\((?P<weekday>[^)]{1,24})\))?(?:\s*,?\s+(?P<title>[^\n]+))?\s*$",
-    re.IGNORECASE,
-)
-IDENTIFIER_PREFIX_RE = re.compile(
-    r"^(?:[WwNn]\d{1,3}_)?(?:\d{2}-\d{2}_)?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun_)?(?P<suffix>.*)$"
-)
-FILENAME_DATE_RE = re.compile(r"_(?P<month>\d{2})-(?P<day>\d{2})_")
-INTERVAL_SOURCE_RE = re.compile(
-    r"(?P<count>\d{1,2})\s*[xх×]\s*(?P<distance>\d+(?:[.,]\d+)?)\s*(?P<unit>км|km|м|m)\b",
-    re.IGNORECASE,
-)
-DISTANCE_KM_SOURCE_RE = re.compile(r"(?P<distance>\d+(?:[.,]\d+)?)\s*(?:км|km)\b", re.IGNORECASE)
-HR_CAP_RE = re.compile(
-    r"(?:пульс|чсс|hr)[^\n\r]{0,32}?(?:до|up\s*to|<=?)\s*(?P<hr>\d{2,3})",
-    re.IGNORECASE,
-)
-WEEKDAY_TOKEN_ALIASES = {
-    "mon": "Mon",
-    "monday": "Mon",
-    "пн": "Mon",
-    "пон": "Mon",
-    "понедельник": "Mon",
-    "tue": "Tue",
-    "tues": "Tue",
-    "tuesday": "Tue",
-    "вт": "Tue",
-    "втор": "Tue",
-    "вторник": "Tue",
-    "wed": "Wed",
-    "wednesday": "Wed",
-    "ср": "Wed",
-    "среда": "Wed",
-    "thu": "Thu",
-    "thur": "Thu",
-    "thurs": "Thu",
-    "thursday": "Thu",
-    "чт": "Thu",
-    "четв": "Thu",
-    "четверг": "Thu",
-    "fri": "Fri",
-    "friday": "Fri",
-    "пт": "Fri",
-    "пят": "Fri",
-    "пятница": "Fri",
-    "sat": "Sat",
-    "saturday": "Sat",
-    "сб": "Sat",
-    "суб": "Sat",
-    "суббота": "Sat",
-    "sun": "Sun",
-    "sunday": "Sun",
-    "вс": "Sun",
-    "воскр": "Sun",
-    "воскресенье": "Sun",
-}
 
 
 @dataclass(slots=True)
@@ -114,22 +67,6 @@ class GenerationCancelled(RuntimeError):
     """Raised when the caller's cancel_event is set during generation."""
 
 
-@dataclass(slots=True)
-class SourceWorkoutFact:
-    month: int | None = None
-    day: int | None = None
-    week: int | None = None
-    weekday: str | None = None
-    header: str = ""
-    interval_count: int | None = None
-    interval_rep_km: float | None = None
-    steady_distance_km: float | None = None
-    hr_cap: int | None = None
-
-
-_WEEKDAY_ORDER = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-
-
 class UnifiedLLMClient:
     """
     LLM client with retry-validation loop.
@@ -138,6 +75,26 @@ class UnifiedLLMClient:
     - Ollama API (/api/chat endpoint)
     - OpenAI-compatible API with chat/completions auto fallback
     """
+
+    # Helpers moved to llm/source_facts.py and llm/yaml_cleanup.py; old names kept.
+    _extract_segment_header_info = staticmethod(source_facts.extract_segment_header_info)
+    _extract_workout_facts_from_source_text = staticmethod(source_facts.extract_workout_facts_from_source_text)
+    _extract_single_workout_fact = staticmethod(source_facts.extract_single_workout_fact)
+    _format_source_facts_for_retry_prompt = staticmethod(source_facts.format_source_facts_for_retry_prompt)
+    _detect_suspicious_workout_against_fact = staticmethod(source_facts.detect_suspicious_workout_against_fact)
+    _evaluate_workouts_against_source_fact = staticmethod(source_facts.evaluate_workouts_against_source_fact)
+    _normalize_weekday_token = staticmethod(source_facts.normalize_weekday_token)
+    _align_workout_identifier_with_source_header = staticmethod(source_facts.align_workout_identifier_with_source_header)
+    _encode_source_hr_cap = staticmethod(source_facts.encode_source_hr_cap)
+    _repair_missing_source_repeat = staticmethod(source_facts.repair_missing_source_repeat)
+    _build_segment_fact_retry_input = staticmethod(source_facts.build_segment_fact_retry_input)
+    _extract_yaml = staticmethod(yaml_cleanup.extract_yaml)
+    _messages_to_completion_prompt = staticmethod(yaml_cleanup.messages_to_completion_prompt)
+    _sanitize_yaml_candidate = staticmethod(yaml_cleanup.sanitize_yaml_candidate)
+    _normalize_workout_yaml_indentation = staticmethod(yaml_cleanup.normalize_workout_yaml_indentation)
+    _quote_desc_colons = staticmethod(yaml_cleanup.quote_desc_colons)
+    _openai_chat_response_needs_fallback = staticmethod(yaml_cleanup.openai_chat_response_needs_fallback)
+    _describe_openai_fallback_reason = staticmethod(yaml_cleanup.describe_openai_fallback_reason)
 
     def __init__(
         self,
@@ -721,188 +678,6 @@ class UnifiedLLMClient:
             logger.error(f"OpenAI-compatible completions request error: {exc}")
             return None
 
-    @staticmethod
-    def _extract_yaml(text: str) -> str:
-        """Extract YAML from markdown code block or return raw text."""
-        match = re.search(r"```yaml\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            return UnifiedLLMClient._sanitize_yaml_candidate(match.group(1).strip())
-
-        match = re.search(r"```\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            return UnifiedLLMClient._sanitize_yaml_candidate(match.group(1).strip())
-
-        return UnifiedLLMClient._sanitize_yaml_candidate(text.strip())
-
-    @staticmethod
-    def _messages_to_completion_prompt(messages: list[dict[str, Any]]) -> str:
-        parts: list[str] = []
-        for message in messages:
-            role = str(message.get("role", "user")).upper()
-            content = str(message.get("content", "")).strip()
-            if content:
-                parts.append(f"{role}:\n{content}")
-
-        parts.append(
-            "ASSISTANT INSTRUCTIONS:\n"
-            "- Return only valid YAML\n"
-            "- Start exactly with workouts:\n"
-            "- Do not repeat SYSTEM or USER text\n"
-            "- Do not include reasoning, analysis, or markdown fences"
-        )
-        parts.append("ASSISTANT:\nworkouts:\n")
-        return "\n\n".join(parts)
-
-    @staticmethod
-    def _sanitize_yaml_candidate(text: str) -> str:
-        candidate = text.strip()
-        if not candidate:
-            return candidate
-
-        cut_positions = [
-            pos
-            for marker in (
-                "\nSYSTEM:\n",
-                "\nUSER:\n",
-                "\nASSISTANT:\n",
-                "\nThinking Process:\n",
-                "\n1.  **Analyze the Request:**",
-                "\n1. **Analyze the Request:**",
-                "\n**Analyze the Request:**",
-                "\nYou are an expert Russian-speaking running coach AI",
-                "\nREAD THIS SCHEMA CAREFULLY AND FOLLOW IT EXACTLY:",
-                "\nI need to parse the user's input",
-                "\nThe user input is:",
-                "\n<think>",
-            )
-            if (pos := candidate.find(marker)) > 0
-        ]
-        if cut_positions:
-            candidate = candidate[:min(cut_positions)].rstrip()
-
-        regex_cut_positions = [
-            match.start()
-            for pattern in (
-                r"(?m)^\s*Thinking Process:\s*$",
-                r"(?m)^\s*1\.\s+\*\*Analyze the Request:\*\*",
-                r"(?m)^\s*\*\*Analyze the Request:\*\*",
-            )
-            if (match := re.search(pattern, candidate)) and match.start() > 0
-        ]
-        if regex_cut_positions:
-            candidate = candidate[:min(regex_cut_positions)].rstrip()
-
-        if candidate.startswith("- filename:"):
-            candidate = "workouts:\n" + "\n".join(
-                f"  {line}" if line.strip() else line
-                for line in candidate.splitlines()
-            )
-
-        root_matches = list(re.finditer(r"(?m)^workouts:\s*$", candidate))
-        if len(root_matches) > 1:
-            candidate = candidate[:root_matches[1].start()].rstrip()
-
-        if candidate.startswith("workouts:"):
-            candidate = UnifiedLLMClient._normalize_workout_yaml_indentation(candidate)
-
-        # Fix erroneous "- key:" prefix on workout-level keys only (not drill list items at 6+ spaces)
-        candidate = re.sub(
-            r"(?m)^( {2,4})- (name|desc|type_code|distance_km|estimated_duration_min|steps):",
-            r"\1\2:",
-            candidate,
-        )
-        return candidate
-
-    @staticmethod
-    def _normalize_workout_yaml_indentation(candidate: str) -> str:
-        """Normalize YAML indentation for workout structure.
-
-        Preserves relative indentation within steps (so nested lists like
-        sbu_block.drills keep their structure), while normalizing workout-level
-        keys and the steps: header to consistent absolute positions.
-        """
-        normalized: list[str] = []
-        saw_workouts_root = False
-        in_steps = False
-        step_base_indent: int | None = None  # original indent of first step content
-
-        for raw_line in candidate.splitlines():
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-
-            current_indent = len(raw_line) - len(raw_line.lstrip())
-
-            if stripped == "workouts:":
-                normalized.append("workouts:")
-                saw_workouts_root = True
-                in_steps = False
-                step_base_indent = None
-                continue
-
-            if not saw_workouts_root:
-                normalized.append(stripped)
-                continue
-
-            if stripped.startswith("- filename:"):
-                normalized.append(f"  {stripped}")
-                in_steps = False
-                step_base_indent = None
-                continue
-
-            if stripped == "steps:" and not in_steps:
-                normalized.append("    steps:")
-                in_steps = True
-                step_base_indent = None
-                continue
-
-            if in_steps:
-                # Check if this line is at or below the workout level (exit steps)
-                if step_base_indent is not None and current_indent < step_base_indent:
-                    # Back to workout level
-                    in_steps = False
-                    step_base_indent = None
-                    normalized.append(f"    {stripped}")
-                    continue
-
-                if step_base_indent is None:
-                    step_base_indent = current_indent
-
-                # Preserve relative indentation within steps, anchored at 6 spaces
-                relative = current_indent - step_base_indent
-                normalized.append("      " + " " * relative + stripped)
-                continue
-
-            normalized.append(f"    {stripped}")
-
-        return "\n".join(normalized)
-
-    @staticmethod
-    def _openai_chat_response_needs_fallback(content: Optional[str]) -> bool:
-        if not content:
-            return True
-
-        stripped = content.strip()
-        if not stripped:
-            return True
-
-        lowered = stripped.lower()
-        if "```yaml" in lowered or "workouts:" in lowered:
-            return False
-
-        return (
-            lowered.startswith("thinking process:")
-            or lowered.startswith("<think>")
-            or lowered.startswith("analysis:")
-        )
-
-    @classmethod
-    def _describe_openai_fallback_reason(cls, content: Optional[str]) -> str:
-        if not content or not content.strip():
-            return "empty response"
-        if cls._openai_chat_response_needs_fallback(content):
-            return "chat response contained reasoning instead of YAML"
-        return "chat response was not usable"
 
     @staticmethod
     def _prepare_yaml_candidate(
@@ -1014,21 +789,6 @@ class UnifiedLLMClient:
         )
         return result
 
-    @staticmethod
-    def _quote_desc_colons(yaml_text: str) -> str:
-        """Quote plain description scalars with ``: `` that break YAML parsing."""
-        changed = False
-        output: list[str] = []
-        for line in yaml_text.splitlines():
-            match = re.match(r"^(\s*(?:-\s*)?desc:\s*)(.*)$", line)
-            if match:
-                value = match.group(2)
-                if ": " in value and not value.startswith(("'", '"', "|", ">")):
-                    value = "'" + value.replace("'", "''") + "'"
-                    line = match.group(1) + value
-                    changed = True
-            output.append(line)
-        return "\n".join(output) + ("\n" if yaml_text.endswith("\n") else "") if changed else yaml_text
 
     @staticmethod
     def _build_retry_prompt(
@@ -1370,321 +1130,6 @@ class UnifiedLLMClient:
             )
 
         return None, last_error or f"segment {segment_index}: suspicious output"
-
-    @staticmethod
-    def _encode_source_hr_cap(workout: dict[str, Any], fact: SourceWorkoutFact | None) -> None:
-        """The source states only "пульс до N": any HR step capped at N gets the 60 floor.
-
-        Models tend to invent a lower bound (80, 120, ...); the agreed encoding of
-        an upper-only cap is HR_CAP_FLOOR_BPM..N.
-        """
-        from ..plan_domain import HR_CAP_FLOOR_BPM
-
-        if fact is None or not isinstance(fact.hr_cap, int):
-            return
-        for step in workout.get("steps") or []:
-            if (
-                isinstance(step, dict)
-                and str(step.get("type", "")).endswith("_hr")
-                and step.get("hr_high") == fact.hr_cap
-                and step.get("hr_low") != HR_CAP_FLOOR_BPM
-            ):
-                step["hr_low"] = HR_CAP_FLOOR_BPM
-
-    @staticmethod
-    def _repair_missing_source_repeat(
-        workout: dict[str, Any], fact: SourceWorkoutFact | None
-    ) -> None:
-        """Restore an explicit repeat when the model emitted its content steps."""
-        if fact is None or not fact.interval_count or not fact.interval_rep_km:
-            return
-        steps = workout.get("steps")
-        if not isinstance(steps, list):
-            return
-        if any(
-            isinstance(step, dict) and step.get("type") == "repeat"
-            for step in steps
-        ):
-            return
-        for index, step in enumerate(steps):
-            if not isinstance(step, dict) or not str(step.get("type", "")).startswith("dist_"):
-                continue
-            km = step.get("km")
-            if isinstance(km, (int, float)) and abs(float(km) - fact.interval_rep_km) <= 0.08:
-                steps.append(
-                    {
-                        "type": "repeat",
-                        "count": fact.interval_count,
-                        "back_to_offset": index,
-                    }
-                )
-                return
-
-    @staticmethod
-    def _build_segment_fact_retry_input(
-        block_text: str,
-        fact: SourceWorkoutFact | None,
-        suspicious: list[str],
-    ) -> str:
-        lines = ["\nMandatory facts:"]
-        if fact:
-            if fact.month and fact.day and fact.weekday:
-                lines.append(f"- date: {fact.day:02d}.{fact.month:02d} ({fact.weekday})")
-            if fact.interval_count and fact.interval_rep_km:
-                lines.append(
-                    f"- intervals: {fact.interval_count} x {fact.interval_rep_km:.3g} km"
-                )
-            if fact.steady_distance_km:
-                lines.append(f"- distance_km: {fact.steady_distance_km:.3g}")
-            if fact.hr_cap:
-                lines.append(f"- hr cap: {fact.hr_cap}")
-            if fact.interval_count and fact.interval_rep_km:
-                lines.append(
-                    "- interval output must contain a repeat step with "
-                    f"count: {fact.interval_count} and back_to_offset pointing to the active step"
-                )
-        lines.append("Issues to fix:")
-        lines.extend(f"- {item}" for item in suspicious[:5])
-        return block_text + "\n" + "\n".join(lines)
-
-    @staticmethod
-    def _extract_segment_header_info(block_text: str) -> dict[str, Any] | None:
-        lines = [line.strip() for line in str(block_text or "").splitlines() if line.strip()]
-        if not lines:
-            return None
-        match = SEGMENT_HEADER_DATE_RE.match(lines[0])
-        if not match:
-            return None
-
-        day = int(match.group("day"))
-        month = int(match.group("month"))
-        if not (1 <= day <= 31 and 1 <= month <= 12):
-            return None
-
-        weekday = UnifiedLLMClient._normalize_weekday_token(match.group("weekday"))
-        if weekday is None:
-            title_prefix = re.split(r"\s*[—–-]\s*", match.group("title") or "", maxsplit=1)[0]
-            weekday = UnifiedLLMClient._normalize_weekday_token(title_prefix)
-
-        raw_year = match.group("year")
-        if raw_year:
-            year = int(raw_year)
-            if year < 100:
-                year += 2000
-            try:
-                parsed_date = date(year, month, day)
-            except ValueError:
-                return None
-        else:
-            # No year in the header: take the nearest real date (matching the
-            # weekday when one is written), never a fixed calendar year.
-            from ..garmin_step_mapper import infer_date
-
-            weekday_index = _WEEKDAY_ORDER.index(weekday) if weekday in _WEEKDAY_ORDER else None
-            parsed_date = infer_date(month, day, weekday=weekday_index)
-            if parsed_date is None:
-                return None
-
-        if weekday is None:
-            weekday = _WEEKDAY_ORDER[parsed_date.weekday()]
-
-        return {
-            "month": month,
-            "day": day,
-            "week": parsed_date.isocalendar()[1],
-            "weekday": weekday,
-        }
-
-    @staticmethod
-    def _extract_workout_facts_from_source_text(plan_text: str) -> list[SourceWorkoutFact]:
-        from ..plan_processing import normalize_source_text
-
-        analysis = normalize_source_text(plan_text)
-        return [
-            fact
-            for block in analysis.workout_blocks
-            if (fact := UnifiedLLMClient._extract_single_workout_fact(block)) is not None
-        ]
-
-    @staticmethod
-    def _extract_single_workout_fact(block_text: str) -> SourceWorkoutFact | None:
-        lines = [line.strip() for line in str(block_text or "").splitlines() if line.strip()]
-        if not lines:
-            return None
-        header = lines[0]
-        info = UnifiedLLMClient._extract_segment_header_info(block_text)
-        if info is None:
-            return None
-
-        lowered = "\n".join(lines[1:]).lower()
-        interval_match = INTERVAL_SOURCE_RE.search(lowered)
-        interval_count: int | None = None
-        interval_rep_km: float | None = None
-        if interval_match:
-            interval_count = int(interval_match.group("count"))
-            raw_dist = float(interval_match.group("distance").replace(",", "."))
-            unit = interval_match.group("unit").lower()
-            interval_rep_km = raw_dist if unit in {"km", "км"} else raw_dist / 1000.0
-
-        steady_distance_km: float | None = None
-        km_values = [
-            float(match.group("distance").replace(",", "."))
-            for match in DISTANCE_KM_SOURCE_RE.finditer(lowered)
-        ]
-        if km_values and interval_match is None:
-            if len(km_values) == 1:
-                steady_distance_km = km_values[0]
-
-        hr_cap: int | None = None
-        hr_match = HR_CAP_RE.search(lowered)
-        if hr_match:
-            hr_cap = int(hr_match.group("hr"))
-
-        return SourceWorkoutFact(
-            month=info["month"],
-            day=info["day"],
-            week=info["week"],
-            weekday=info["weekday"],
-            header=header,
-            interval_count=interval_count,
-            interval_rep_km=interval_rep_km,
-            steady_distance_km=steady_distance_km,
-            hr_cap=hr_cap,
-        )
-
-    @staticmethod
-    def _format_source_facts_for_retry_prompt(facts: list[SourceWorkoutFact]) -> str:
-        if not facts:
-            return ""
-
-        lines: list[str] = []
-        for fact in facts[:12]:
-            prefix = "unknown-date"
-            if fact.month and fact.day:
-                prefix = f"{fact.day:02d}.{fact.month:02d}"
-            bits = [prefix]
-            if fact.interval_count and fact.interval_rep_km:
-                bits.append(f"intervals {fact.interval_count}x{fact.interval_rep_km:.3g}km")
-            if fact.steady_distance_km:
-                bits.append(f"distance {fact.steady_distance_km:.3g}km")
-            if fact.hr_cap:
-                bits.append(f"hr<= {fact.hr_cap}")
-            lines.append("- " + ", ".join(bits))
-        return "\n".join(lines)
-
-    @staticmethod
-    def _detect_suspicious_workout_against_fact(
-        workout: dict[str, Any],
-        fact: SourceWorkoutFact | None,
-    ) -> list[str]:
-        if fact is None:
-            return []
-        issues: list[str] = []
-        steps = workout.get("steps") if isinstance(workout.get("steps"), list) else []
-
-        if fact.interval_count and fact.interval_rep_km:
-            repeat_counts = [
-                step.get("count")
-                for step in steps
-                if isinstance(step, dict) and step.get("type") == "repeat"
-            ]
-            if fact.interval_count not in repeat_counts:
-                issues.append(f"missing repeat count {fact.interval_count}")
-
-            rep_distances = [
-                float(step.get("km"))
-                for step in steps
-                if isinstance(step, dict)
-                and str(step.get("type", "")).startswith("dist_")
-                and isinstance(step.get("km"), (int, float))
-            ]
-            if not any(abs(value - fact.interval_rep_km) <= 0.08 for value in rep_distances):
-                issues.append(f"missing interval distance {fact.interval_rep_km:.3g}km")
-
-            type_code = str(workout.get("type_code", "")).lower()
-            if type_code and type_code not in {"intervals", "threshold", "tempo", "fartlek"}:
-                issues.append("unexpected workout type for interval source block")
-
-        if isinstance(fact.steady_distance_km, (int, float)):
-            step_distances = [
-                float(step.get("km"))
-                for step in steps
-                if isinstance(step, dict)
-                and str(step.get("type", "")).startswith("dist_")
-                and isinstance(step.get("km"), (int, float))
-            ]
-            if not any(
-                abs(value - float(fact.steady_distance_km)) <= 0.35
-                for value in step_distances
-            ):
-                issues.append(
-                    f"missing source distance step {fact.steady_distance_km:.3g}km"
-                )
-
-
-        return issues
-
-    @staticmethod
-    def _evaluate_workouts_against_source_fact(
-        workouts: list[dict[str, Any]],
-        fact: SourceWorkoutFact,
-    ) -> tuple[bool, str]:
-        def _matches_date(workout_item: dict[str, Any]) -> bool:
-            filename = str(workout_item.get("filename", ""))
-            match = FILENAME_DATE_RE.search(filename)
-            if not match or fact.month is None or fact.day is None:
-                return False
-            return (
-                int(match.group("month")) == fact.month
-                and int(match.group("day")) == fact.day
-            )
-
-        candidates = [item for item in workouts if isinstance(item, dict) and _matches_date(item)]
-        if not candidates:
-            return False, f"source date {fact.day:02d}.{fact.month:02d} not found in generated filenames"
-
-        for candidate in candidates:
-            issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(candidate, fact)
-            if not issues:
-                return True, (
-                    f"source facts for {fact.day:02d}.{fact.month:02d} are preserved"
-                )
-
-        return False, (
-            f"source facts mismatch for {fact.day:02d}.{fact.month:02d}: "
-            f"{'; '.join(UnifiedLLMClient._detect_suspicious_workout_against_fact(candidates[0], fact)[:3])}"
-        )
-
-    @staticmethod
-    def _normalize_weekday_token(token: str | None) -> str | None:
-        if token is None:
-            return None
-        key = token.strip().lower().strip(".")
-        return WEEKDAY_TOKEN_ALIASES.get(key)
-
-    @staticmethod
-    def _align_workout_identifier_with_source_header(
-        workout: dict[str, Any],
-        *,
-        month: int,
-        day: int,
-        week: int,
-        weekday: str,
-    ) -> None:
-        base = workout.get("filename") or workout.get("name") or ""
-        base = str(base).strip()
-        if not base:
-            return
-
-        suffix = base
-        match = IDENTIFIER_PREFIX_RE.match(base)
-        if match:
-            suffix = (match.group("suffix") or "").strip("_")
-
-        prefix = f"W{week:02d}_{month:02d}-{day:02d}_{weekday}"
-        aligned = f"{prefix}_{suffix}" if suffix else prefix
-        workout["filename"] = aligned
-        workout["name"] = aligned
 
 
 def _issues_from_categories(categories: dict[str, list[str]]) -> list[tuple[str, str]]:
