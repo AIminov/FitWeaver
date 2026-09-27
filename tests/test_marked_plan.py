@@ -180,6 +180,13 @@ class CompileTests(unittest.TestCase):
         ).data["workouts"][0]["steps"]
         self.assertEqual(steps[0], {"type": "dist_cadence", "km": 0.4, "cad_low": 175, "cad_high": 185})
 
+    def test_invalid_pace_seconds_do_not_become_a_different_pace(self):
+        result = compile_marked_text(
+            _workout("**** ШАГ ****\nДистанция: 1 км\nТемп: 5:99 мин/км\n")
+        )
+        self.assertEqual(result.data["workouts"][0]["steps"][0], {"type": "dist_open", "km": 1.0})
+        self.assertTrue(any("некорректен" in warning for warning in result.warnings))
+
     def test_step_without_measure_becomes_open_step_and_drops_target(self):
         result = compile_marked_text(_workout("**** ШАГ ****\nТип: восстановление\nПульс: 120-130\n"))
         self.assertEqual(result.data["workouts"][0]["steps"], [{"type": "open_step", "intensity": "recovery"}])

@@ -73,6 +73,22 @@ class GoldenSuiteTests(unittest.TestCase):
         )
         self.assertFalse(all(check.passed for check in checks))
 
+    def test_source_target_must_stay_on_its_step(self):
+        source = "Разминка 2 км, потом работа 3 км пульс 140-150"
+        reference = [
+            {"type": "dist_hr", "km": 2.0, "hr_low": 140, "hr_high": 150,
+             "intensity": "warmup"},
+            {"type": "dist_hr", "km": 3.0, "hr_low": 140, "hr_high": 150,
+             "intensity": "active"},
+        ]
+        generated = [
+            dict(reference[0]),
+            {"type": "dist_open", "km": 3.0, "intensity": "active"},
+        ]
+        self.assertTrue(compare_to_canonical(
+            generated, reference, source_text=source, allow_missing_targets=True,
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()

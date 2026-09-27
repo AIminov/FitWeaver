@@ -462,8 +462,11 @@ def _parse_target(
         return None
 
     if kind == "pace":
-        paces = [int(m.group("min")) * 60 + int(m.group("sec")) for m in _PACE_RE.finditer(value)]
-        paces = [p for p in paces if p >= 60]
+        pace_matches = list(_PACE_RE.finditer(value))
+        if any(int(m.group("min")) < 1 or int(m.group("sec")) > 59 for m in pace_matches):
+            plan.warnings.append(ParseIssue(line, f"темп «{value}» некорректен (секунды 00–59); цель не задана"))
+            return None
+        paces = [int(m.group("min")) * 60 + int(m.group("sec")) for m in pace_matches]
         if not paces:
             plan.warnings.append(ParseIssue(line, f"темп «{value}» не распознан (нужно ММ:СС); цель не задана"))
             return None
@@ -488,7 +491,7 @@ def _parse_target(
 
         cap = parse_hr_cap(value)
         if cap is not None:
-            # Upper-only cap: the watch alerts only above the cap.
+            # Garmin receives the fixed lower and user-specified upper bounds.
             return Target("hr", HR_CAP_FLOOR_BPM, cap)
     if zone:
         plan.warnings.append(

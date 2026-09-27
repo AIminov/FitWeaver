@@ -64,6 +64,47 @@ class FreeTextRulesTests(unittest.TestCase):
         self.assertEqual(steps[1]["pace_fast"], "4:20")
         self.assertEqual(steps[3], {"type": "repeat", "back_to_offset": 1, "count": 6})
 
+    def test_coach_shorthand_separated_by_commas(self):
+        steps = parse_workout_with_rules("р2, темп5 (5:50), з1")["steps"]
+        self.assertEqual([step.get("km") for step in steps], [2.0, 5.0, 1.0])
+        self.assertEqual((steps[1]["pace_fast"], steps[1]["pace_slow"]), ("5:40", "6:00"))
+
+    def test_hours_zone_and_sbu_reps_first(self):
+        self.assertEqual(
+            parse_workout_with_rules("Бег 1 ч 30 мин")["steps"][0]["seconds"], 5400,
+        )
+        self.assertIsNone(parse_workout_with_rules("Бег 8 км, пульс Z2"))
+        zones = {"zone2": {"low": 120, "high": 140}}
+        zone_step = parse_workout_with_rules(
+            "Бег 8 км, пульс Z2", hr_zones=zones,
+        )["steps"][0]
+        self.assertEqual((zone_step["hr_low"], zone_step["hr_high"]), (120, 140))
+        drills = parse_workout_with_rules("СБУ: высокое бедро 2x30 сек")["steps"][0]["drills"]
+        self.assertEqual(drills, [{"name": "высокое бедро", "seconds": 30, "reps": 2}])
+
+    def test_explicit_nested_series(self):
+        text = (
+            "Разминка 2 км (пульс 130-145).\n"
+            "3 серии по 4x400м на пульсе 175-182, отдых между отрезками 90 сек трусцой, "
+            "между сериями отдых 3 минуты.\nЗаминка 1 км."
+        )
+        steps = parse_workout_with_rules(text)["steps"]
+        self.assertEqual(steps[3], {"type": "repeat", "back_to_offset": 1, "count": 4})
+        self.assertEqual(steps[5], {"type": "repeat", "back_to_offset": 1, "count": 3})
+        shorthand = "р2(130-145) + 3х[4х400 175-182 отд90с] отд.между сериями 3мин + з1"
+        self.assertEqual(parse_workout_with_rules(shorthand)["steps"][5], steps[5])
+
+    def test_number_words_with_explicit_units(self):
+        steps = parse_workout_with_rules(
+            "Разминка два километра, потом три километра работа",
+        )["steps"]
+        self.assertEqual([step["km"] for step in steps], [2.0, 3.0])
+        intervals = parse_workout_with_rules(
+            "Шесть восьмисоток по 4:20-4:30, между ними по 400 метров трусцой",
+        )["steps"]
+        self.assertEqual(intervals[-1], {"type": "repeat", "back_to_offset": 0, "count": 6})
+        self.assertIsNone(parse_workout_with_rules("Бег 5 км, темп 5:99"))
+
     def test_ambiguous_shorthand_is_left_to_the_llm(self):
         # "10р" may mean 10 minutes or 10 km of warmup.
         self.assertIsNone(free_text_to_marked("10р + 5 км (4:50-5:00) + 10з"))

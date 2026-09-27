@@ -34,14 +34,17 @@ HEAVY_EXCLUDES = [
 def _app_module(name):
     return not any(name == m or name.startswith(m + ".") for m in SERVICE_MODULES)
 
-llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md"])
+llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md", "*.gbnf"])
 
 # The GUI-only modules are dropped from the force-include list, and the toolkits
 # they reach for are excluded outright. gui_theme.load_customtkinter() does a
 # lazy `import customtkinter` that PyInstaller's static analysis still follows,
 # so a blanket collect_submodules("garmin_fit") dragged all of customtkinter and
 # tkinter into this console exe -- which never touches either.
-_GUI_ONLY = {"garmin_fit.gui_theme", "garmin_fit.gui_validation"}
+_GUI_ONLY = {
+    "garmin_fit.gui_theme", "garmin_fit.gui_validation",
+    "garmin_fit.gui_garmin_tab", "garmin_fit.gui_builder_tab", "garmin_fit.gui_palette",
+}
 garmin_fit_submodules = [
     m for m in collect_submodules("garmin_fit") if m not in _GUI_ONLY and _app_module(m)
 ]

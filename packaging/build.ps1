@@ -2,8 +2,12 @@
 # or from anywhere -- paths below are anchored to this script's location.
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot
-$Stage = Join-Path $RepoRoot "build\stage"
+$RepoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$Stage = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "build\stage"))
+if (-not $Stage.StartsWith($RepoRoot + [System.IO.Path]::DirectorySeparatorChar,
+                          [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Build staging path is outside the repository: $Stage"
+}
 
 Push-Location $RepoRoot
 try {

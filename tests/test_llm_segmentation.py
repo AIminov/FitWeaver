@@ -95,8 +95,49 @@ class OllamaStreamingTests(unittest.TestCase):
         self.assertTrue(post.call_args.args[0].endswith("/api/generate"))
         self.assertEqual(post.call_args.kwargs["json"], {"model": "m", "keep_alive": "30m"})
 
+    def test_token_limit_rejects_even_parseable_partial_answer(self):
+        chunks = [
+            {"message": {"content": _workout_yaml(8.0)}, "done": False},
+            {"message": {"content": ""}, "done": True, "done_reason": "length"},
+        ]
+        with patch("requests.post", return_value=_FakeStream(chunks)):
+            result = _client().generate_yaml_draft("Лёгкий бег 8 км", max_retries=1)
+        self.assertIsNone(result.yaml_text)
+        self.assertIn("token limit", result.validation_errors[0])
+
 
 class SegmentedGenerationTests(unittest.TestCase):
+    def test_explicit_previous_day_reference_copies_workout_without_model(self):
+        plan = (
+            "29.09.2026 (Вт) — Лёгкий бег\n8 км в Z2\n\n"
+            "01.10.2026 (Чт) — Повтор\nПовторить вторник\n"
+        )
+        client = _client()
+        with patch.object(client, "_call_llm", return_value=_workout_yaml(8.0)) as call:
+            result = client.generate_yaml_draft(plan, max_retries=1)
+        self.assertEqual(call.call_count, 1)
+        self.assertEqual(result.validation_errors, [])
+        self.assertEqual(result.failed_segments, [])
+        self.assertEqual(result.data["workouts"][0]["steps"], result.data["workouts"][1]["steps"])
+        self.assertIn("09-29_Tue", result.data["workouts"][0]["filename"])
+        self.assertIn("10-01_Thu", result.data["workouts"][1]["filename"])
+
+    def test_missing_previous_day_reference_is_reported_without_hallucination(self):
+        plan = "01.10.2026 (Чт) — Повтор\nПовторить вторник\n"
+        client = _client()
+        with patch.object(client, "_call_llm", side_effect=AssertionError("model called")):
+            result = client.generate_yaml_draft(plan, max_retries=1)
+        self.assertIsNone(result.yaml_text)
+        self.assertEqual(len(result.failed_segments), 1)
+        self.assertIn("0 matching", result.failed_segments[0]["error"])
+
+    def test_undated_standalone_reference_requires_source_steps(self):
+        client = _client()
+        with patch.object(client, "_call_llm", side_effect=AssertionError("model called")):
+            result = client.generate_yaml_draft("Повтори тренировку с четверга.", max_retries=1)
+        self.assertIsNone(result.yaml_text)
+        self.assertIn("укажите её шаги", result.validation_errors[0])
+
     def test_failed_workout_keeps_the_successful_ones(self):
         client = _client()
         responses = {"01.10": _workout_yaml(8.0), "03.10": "not yaml: ["}

@@ -87,8 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Only upload workouts on or after this date")
     gc_parser.add_argument("--to-date", metavar="YYYY-MM-DD",
                            help="Only upload workouts on or before this date")
-    gc_parser.add_argument("--allow-duplicates", action="store_true",
+    gc_duplicates = gc_parser.add_mutually_exclusive_group()
+    gc_duplicates.add_argument("--allow-duplicates", action="store_true",
                            help="Upload even if the same workout is already scheduled on that date")
+    gc_duplicates.add_argument("--replace-duplicates", action="store_true",
+                               help="Replace one exact same-name occurrence on the same date")
 
     gcd_parser = subparsers.add_parser(
         "garmin-calendar-delete",
@@ -176,6 +179,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             from_date=args.from_date,
             to_date=args.to_date,
             allow_duplicates=args.allow_duplicates,
+            replace_duplicates=args.replace_duplicates,
         )
     if command == "garmin-calendar-delete":
         return workflow_module.workflow_garmin_calendar_delete(

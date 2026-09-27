@@ -1,9 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for FitWeaver's desktop GUI (FitWeaver.exe).
 
-Ships alongside garmin-fit-cli.exe (see fitweaver_cli.spec) in the same
-folder -- the GUI's sidebar actions shell out to that sibling exe since a
-frozen exe can't be re-run with `-m` like a real Python interpreter.
+Can ship alongside garmin-fit-cli.exe (see fitweaver_cli.spec), but the GUI
+runs sidebar CLI actions in-process and does not depend on the sibling exe.
 
 Deliberately a SEPARATE spec file (not two Analysis/PYZ blocks in one spec):
 PyInstaller names each Analysis's intermediate PYZ archive "PYZ-01.pyz"
@@ -53,7 +52,7 @@ def _app_module(name):
 # garmin_fit/llm/prompt.py -- read-only bundled resources, not writable
 # state, so PyInstaller's own module-relative path resolution handles them
 # correctly once they're actually included via datas=.
-llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md"])
+llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*.md", "*.gbnf"])
 ctk_datas = collect_data_files("customtkinter")
 
 # fitweaver_gui.py imports most of garmin_fit lazily (inside methods, e.g.

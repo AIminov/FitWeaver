@@ -19,7 +19,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 ## Last session summary
 
-**As of 2026-09-27** — Marked plans compile to YAML without an LLM; common free-text workouts use conservative rules before an LLM. Garmin repeat mapping, GUI commands and golden evaluation have been revised. Product direction: small LLMs on a laptop CPU; the Telegram bot is deprioritized. Desktop GUI has four tabs, simple/expert mode, per-email profiles and Garmin calendar editing. Suite: 470 passed, 34 subtests (with the API extra). The per-session log lives in `AGENTS.md`; `version.txt` keeps version history.
+**As of 2026-09-27** — Marked plans compile to YAML without an LLM; conservative rules cover 29/59 valid golden variants. An experimental compact LLM output format and Garmin duplicate-replacement mode are implemented, pending live quality/account checks. Builder and Garmin Connect GUI tabs have separate modules. Product direction: small LLMs on a laptop CPU; the Telegram bot is deprioritized. Suite: 490 passed, 36 subtests (with the API extra). The per-session log lives in `AGENTS.md`; `version.txt` keeps version history.
 
 ---
 
@@ -33,17 +33,18 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (updated 2026-09-27, start here):**
-1. Live checks that need hardware/accounts: rebuild both exes and click through the LLM tab
-   (marked text, progress/cancel) and sidebar commands; Garmin duplicate-skip against real
-   calendar names, HR 60–N alert behaviour on a watch, and OpenAI `auto` mode against a server.
-2. LLM path for free text: make the model emit a short line format (or marked text) that
-   `marked_plan.py` compiles, instead of Garmin YAML — CPU latency is dominated by output tokens
-   (~2.6 tok/s measured). Compare on the golden suite (`docs/golden_dataset/`) with
-   `garmin-fit-llm-eval`; do not change prompts without a measurement.
-3. Refine the golden scorer's target-to-step alignment when the same range appears on multiple
-   reference steps; add more conservative rules for common free-text phrasing.
-4. Code quality: consolidate marked-format parsing and extract GUI state logic from
-   `fitweaver_gui.py`.
+1. Finish the running 59-case Unsloth IQ4_XS baseline; compare the same 12-case pilot using
+   the reordered YAML prompt and compact `W/S/R/E/B` output. Record strict pass, token count,
+   cold/warm latency and CPU thread settings before changing defaults.
+2. Validate the GBNF grammar with the installed `llama-server`; check OpenAI `auto` live,
+   rebuild both exes and click through LLM progress/cancel and sidebar commands.
+3. Live Garmin checks requiring account/device action: duplicate replacement and rollback on
+   a disposable occurrence, cadence edit/MFA, and the 60–N alert on a watch. The 2026-09-27
+   read-only calendar lookup confirmed one exact name/date match.
+4. Refine target-to-step scoring for complex source text, add precise free-text patterns,
+   then choose an embedded llama-server/GGUF runtime only if model quality is acceptable.
+5. Code quality: move the remaining YAML Calendar and LLM GUI tabs into modules and consolidate
+   their shared state; the Builder and Garmin tabs have already moved.
 5. `TODO.md` lists every open task (only open ones). The Telegram bot is deprioritized.
 
 **Working style preferences:**
@@ -69,7 +70,7 @@ pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GU
 ## Common Commands
 
 ```bash
-# Run all tests (466 passed with the api extra, as of 2026-09-27)
+# Run all tests (490 passed plus 36 subtests with the api extra, as of 2026-09-27)
 python3 -m pytest tests/
 
 # Run a single test file

@@ -93,6 +93,20 @@ Select **G** to upload with scheduling, or **D** for a dry-run preview.
 python -m garmin_fit.cli garmin-calendar --plan Plan/my_plan.yaml
 ```
 
+Повторная загрузка по умолчанию пропускает тренировку, если в календаре на ту же дату
+уже есть назначение с точно таким же именем. Для явного выбора доступны:
+
+```bash
+python -m garmin_fit.cli garmin-calendar --plan Plan/my_plan.yaml --replace-duplicates
+python -m garmin_fit.cli garmin-calendar --plan Plan/my_plan.yaml --allow-duplicates
+```
+
+`--replace-duplicates` сначала создаёт новое назначение, затем снимает старое.
+При ошибке пытается откатить новую запись. Если календарь недоступен, совпадений
+несколько или отсутствует ID назначения, замена этой тренировки прекращается без загрузки.
+Старый шаблон остаётся в библиотеке Garmin. В GUI тот же выбор находится рядом с
+кнопкой «Отправить план в Garmin».
+
 ### CLI — dry run (no API calls, just shows what would happen)
 
 ```bash
@@ -186,6 +200,7 @@ uploaded.
 | `--no-schedule` | off | Upload without calendar scheduling |
 | `--dry-run` | off | Preview only — no API calls |
 | `--allow-duplicates` | off | Upload even if the same workout name is already scheduled on that date |
+| `--replace-duplicates` | off | Replace one exact same-name occurrence on that date; fail closed if ambiguous |
 
 By default a live scheduled upload first reads the Garmin calendar for the affected months and
 skips workouts already scheduled on the same date under the same name, so re-running an upload

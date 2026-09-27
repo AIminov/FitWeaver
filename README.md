@@ -514,6 +514,7 @@ python -m garmin_fit.bot
 - [YAML Guide](docs/YAML_GUIDE.md)
 - [How to write a running plan](docs/PLAN_WRITING_GUIDE.md) — forms the rules parse without an LLM (Russian)
 - [Marked plan format](docs/MARKED_PLAN_FORMAT.md) — LLM-free input
+- [Compact LLM response format](docs/COMPACT_LLM_FORMAT.md) — experimental short output for local models
 - [Garmin Payload Spec](docs/GARMIN_PAYLOAD_SPEC.md) — confirmed API field names (IDs, targetValueOne/Two, description)
 - [Garmin Calendar](docs/GARMIN_CALENDAR.md) — cloud upload setup and details
 - [Project Flow](docs/PROJECT_FLOW.md)

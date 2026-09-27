@@ -1,0 +1,20 @@
+# FitWeaver W/S/R/E/B line protocol for llama.cpp grammar-constrained output.
+# This constrains syntax; the application still validates dates, values and facts.
+root ::= workout+
+workout ::= "W|" date "|" title "\n" item+
+item ::= step | repeat | sbu
+step ::= "S|" role "|" measure "|" target "\n"
+repeat ::= "R|" count "\n" item+ "E\n"
+sbu ::= "B|" drill (";" drill)* "\n"
+date ::= "-" | digit digit "." digit digit "." digit digit digit digit
+title ::= [^|\n]+
+role ::= "warmup" | "active" | "recovery" | "cooldown"
+measure ::= "-" | number ("km" | "m" | "min" | "s")
+target ::= "-" | "hr:" (range | "до " integer | "Z" [1-5]) | "pace:" pace ("-" pace)? | "cad:" range
+range ::= integer "-" integer
+pace ::= digit digit? ":" digit digit
+drill ::= [^:;|\n]+ ":" integer ":" integer
+count ::= [2-9] | [1-9] digit+
+number ::= integer ("." digit+ | "," digit+)?
+integer ::= digit+
+digit ::= [0-9]

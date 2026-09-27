@@ -6,9 +6,11 @@ Includes normalization, repair, structured validation, and retry feedback.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -109,6 +111,7 @@ class UnifiedLLMClient:
         ollama_options: dict[str, Any] | None = None,
         ollama_keep_alive: str | None = DEFAULT_OLLAMA_KEEP_ALIVE,
         segment_cache_dir: str | Path | None = None,
+        output_format: str = "yaml",
     ):
         self.model = model
         self.api_type = api_type
@@ -141,6 +144,9 @@ class UnifiedLLMClient:
             self.ollama_options.update(ollama_options)
         self.ollama_keep_alive = ollama_keep_alive
         self.segment_cache_dir = Path(segment_cache_dir) if segment_cache_dir else None
+        if output_format not in {"yaml", "compact"}:
+            raise ValueError("output_format must be 'yaml' or 'compact'")
+        self.output_format = output_format
         # Optional hooks set by interactive callers (GUI):
         #   progress_callback(dict) -- {"stage", "segment", "total", "tokens"}
         #   cancel_event -- threading.Event; setting it raises GenerationCancelled
@@ -255,16 +261,27 @@ class UnifiedLLMClient:
             group_issues_by_category,
             validate_plan_data_detailed,
         )
+        from .compact_plan import COMPACT_SYSTEM_PROMPT, CompactFormatError, compact_to_yaml
         from .prompt import get_system_prompt
 
         analysis = normalize_source_text(plan_text)
         if workouts_hint > 0 and analysis.expected_workouts == 0:
             analysis.expected_workouts = workouts_hint
 
+        if not analysis.workout_blocks and _reference_day(analysis.text) is not None:
+            message = "Не найдена тренировка указанного дня; укажите её шаги"
+            return GeneratedYamlResult(
+                validation_errors=[message],
+                error_categories={"unresolved_reference": [message]},
+            )
+
         # One request per workout whenever the source has per-workout headers:
         # small models are far more reliable on one workout at a time, output
         # stays inside num_predict, and a failure costs one workout, not all.
-        if len(analysis.workout_blocks) > 1:
+        if len(analysis.workout_blocks) > 1 or (
+            len(analysis.workout_blocks) == 1
+            and _reference_day(analysis.workout_blocks[0]) is not None
+        ):
             return self._generate_segmented_yaml_draft(
                 analysis=analysis,
                 max_retries=max_retries,
@@ -302,9 +319,9 @@ class UnifiedLLMClient:
         if not self._segmenting:
             self._report_progress(stage="segment", segment=1, total=1)
 
-        system_prompt = get_system_prompt(
-            include_text_variations=False,
-            source_text=analysis.text,
+        system_prompt = (
+            COMPACT_SYSTEM_PROMPT if self.output_format == "compact" else
+            get_system_prompt(include_text_variations=False, source_text=analysis.text)
         )
         original_plan = analysis.text
         source_facts = self._extract_workout_facts_from_source_text(original_plan)
@@ -320,6 +337,7 @@ class UnifiedLLMClient:
             expected_workouts=analysis.expected_workouts,
             model=self.model,
             api_type=self.api_type,
+            output_format=self.output_format,
             openai_mode=self.openai_mode if self.api_type == "openai" else None,
         )
 
@@ -332,9 +350,16 @@ class UnifiedLLMClient:
                 raw_response = self._call_llm(system_prompt, user_message)
             finally:
                 self._trace_fields = old_trace_fields
-            if not raw_response:
-                logger.warning(f"Attempt {attempt}: empty response from LLM")
-                last_errors = ["Empty response from LLM"]
+            truncated = (
+                self._last_call_metrics.get("done_reason") == "length"
+                or self._last_call_metrics.get("finish_reason") == "length"
+            )
+            if not raw_response or truncated:
+                last_errors = [
+                    "LLM response stopped at the token limit; increase the output budget or shorten the input"
+                    if truncated else "Empty response from LLM"
+                ]
+                logger.warning("Attempt %d: %s", attempt, last_errors[0])
                 last_categories = {"llm_error": last_errors[:]}
                 self._emit_trace(
                     "candidate_rejected",
@@ -345,17 +370,32 @@ class UnifiedLLMClient:
                 )
                 continue
 
-            yaml_text = self._extract_yaml(raw_response)
-            prepared = self._prepare_yaml_candidate(
-                yaml_text,
-                analysis_repairs=analysis.changes,
-                analysis_ambiguities=analysis.ambiguities,
-                expected_workout_count=analysis.expected_workouts,
-                source_text=original_plan,
-                repair_plan_data=repair_plan_data,
-                validate_plan_data_detailed=validate_plan_data_detailed,
-                group_issues_by_category=group_issues_by_category,
-            )
+            compact_warnings: list[str] = []
+            try:
+                if self.output_format == "compact":
+                    yaml_text, compact_warnings = compact_to_yaml(
+                        raw_response, hr_zones=self.rule_hr_zones,
+                    )
+                else:
+                    yaml_text = self._extract_yaml(raw_response)
+            except CompactFormatError as exc:
+                message = f"Compact format: {exc}"
+                prepared = GeneratedYamlResult(
+                    validation_errors=[message],
+                    error_categories={"compact_format": [message]},
+                )
+            else:
+                prepared = self._prepare_yaml_candidate(
+                    yaml_text,
+                    analysis_repairs=analysis.changes,
+                    analysis_ambiguities=analysis.ambiguities,
+                    expected_workout_count=analysis.expected_workouts,
+                    source_text=original_plan,
+                    repair_plan_data=repair_plan_data,
+                    validate_plan_data_detailed=validate_plan_data_detailed,
+                    group_issues_by_category=group_issues_by_category,
+                )
+                prepared.warnings.extend(compact_warnings)
             self._apply_source_fact_consistency_checks(prepared, source_facts)
             self._demote_source_fact_mismatch(prepared)
             prepared.attempts = attempt
@@ -395,11 +435,18 @@ class UnifiedLLMClient:
             for error in prepared.validation_errors[:5]:
                 logger.warning(f"  {error}")
 
-            user_message = self._build_retry_prompt(
-                original_plan=original_plan,
-                issues=_issues_from_categories(last_categories),
-                source_facts_text=self._format_source_facts_for_retry_prompt(source_facts),
-            )
+            if self.output_format == "compact":
+                user_message = (
+                    "Your previous line-protocol response was invalid. Return the full W/S/R/E/B "
+                    "response again, fixing these errors only:\n"
+                    + "\n".join(last_errors[:5]) + "\n\nOriginal plan:\n" + original_plan
+                )
+            else:
+                user_message = self._build_retry_prompt(
+                    original_plan=original_plan,
+                    issues=_issues_from_categories(last_categories),
+                    source_facts_text=self._format_source_facts_for_retry_prompt(source_facts),
+                )
             user_message = self._build_source_expectations_prompt(analysis) + user_message
 
         logger.error(f"Failed to generate valid YAML after {max_retries} attempts")
@@ -567,6 +614,7 @@ class UnifiedLLMClient:
             )
 
         prompt = self._messages_to_completion_prompt(messages)
+        self._last_call_metrics.pop("finish_reason", None)
         return self._call_openai_completion(prompt, timeout)
 
     def _call_openai_chat(self, messages: list, timeout: int) -> Optional[str]:
@@ -659,6 +707,7 @@ class UnifiedLLMClient:
                 logger.error("OpenAI-compatible completions returned no choices")
                 return None
 
+            self._last_call_metrics["finish_reason"] = choices[0].get("finish_reason")
             content = choices[0].get("text", "")
             content = content.lstrip()
             if content.startswith("- filename:"):
@@ -874,6 +923,23 @@ class UnifiedLLMClient:
                 merged_workouts.append(rule_workout)
                 merged_sources.append(block_text)
                 continue
+            reference_day = _reference_day(block_text)
+            if reference_day is not None:
+                copied, reference_error = self._copy_referenced_day(
+                    block_text, reference_day, merged_workouts, merged_sources,
+                )
+                if copied is None:
+                    failed.append({
+                        "index": index,
+                        "header": block_text.splitlines()[0].strip(),
+                        "error": reference_error,
+                        "source": block_text,
+                    })
+                else:
+                    repairs.append(f"workouts[{len(merged_workouts)}]: copied an explicit previous-day workout")
+                    merged_workouts.append(copied)
+                    merged_sources.append(block_text)
+                continue
             segment_fact = self._extract_single_workout_fact(block_text)
             segment_workout, segment_error = self._generate_and_validate_segment_workout(
                 block_text=block_text,
@@ -945,16 +1011,22 @@ class UnifiedLLMClient:
         from ..plan_processing import normalize_source_text
         from .prompt import get_system_prompt
 
-        system_prompt = get_system_prompt(
-            include_text_variations=False,
-            source_text=normalize_source_text(prompt_text).text,
-        )
+        if self.output_format == "compact":
+            from .compact_plan import COMPACT_SYSTEM_PROMPT
+
+            system_prompt = COMPACT_SYSTEM_PROMPT
+        else:
+            system_prompt = get_system_prompt(
+                include_text_variations=False,
+                source_text=normalize_source_text(prompt_text).text,
+            )
         key_material = json.dumps(
             [
                 SEGMENT_CACHE_VERSION,
                 self.api_type,
                 self.model,
                 self.openai_mode,
+                self.output_format,
                 sorted(self.ollama_options.items()),
                 system_prompt,
                 prompt_text,
@@ -1133,6 +1205,52 @@ class UnifiedLLMClient:
             )
 
         return None, last_error or f"segment {segment_index}: suspicious output"
+
+    def _copy_referenced_day(
+        self,
+        block_text: str,
+        weekday: str,
+        workouts: list[dict[str, Any]],
+        sources: list[str],
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Resolve an isolated 'повторить вторник' within the prior seven days."""
+        from datetime import date
+
+        current = self._extract_segment_header_info(block_text)
+        if current is None:
+            return None, "reference needs a dated workout header"
+        current_date = date.fromisoformat(current["date_iso"])
+        matches: list[dict[str, Any]] = []
+        for workout, source in zip(workouts, sources):
+            previous = self._extract_segment_header_info(source)
+            if previous is None or previous["weekday"] != weekday:
+                continue
+            days = (current_date - date.fromisoformat(previous["date_iso"])).days
+            if 0 < days <= 7:
+                matches.append(workout)
+        if len(matches) != 1:
+            return None, f"reference to {weekday} has {len(matches)} matching previous workouts; specify the steps"
+        copied = copy.deepcopy(matches[0])
+        self._align_workout_identifier_with_source_header(
+            copied,
+            month=current["month"], day=current["day"],
+            week=current["week"], weekday=current["weekday"],
+        )
+        return copied, ""
+
+
+def _reference_day(block_text: str) -> str | None:
+    """Only a whole-body reference is safe to copy; mixed instructions go to the LLM."""
+    lines = [line.strip().rstrip(". ") for line in block_text.splitlines() if line.strip()]
+    if len(lines) not in {1, 2}:
+        return None
+    match = re.fullmatch(
+        r"(?:повтори(?:ть)?(?:\s+тренировку)?|как(?:\s+в)?)\s+"
+        r"(?:(?:с|в|во)\s+)?([а-яёa-z]+)", lines[-1], re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return source_facts.normalize_weekday_token(match.group(1))
 
 
 def _issues_from_categories(categories: dict[str, list[str]]) -> list[tuple[str, str]]:

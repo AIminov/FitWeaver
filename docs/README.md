@@ -10,7 +10,7 @@ Canonical repository: `https://github.com/AIminov/FitWeaver`
 Текстовый план (.txt/.md)
         |
         v
-  [1] LLM -> YAML (Plan/*.yaml)
+  [1] Размеченный текст / правила / LLM -> YAML (Plan/*.yaml)
         |
         v
   [2] Direct build -> FIT (Output_fit/*.fit)
@@ -64,6 +64,9 @@ python -m garmin_fit.llm.request_cli --api openai --url http://127.0.0.1:1234/v1
 Если `--workouts` не передан и авто-детекция не сработала, скрипт спросит интерактивно.
 
 Детали параметров: [LLM Connection Profile](LLM_CONNECTION_PROFILE.md)
+Для локальной модели доступен экспериментальный [короткий формат ответа](COMPACT_LLM_FORMAT.md);
+по умолчанию модель по-прежнему выдаёт YAML. Как записать план без LLM:
+[руководство по входному тексту](PLAN_WRITING_GUIDE.md).
 
 ### 5. Проверка FIT
 

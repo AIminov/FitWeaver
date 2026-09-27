@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-09-27 - TODO implementation, first pass
+
+### Added
+- Opt-in compact `W/S/R/E/B` LLM response format, compiled through the marked-plan parser;
+  experimental GBNF grammar, CLI/harness flags and expert GUI switch. YAML remains the default
+  until a paired live quality comparison is complete.
+- Explicit duplicate handling for Garmin plan upload: skip, replace one matching calendar
+  occurrence with rollback, or create a copy. GUI and CLI offer the same choices; replacement
+  refuses unreadable or ambiguous calendar state.
+- Harness metrics for cached prompt tokens, prompt/generation durations and separate cache
+  hit/miss median latency; optional Ollama `--num-thread` control. The report expands nested
+  repeats to show a nonblocking diagnostic of explicitly specified distance.
+
+### Improved
+- Conservative free-text rules now accept simple number words, explicit nested series,
+  comma-separated shorthand, single pace values, hours plus minutes, profile-backed HR zones
+  and SBU repetitions written before duration. Golden coverage rose from 26 to 29 of 59 valid
+  variants; unrecognized wording still falls back to the LLM.
+- Golden scorer checks the source target on its actual step when the deterministic rules can
+  parse the source. Variable few-shot examples follow the static prompt prefix for KV reuse.
+- Truncated model responses (`done_reason` / `finish_reason: length`) are rejected even if their
+  partial YAML parses. Invalid pace seconds are no longer silently normalized to another pace.
+- An explicit standalone reference such as «повторить вторник» copies the single previous
+  workout of that weekday within seven days, with the new date in its identifier. A missing
+  source workout is reported for clarification without calling the model.
+- Garmin replacement refuses a workout without a date in its identifier instead of uploading
+  an unscheduled template.
+- Garmin Connect and visual builder tab methods now live in separate GUI modules, sharing one
+  palette. The desktop entry point retains the same actions and state; the CLI build excludes
+  GUI-only modules.
+
+### Validation
+- Read-only Garmin calendar check on 2026-09-27 returned two September events with schedule IDs;
+  one of four local plan workouts matched an event by exact name and date. No account writes.
+- Full suite: 490 passed, 36 subtests; Ruff clean. A full live
+  Unsloth golden run was started and remains in progress; its results are not claimed here.
+
 ## 2026-09-27 - Free-text safety and golden scoring
 
 ### Fixed

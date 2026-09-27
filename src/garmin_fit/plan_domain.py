@@ -12,8 +12,8 @@ from typing import Any, Mapping
 logger = logging.getLogger(__name__)
 
 # An upper-only heart-rate cap ("пульс до 140", "не выше 140", "HR <= 140") is
-# encoded as the range HR_CAP_FLOOR_BPM..cap: 60 is a typical resting heart
-# rate, so the watch only alerts when the cap is exceeded.
+# encoded as the range HR_CAP_FLOOR_BPM..cap. Both bounds are sent to Garmin;
+# the behavior of the lower alert on real watches still needs checking.
 HR_CAP_FLOOR_BPM = 60
 HR_CAP_PHRASE_RE = re.compile(
     r"(?:\bдо\b|не\s+выше|не\s+более|\bмаксимум\b|\bмакс\.?|\bmax\b|\bup\s*to\b|<=?|≤)\s*(?P<cap>\d{2,3})",

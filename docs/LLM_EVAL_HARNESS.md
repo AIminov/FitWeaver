@@ -54,13 +54,31 @@ garmin-fit-llm-eval --suite Build_artifacts\llm_eval\golden_suite\suite.yaml --m
   --api ollama --url http://localhost:11434 --model "qwen3:8b"
 ```
 
+Для парного сравнения короткого ответа используйте тот же suite, модель и параметры,
+но добавьте `--output-format compact`. Этот ответ разбирает
+[`compact_plan.py`](../src/garmin_fit/llm/compact_plan.py), затем обычный marked-парсер;
+`strict_pass` считается по итоговому Garmin YAML. В `raw_candidate` записан формат и
+результат проверки синтаксиса. Чтобы сравнить число потоков CPU, можно задать
+`--num-thread 8`; это поддерживаемый параметр `options.num_thread` в
+[Ollama API](https://github.com/ollama/ollama/blob/main/docs/api.md). Меняйте один
+параметр за прогон и сопоставляйте одинаковые case/trial.
+
+Живые результаты сохраняют `prompt_eval_cached_count` и отдельную медиану задержки
+для запросов с попаданием и без попадания в KV-кэш. Время включает генерацию и
+обработку подсказки; без разделения cache hit/miss сравнение может вводить в заблуждение.
+`distance_diagnostic` разворачивает вложенные повторы и показывает сумму только явно
+заданных дистанций шагов. Это информационная метрика: дистанция временных шагов не
+угадывается, общий итог тренировки не становится дополнительным строгим условием.
+
 `expected_steps` is checked fact by fact (`llm/golden.py`): measures, repeat structure and
 targets must match, and differing explicit step intensities fail. A reference target may be
 omitted only when the source states fewer occurrences of that target than the reference uses;
 an explicitly stated target must appear in the generated steps. The `hr_low: 60` encoding of
 an upper-only HR cap may differ from an older reference's lower bound only when the source
 actually says `до N` / `не выше N`. An explicit HR range is compared exactly. The harness
-never enables the deterministic rules (`free_text_rules.py`), so scores measure the model.
+also checks which step owns each explicit target when the conservative free-text parser can
+parse the source. It does not use that parser to produce model output, so scores still
+measure the model.
 
 ## Commands
 

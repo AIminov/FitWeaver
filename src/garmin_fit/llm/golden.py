@@ -81,6 +81,17 @@ def compare_to_canonical(
                     f"step {index}: expected intensity {expected_intensity}, got {got_intensity}"
                 )
     if allow_missing_targets and source_text:
+        # The deterministic parser knows the target's step when it understands
+        # the source. Use that alignment instead of accepting a target merely
+        # because it appears somewhere else in the workout.
+        source_steps = _source_aligned_steps(source_text, want)
+        if source_steps is not None:
+            for index, source_step in enumerate(source_steps):
+                stated_target = step_facts(source_step)[-1]
+                if stated_target is not None and got[index][-1] != stated_target:
+                    problems.append(
+                        f"step {index}: source target {stated_target}, got {got[index][-1]}"
+                    )
         for target in {fact[-1] for fact in want if fact[0] == "step" and fact[-1] is not None}:
             stated = _stated_target_count(target, source_text)
             if not stated:
@@ -96,6 +107,20 @@ def compare_to_canonical(
                     f"source states target {target} {required} time(s), generated {actual}"
                 )
     return problems
+
+
+def _source_aligned_steps(source_text: str, reference: list[tuple]) -> list[dict[str, Any]] | None:
+    from ..free_text_rules import parse_workout_with_rules
+
+    workout = parse_workout_with_rules(source_text)
+    if workout is None:
+        return None
+    steps = workout.get("steps") or []
+    if len(steps) != len(reference):
+        return None
+    if any(step_facts(step)[:-1] != expected[:-1] for step, expected in zip(steps, reference)):
+        return None
+    return steps
 
 
 def _source_states_hr_cap(source_text: str | None, high: object) -> bool:

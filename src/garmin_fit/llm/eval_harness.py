@@ -231,16 +231,30 @@ def evaluate_case(
     source_text: str,
     raw_response: str,
     client_result: Any | None = None,
+    output_format: str = "yaml",
 ) -> dict[str, Any]:
     """Run raw-output and final-pipeline checks for one trial."""
     preflight = validate_source_markers(source_text)
-    raw_checks = check_raw_candidate(raw_response, source_text)
+    candidate_text = raw_response
+    protocol_error = None
+    if output_format == "compact":
+        from .compact_plan import CompactFormatError, compact_to_yaml
+
+        try:
+            candidate_text, _warnings = compact_to_yaml(raw_response)
+        except CompactFormatError as exc:
+            protocol_error = str(exc)
+            candidate_text = ""
+    raw_checks = check_raw_candidate(candidate_text, source_text)
+    raw_checks["format"] = output_format
+    if protocol_error:
+        raw_checks["protocol_error"] = protocol_error
     if client_result is None:
         from ..plan_processing import normalize_source_text
 
         analysis = normalize_source_text(source_text)
         result = UnifiedLLMClient._prepare_yaml_candidate(
-            UnifiedLLMClient._extract_yaml(raw_response),
+            UnifiedLLMClient._extract_yaml(candidate_text),
             analysis_repairs=[],
             analysis_ambiguities=analysis.ambiguities,
             expected_workout_count=int(case.get("expected_workout_count", analysis.expected_workouts)),
@@ -294,6 +308,22 @@ def evaluate_case(
         and not roundtrip_structure_errors
         and not hard_check_failures
     )
+    distance_diagnostic = None
+    reference_steps = case.get("expected_steps")
+    workouts = data.get("workouts") if isinstance(data, dict) else None
+    if (
+        isinstance(reference_steps, list) and isinstance(workouts, list)
+        and len(workouts) == 1 and isinstance(workouts[0], dict)
+        and isinstance(workouts[0].get("steps"), list)
+    ):
+        expected_km = _specified_distance_km(reference_steps)
+        actual_km = _specified_distance_km(workouts[0]["steps"])
+        distance_diagnostic = {
+            "reference_specified_km": expected_km,
+            "generated_specified_km": actual_km,
+            "difference_km": round(actual_km - expected_km, 3),
+            "strict_gate": False,
+        }
     return {
         "case_id": str(case["id"]),
         "tags": list(case.get("tags", [])),
@@ -323,7 +353,34 @@ def evaluate_case(
         ],
         "strict_pass": strict_pass,
         "warning_count": len(preflight["warnings"]) + len(result.warnings),
+        "distance_diagnostic": distance_diagnostic,
     }
+
+
+def _specified_distance_km(steps: list[dict[str, Any]]) -> float:
+    """Expand repeat multipliers for stated distances; never infer time-step distance."""
+    contributions: list[float] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            contributions.append(0.0)
+            continue
+        if step.get("type") == "repeat":
+            try:
+                back_to = int(step["back_to_offset"])
+                count = int(step["count"])
+            except (KeyError, TypeError, ValueError):
+                contributions.append(0.0)
+                continue
+            if 0 <= back_to < len(contributions) and count > 1:
+                contributions.append((count - 1) * sum(contributions[back_to:]))
+            else:
+                contributions.append(0.0)
+        else:
+            try:
+                contributions.append(float(step.get("km") or 0))
+            except (TypeError, ValueError):
+                contributions.append(0.0)
+    return round(sum(contributions), 3)
 
 
 def _render_summary(report: dict[str, Any]) -> str:
@@ -335,6 +392,7 @@ def _render_summary(report: dict[str, Any]) -> str:
         f"Run: `{report['run_id']}`  ",
         f"Mode: `{report['mode']}`  ",
         f"Model: `{report['model']}`  ",
+        f"Output format: `{report.get('output_format', 'yaml')}`  ",
         f"Strict pass: **{passed}/{len(rows)}** trials",
         "",
         "| Case | Raw schema | Raw structure | Final pass | Errors |",
@@ -348,6 +406,18 @@ def _render_summary(report: dict[str, Any]) -> str:
             f"| {bool(raw.get('structure_valid'))} | {bool(row['strict_pass'])} "
             f"| {len(errors)} |"
         )
+    lines.append("")
+    for cache_state in ("miss", "hit", "mixed"):
+        latencies = [
+            row.get("runtime", {}).get("latency_sec") for row in rows
+            if row.get("runtime", {}).get("cache_state") == cache_state
+        ]
+        latencies = [value for value in latencies if isinstance(value, (int, float))]
+        if latencies:
+            lines.append(
+                f"KV cache {cache_state}: {len(latencies)} trials, "
+                f"median {statistics.median(latencies):.2f} s"
+            )
     lines.extend(["", "Raw replies and attempt events are in `trace.jsonl`."])
     return "\n".join(lines) + "\n"
 
@@ -445,6 +515,8 @@ def run_suite(
     timeout_sec: int,
     trials: int,
     output_root: Path | None = None,
+    output_format: str = "yaml",
+    ollama_num_thread: int | None = None,
 ) -> tuple[dict[str, Any], Path]:
     suite = load_suite(suite_path)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
@@ -460,6 +532,8 @@ def run_suite(
             openai_mode=openai_mode,
             request_timeout_sec=timeout_sec,
             trace_callback=trace_writer,
+            output_format=output_format,
+            ollama_options={"num_thread": ollama_num_thread} if ollama_num_thread else None,
         )
 
     results: list[dict[str, Any]] = []
@@ -535,7 +609,29 @@ def run_suite(
                         int(event.get("eval_count", event.get("completion_tokens", 0)) or 0)
                         for event in response_events
                     ),
+                    "prompt_eval_cached_count": sum(
+                        int(event.get("prompt_eval_cached_count", 0) or 0)
+                        for event in response_events
+                    ),
+                    "prompt_eval_duration_ns": sum(
+                        int(event.get("prompt_eval_duration", 0) or 0)
+                        for event in response_events
+                    ),
+                    "eval_duration_ns": sum(
+                        int(event.get("eval_duration", 0) or 0)
+                        for event in response_events
+                    ),
+                    "load_duration_ns": sum(
+                        int(event.get("load_duration", 0) or 0)
+                        for event in response_events
+                    ),
                 }
+                cached = [event.get("prompt_eval_cached_count") for event in response_events]
+                if cached and all(value is not None for value in cached):
+                    hits = sum(int(value or 0) > 0 for value in cached)
+                    runtime_metrics["cache_state"] = (
+                        "hit" if hits == len(cached) else "miss" if hits == 0 else "mixed"
+                    )
             else:
                 raw_path_value = case.get("raw_response_path")
                 if not raw_path_value:
@@ -569,6 +665,7 @@ def run_suite(
                 source_text=source_text,
                 raw_response=raw_response,
                 client_result=client_result,
+                output_format=output_format,
             )
             result_row["trial"] = trial
             result_row["runtime"] = runtime_metrics
@@ -597,6 +694,8 @@ def run_suite(
         "api": api if mode == "live" else None,
         "url": url if mode == "live" else None,
         "model": model,
+        "output_format": output_format,
+        "ollama_num_thread": ollama_num_thread,
         "model_fingerprint": model_fingerprint,
         "python": platform.python_version(),
         "case_count": len(suite["cases"]),
@@ -633,6 +732,9 @@ def main() -> int:
     parser.add_argument("--api", choices=["ollama", "openai"], default="ollama")
     parser.add_argument("--url", default="http://localhost:11434")
     parser.add_argument("--model", default="qwen3:8b")
+    parser.add_argument("--output-format", choices=["yaml", "compact"], default="yaml")
+    parser.add_argument("--num-thread", type=int, default=None,
+                        help="Ollama CPU threads for a controlled performance comparison")
     parser.add_argument("--openai-mode", choices=["auto", "chat", "completions"], default="auto")
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--timeout-sec", type=int, default=1800)
@@ -667,6 +769,8 @@ def main() -> int:
         parser.error("--suite is required unless --compare is used")
     if args.trials < 1:
         parser.error("--trials must be positive")
+    if args.num_thread is not None and (args.num_thread < 1 or args.api != "ollama"):
+        parser.error("--num-thread requires --api ollama and a positive integer")
 
     suite_path = Path(args.suite).expanduser()
     if not suite_path.is_absolute():
@@ -682,6 +786,8 @@ def main() -> int:
         timeout_sec=args.timeout_sec,
         trials=args.trials,
         output_root=args.output_root,
+        output_format=args.output_format,
+        ollama_num_thread=args.num_thread,
     )
     print((run_dir / "summary.md").read_text(encoding="utf-8"))
     print(f"Artifacts: {run_dir}")

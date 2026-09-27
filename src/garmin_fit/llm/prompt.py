@@ -366,8 +366,6 @@ def create_system_prompt(
         schema_section = _build_json_schema_section()
         if schema_section:
             sections.append(schema_section)
-    if examples:
-        sections.append(examples)
     source_rules = [
                 "SOURCE RULES",
                 "- Split at each date header. Output one workout per running session; omit rest days.",
@@ -401,6 +399,11 @@ def create_system_prompt(
             "- Write every stated interval exactly once and in source order. Never duplicate a sequence. Use repeat only when the source gives an explicit repetition count.",
         )
     sections.append("\n".join(source_rules))
+    # Keep the invariant contract and source rules as a shared prefix across
+    # workouts. Selected examples vary by segment and belong at the end so
+    # Ollama/llama.cpp can reuse more of the prefix in the KV cache.
+    if examples:
+        sections.append(examples)
     return "\n\n".join(section.strip() for section in sections if section.strip())
 
 

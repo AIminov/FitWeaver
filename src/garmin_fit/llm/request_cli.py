@@ -84,6 +84,10 @@ def main():
         ),
     )
     parser.add_argument(
+        "--output-format", choices=["yaml", "compact"], default="yaml",
+        help="Model response format; compact is experimental and compiles through the marked parser",
+    )
+    parser.add_argument(
         "--timeout-sec",
         type=int,
         default=1800,
@@ -156,6 +160,7 @@ def main():
             openai_mode=args.openai_mode,
             request_timeout_sec=args.timeout_sec,
             segment_cache_dir=ARTIFACTS_DIR / "llm_segment_cache",
+            output_format=args.output_format,
         )
         client.use_rules = True
         draft = client.generate_yaml_draft(

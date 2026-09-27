@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from garmin_fit.llm.eval_harness import (
+    _specified_distance_km,
     check_raw_candidate,
     compare_reports,
     extract_raw_response,
@@ -31,6 +32,18 @@ VALID_RESPONSE = """workouts:
 
 
 class TestLlmEvalHarness(unittest.TestCase):
+    def test_distance_diagnostic_expands_nested_repeats_without_guessing_time_distance(self):
+        steps = [
+            {"type": "dist_open", "km": 2.0},
+            {"type": "dist_open", "km": 0.4},
+            {"type": "dist_open", "km": 0.2},
+            {"type": "repeat", "back_to_offset": 1, "count": 4},
+            {"type": "time_step", "seconds": 180},
+            {"type": "repeat", "back_to_offset": 1, "count": 3},
+            {"type": "dist_open", "km": 1.0},
+        ]
+        self.assertEqual(_specified_distance_km(steps), 10.2)
+
     def test_source_preflight_reports_malformed_repeat_and_missing_measure(self):
         source = """==== ТРЕНИРОВКА ==== без даты — Intervals
 **** ПОВТОР: 4 РАЗ ****

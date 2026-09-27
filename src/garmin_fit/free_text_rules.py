@@ -22,6 +22,26 @@ import re
 from typing import Any
 
 _NUMBER = r"\d+(?:[.,]\d+)?"
+_NUMBER_WORDS = {
+    "один": "1", "одна": "1", "одно": "1", "два": "2", "две": "2",
+    "три": "3", "четыре": "4", "пять": "5", "шесть": "6",
+    "семь": "7", "восемь": "8", "девять": "9", "десять": "10",
+    "полтора": "1.5", "полторы": "1.5",
+}
+_NUMBER_WORD_RE = re.compile(
+    r"\b(?P<value>" + "|".join(_NUMBER_WORDS) + r")\s+"
+    r"(?P<unit>километр(?:а|ов)?|метр(?:а|ов)?|минут(?:а|ы)?|секунд(?:а|ы)?)\b",
+    re.IGNORECASE,
+)
+_NUMBER_FULL_UNIT_RE = re.compile(
+    rf"\b(?P<value>{_NUMBER})\s+"
+    r"(?P<unit>километр(?:а|ов)?|метр(?:а|ов)?|минут(?:а|ы)?|секунд(?:а|ы)?)\b",
+    re.IGNORECASE,
+)
+_EIGHT_HUNDREDS_RE = re.compile(
+    r"\b(?P<count>одна|один|две|два|три|четыре|пять|шесть|семь|восемь|девять|десять)\s+восьмисоток\b",
+    re.IGNORECASE,
+)
 _WEEKDAY_WORDS = r"пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье"
 _DATE_HEADER_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?P<date>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)\s*"
@@ -42,6 +62,11 @@ _MEASURE_RE = re.compile(
     re.IGNORECASE,
 )
 _PACE_RANGE_RE = re.compile(r"(?<![\d:])(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})(?![\d:])")
+_PACE_SINGLE_RE = re.compile(
+    r"(?:\(\s*|\bтемп\w*\s+)(?P<pace>\d{1,2}:\d{2})(?:\s*\)|\b)(?!\s*[-–—])",
+    re.IGNORECASE,
+)
+_ZONE_RE = re.compile(r"\b(?:z\s*[1-5]|зона\s*[1-5])\b", re.IGNORECASE)
 # Punctuation around a range is fine ("пульс 135-145,"); only a decimal
 # continuation ("1,135-145" / "135-145.5") means these are not HR values.
 _HR_RANGE_RE = re.compile(r"(?<![\d:])(?<!\d[.,])(\d{2,3})\s*[-–—]\s*(\d{2,3})(?![\d:])(?![.,]\d)")
@@ -52,13 +77,28 @@ _INTERVAL_RE = re.compile(
 )
 # "Интервалы 6x800м": a title that names the interval set without targets.
 _INTERVAL_TITLE_RE = re.compile(r"^[А-Яа-яA-Za-z][^\d]*\d+\s*[xх×]\s*\d", re.IGNORECASE)
+_SERIES_RE = re.compile(
+    r"^(?P<sets>\d+)\s+сери\w*\s+по\s+(?P<count>\d+)\s*[xх×]\s*"
+    r"(?P<work>\d+(?:[.,]\d+)?\s*(?:км|м)\s+[^,]+),\s*"
+    r"отдых\s+между\s+отрезками\s+(?P<recovery>[^,]+),\s*"
+    r"между\s+сериями\s+отдых\s+(?P<between>.+)$",
+    re.IGNORECASE,
+)
+_SHORTHAND_SERIES_RE = re.compile(
+    r"^(?P<sets>\d+)\s*[xх×]\s*\[\s*(?P<count>\d+)\s*[xх×]\s*"
+    r"(?P<work>\d+(?:[.,]\d+)?\s*(?:км|м)?\s+\d{2,3}\s*[-–—]\s*\d{2,3})\s+"
+    r"(?P<recovery>восстановление\s+\d+\s*сек)\s*\]\s*"
+    r"отд\.?\s*между\s+сериями\s+(?P<between>\d+\s*мин)$",
+    re.IGNORECASE,
+)
 # "Пороговая тренировка: разминка 2 км, ..." -- a title before the first step.
 _COLON_TITLE_RE = re.compile(r"^(?P<title>[А-ЯA-Zа-яa-z«\"][^:\d]{2,60}?)\s*:\s*(?P<rest>.*\d.*)$")
 # "Итого: 10 км" -- the colon matters: "всего 20 минут бега" is a step, not a summary.
 _SUMMARY_RE = re.compile(r"^\s*(?:итого|всего)\s*:\s*(?P<rest>.*)$", re.IGNORECASE)
 _SBU_RE = re.compile(r"^\s*сбу\s*:?\s*(?P<rest>.+)$", re.IGNORECASE)
 _DRILL_RE = re.compile(
-    r"^\s*(?P<name>[^\d,;]+?)\s+(?P<seconds>\d+)\s*(?:с|сек)\s*[xх×]\s*(?P<reps>\d+)\s*$",
+    r"^\s*(?P<name>[^\d,;]+?)\s+(?:(?P<reps_first>\d+)\s*[xх×]\s*)?"
+    r"(?P<seconds>\d+)\s*(?:с|сек)\s*(?:[xх×]\s*(?P<reps_last>\d+))?\s*$",
     re.IGNORECASE,
 )
 
@@ -71,8 +111,8 @@ _ROLE_WORDS = [
 # Words that describe structure these rules do not model: leave such
 # workouts to the LLM rather than guess.
 _UNSUPPORTED_RE = re.compile(
-    r"сери[яиейю]|повтор|лесенк|каждый|кажд|быстрее|медленнее|прогресс|или\b|если\b|до отказа|"
-    r"между сериями|по самочувствию|ощущени|"
+    r"повтор|лесенк|каждый|кажд|быстрее|медленнее|прогресс|или\b|если\b|до отказа|"
+    r"по самочувствию|ощущени|"
     # A prohibition is not an instruction to create a running workout.
     r"\bне\s+(?:бежать|бегать|пробегать|тренироваться)\b|"
     # effort described only in words: the user should give a number
@@ -92,6 +132,17 @@ class _NotUnderstood(Exception):
     pass
 
 
+def _replace_number_word(match: re.Match[str]) -> str:
+    unit = match.group("unit").casefold()
+    normalized_unit = (
+        "км" if unit.startswith("кило") else
+        "м" if unit.startswith("метр") else
+        "мин" if unit.startswith("минут") else "сек"
+    )
+    number = _NUMBER_WORDS.get(match.group("value").casefold(), match.group("value"))
+    return f"{number} {normalized_unit}"
+
+
 def free_text_to_marked(block_text: str) -> str | None:
     """Marked-format text for one workout block, or None if any part is not understood."""
     try:
@@ -107,6 +158,15 @@ def parse_workout_with_rules(
     marked = free_text_to_marked(block_text)
     if marked is None:
         return None
+    if _ZONE_RE.search(block_text):
+        zones = hr_zones or {}
+        for zone in _ZONE_RE.findall(block_text):
+            number = zone[-1]
+            bounds = zones.get(f"zone{number}") or zones.get(f"z{number}")
+            if not isinstance(bounds, dict) or not {
+                "low", "high"
+            } <= bounds.keys():
+                return None
     from .marked_plan import compile_marked_text
 
     compiled = compile_marked_text(marked, hr_zones=hr_zones)
@@ -122,6 +182,17 @@ def parse_workout_with_rules(
 def _normalise(text: str) -> str:
     text = text.replace("ё", "е").replace("Ё", "Е")
     text = re.sub(r"[–—]", "-", text)
+    text = _EIGHT_HUNDREDS_RE.sub(
+        lambda match: f"{_NUMBER_WORDS[match.group('count').casefold()]}x800 м", text,
+    )
+    text = _NUMBER_WORD_RE.sub(_replace_number_word, text)
+    text = _NUMBER_FULL_UNIT_RE.sub(_replace_number_word, text)
+    text = re.sub(r"\bкилометр\s+(?=заминк\w*\b)", "1 км ", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(?<!\d)(\d+)\s*(?:ч|час(?:а|ов)?)\s*(\d+)\s*мин(?:ут[аы]?)?\b",
+        lambda match: f"{int(match.group(1)) * 60 + int(match.group(2))} мин",
+        text, flags=re.IGNORECASE,
+    )
     return text
 
 
@@ -173,11 +244,11 @@ def _split_clauses(line: str) -> list[str]:
     """
     if _INTERVAL_RE.match(line) and len(_MEASURE_RE.findall(line)) <= 2:
         return [line]  # "6x800м по ..., восстановление 400 м" is one interval clause
-    if _SUMMARY_RE.match(line) or _SBU_RE.match(line):
+    if _SUMMARY_RE.match(line) or _SBU_RE.match(line) or _SERIES_RE.match(line):
         return [line]  # "Итого: 10 км, 55 мин" / "СБУ: A 30с x2, B 30с x2" are single lines
     clauses: list[str] = []
     for part in (p for p in _CLAUSE_SPLIT_RE.split(line) if p and p.strip()):
-        part = part.strip()
+        part = _expand_shorthand(part.strip())
         has_measure = bool(_MEASURE_RE.search(part))
         joins_interval = (
             clauses and _INTERVAL_RE.match(clauses[-1]) and _RECOVERY_START_RE.match(part)
@@ -284,6 +355,10 @@ def _convert(block_text: str) -> str:
         role_only = _role_only(line)
         if role_only:
             pending_role = role_only
+            continue
+        if re.search(r"\bсери\w*", line, re.IGNORECASE):
+            body.extend(_series_steps(line))
+            pending_role = None
             continue
         interval = _INTERVAL_RE.match(line)
         if interval:
@@ -417,7 +492,15 @@ def _targets(text: str) -> list[tuple[str, str]]:
         rest = text[: cadence.start()] + " " * (cadence.end() - cadence.start()) + text[cadence.end():]
     pace = _PACE_RANGE_RE.search(rest)
     if pace:
+        if any(not _valid_pace(value) for value in pace.groups()):
+            raise _NotUnderstood
         found.append((pace.start(), "Темп", f"{pace.group(1)}-{pace.group(2)} мин/км"))
+    else:
+        pace_single = _PACE_SINGLE_RE.search(rest)
+        if pace_single:
+            if not _valid_pace(pace_single.group("pace")):
+                raise _NotUnderstood
+            found.append((pace_single.start(), "Темп", f"{pace_single.group('pace')} мин/км"))
     hr = _HR_RANGE_RE.search(rest)
     if hr:
         low, high = int(hr.group(1)), int(hr.group(2))
@@ -429,15 +512,25 @@ def _targets(text: str) -> list[tuple[str, str]]:
         if cap:
             # Upper-only cap: the marked parser encodes it as 60-cap.
             found.append((cap.start(), "Пульс", f"до {cap.group(1)} уд/мин"))
+    zone = _ZONE_RE.search(rest)
+    if zone:
+        found.append((zone.start(), "Пульс", f"Z{zone.group()[-1]}"))
     return [(label, value) for _pos, label, value in sorted(found)]
+
+
+def _valid_pace(value: str) -> bool:
+    minutes, seconds = (int(part) for part in value.split(":"))
+    return minutes >= 1 and seconds < 60
 
 
 def _check_numbers_consumed(text: str) -> None:
     """Every number must belong to a measure or a target we understood."""
     leftover = _MEASURE_RE.sub(" ", text)
     leftover = _PACE_RANGE_RE.sub(" ", leftover)
+    leftover = _PACE_SINGLE_RE.sub(" ", leftover)
     leftover = _HR_RANGE_RE.sub(" ", leftover)
     leftover = _HR_CAP_RE.sub(" ", leftover)
+    leftover = _ZONE_RE.sub(" ", leftover)
     if re.search(r"\d", leftover):
         raise _NotUnderstood
 
@@ -472,13 +565,36 @@ def _interval_steps(count: int, rest: str) -> list[str]:
     return lines
 
 
+def _series_steps(text: str) -> list[str]:
+    """Two explicitly counted repeat levels with a stated between-set recovery."""
+    match = _SERIES_RE.fullmatch(text) or _SHORTHAND_SERIES_RE.fullmatch(text)
+    if match is None:
+        raise _NotUnderstood
+    sets, count = int(match.group("sets")), int(match.group("count"))
+    if sets < 2 or count < 2:
+        raise _NotUnderstood
+    work = match.group("work")
+    if match.re is _SHORTHAND_SERIES_RE:
+        work = re.sub(r"^(\d{3,4})(?=\s)", r"\1 м", work)
+    lines = [f"**** ПОВТОР: {sets} РАЗ ****", f"**** ПОВТОР: {count} РАЗ ****"]
+    lines += _step_lines(work, "работа")
+    lines += _step_lines(match.group("recovery"), "восстановление")
+    lines.append("**** КОНЕЦ ПОВТОРА ****")
+    lines += _step_lines(match.group("between"), "восстановление")
+    lines.append("**** КОНЕЦ ПОВТОРА ****")
+    return lines
+
+
 def _sbu_step(rest: str) -> list[str]:
     drills = []
     for chunk in re.split(r"\s*[,;]\s*", rest.strip().rstrip(".")):
         match = _DRILL_RE.match(chunk)
         if not match:
             raise _NotUnderstood
-        drills.append(f"{match.group('name').strip()} — {match.group('reps')}×{match.group('seconds')} сек")
+        reps = match.group("reps_first") or match.group("reps_last")
+        if reps is None:
+            raise _NotUnderstood
+        drills.append(f"{match.group('name').strip()} — {reps}×{match.group('seconds')} сек")
     if not drills:
         raise _NotUnderstood
     return ["**** ШАГ ****", "Тип: СБУ", "Упражнения: " + "; ".join(drills)]

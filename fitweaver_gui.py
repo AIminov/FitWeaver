@@ -19,14 +19,31 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 import yaml
 
 from garmin_fit.fileio import atomic_write_text
+from garmin_fit.gui_builder_tab import BuilderTabMixin
+from garmin_fit.gui_garmin_tab import GarminTabMixin
 from garmin_fit.gui_messages import (
-    garmin_error_message,
     hint_for_line,
     ru_count,
     ru_workouts,
 )
+from garmin_fit.gui_palette import (
+    ACCENT,
+    BG,
+    BG2,
+    BG3,
+    DAYS_RU,
+    DEFAULT_WO_COLOR,
+    FG,
+    GREEN,
+    MONTHS_RU,
+    MUTED,
+    PURPLE,
+    RED,
+    WEEKDAY_ABBR_EN,
+    WORKOUT_COLORS,
+    YELLOW,
+)
 from garmin_fit.gui_theme import configure_customtkinter, configure_ttk, load_customtkinter
-from garmin_fit.gui_validation import parse_builder_value, parse_repeat_count
 
 if getattr(sys, "frozen", False):
     # PyInstaller-frozen exe: treat the exe's own folder as a portable app
@@ -48,84 +65,11 @@ if _CTK is not None:
     configure_customtkinter(_CTK)
 _AppBase = _CTK.CTk if _CTK is not None else tk.Tk
 
-# ── Colours ──────────────────────────────────────────────────────────────────
-BG     = "#1e1e2e"
-BG2    = "#181825"
-BG3    = "#313244"
-FG     = "#cdd6f4"
-ACCENT = "#89b4fa"
-MUTED  = "#6c7086"
-GREEN  = "#a6e3a1"
-RED    = "#f38ba8"
-PURPLE = "#cba6f7"
-YELLOW = "#f9e2af"
-ORANGE = "#fab387"
-
-WORKOUT_COLORS = {
-    "long":      "#89b4fa",
-    "intervals": "#f38ba8",
-    "tempo":     "#fab387",
-    "aerobic":   "#a6e3a1",
-    "recovery":  "#6c7086",
-    "sbu":       "#cba6f7",
-    "easy":      "#94e2d5",
-}
-DEFAULT_WO_COLOR = "#89dceb"
-WEEKDAY_ABBR_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-STEP_INTENSITY_COLORS = {
-    "warmup":   "#94e2d5",
-    "active":   "#f38ba8",
-    "recovery": "#6c7086",
-    "cooldown": "#89b4fa",
-}
-
-# Editable field set per step_type for the builder's generic block editor.
-# (field_attr_name, label, python_type)
-_STEP_TYPE_FIELDS = {
-    "dist_open": (("km", "Расстояние (км)", float),),
-    "dist_hr": (
-        ("km", "Расстояние (км)", float),
-        ("hr_low", "Пульс от", int),
-        ("hr_high", "Пульс до", int),
-    ),
-    "dist_pace": (
-        ("km", "Расстояние (км)", float),
-        ("pace_fast", "Темп быстрый (мм:сс)", str),
-        ("pace_slow", "Темп медленный (мм:сс)", str),
-    ),
-    "dist_cadence": (
-        ("km", "Расстояние (км)", float),
-        ("cad_low", "Частота шагов от (шаг/мин)", int),
-        ("cad_high", "Частота шагов до (шаг/мин)", int),
-    ),
-    "time_open": (("seconds", "Длительность (сек)", int),),
-    "time_hr": (
-        ("seconds", "Длительность (сек)", int),
-        ("hr_low", "Пульс от", int),
-        ("hr_high", "Пульс до", int),
-    ),
-    "time_pace": (
-        ("seconds", "Длительность (сек)", int),
-        ("pace_fast", "Темп быстрый (мм:сс)", str),
-        ("pace_slow", "Темп медленный (мм:сс)", str),
-    ),
-    "time_cadence": (
-        ("seconds", "Длительность (сек)", int),
-        ("cad_low", "Частота шагов от (шаг/мин)", int),
-        ("cad_high", "Частота шагов до (шаг/мин)", int),
-    ),
-}
-
-MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь",
-              "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
-DAYS_RU   = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
-
-
 # ══════════════════════════════════════════════════════════════════════════════
-class App(_AppBase):
+class App(BuilderTabMixin, GarminTabMixin, _AppBase):
     def __init__(self):
         super().__init__()
+        self._project_root = PROJECT_ROOT
         self.title("FitWeaver")
         self.geometry("1440x920")
         self.minsize(1180, 720)
@@ -140,6 +84,7 @@ class App(_AppBase):
         self.pass_var  = tk.StringVar()
         self.from_var  = tk.StringVar()
         self.to_var    = tk.StringVar()
+        self._upload_duplicate_var = tk.StringVar(value="Пропустить совпадения")
         self.year_var  = tk.StringVar(value=str(datetime.date.today().year))
         self._shell_status_var = tk.StringVar(value="Готово")
         self._yaml_status_var = tk.StringVar(value="План не выбран")
@@ -155,6 +100,7 @@ class App(_AppBase):
         self.llm_url     = tk.StringVar(value="http://127.0.0.1:1234")
         self.llm_model   = tk.StringVar(value="qwen3.8-27b@iq3_xxs")
         self.llm_type    = tk.StringVar(value="openai")
+        self.llm_output_format = tk.StringVar(value="yaml")
         self.llm_timeout = tk.IntVar(value=900)
 
         # Plan API settings ("api" mode — hosted FitWeaver Plan API, e.g. someone
@@ -285,6 +231,8 @@ class App(_AppBase):
             self.llm_model.set(data["llm_model"])
         if data.get("llm_type"):
             self.llm_type.set(data["llm_type"])
+        if data.get("llm_output_format") in ("yaml", "compact"):
+            self.llm_output_format.set(data["llm_output_format"])
         if data.get("llm_timeout"):
             try:
                 self.llm_timeout.set(int(data["llm_timeout"]))
@@ -298,6 +246,10 @@ class App(_AppBase):
             self.api_token.set(data["api_token"])
         if data.get("ui_mode") in ("simple", "expert"):
             self.ui_mode.set(data["ui_mode"])
+        if data.get("upload_duplicate_action") in (
+            "Пропустить совпадения", "Заменить назначение", "Создать копию"
+        ):
+            self._upload_duplicate_var.set(data["upload_duplicate_action"])
         self._on_ui_mode_change()
 
         if data.get("yaml_path"):
@@ -607,8 +559,10 @@ class App(_AppBase):
             "llm_url":           self.llm_url.get(),
             "llm_model":         self.llm_model.get(),
             "llm_type":          self.llm_type.get(),
+            "llm_output_format": self.llm_output_format.get(),
             "llm_timeout":       self.llm_timeout.get(),
             "llm_conn_mode":     self.llm_conn_mode.get(),
+            "upload_duplicate_action": self._upload_duplicate_var.get(),
             "api_url":           self.api_url.get(),
             # Plaintext, same as bot_config.yaml/api_config.yaml -- acceptable
             # for a single-user local desktop app, not a new risk class.
@@ -933,6 +887,11 @@ class App(_AppBase):
             actions, text="Отправить план в Garmin", style="Success.TButton",
             command=self._cmd_upload)
         self._quick_action_buttons["upload"].pack(side="left", padx=4)
+        ttk.Label(actions, text="При совпадении:", style="Muted.TLabel").pack(side="left", padx=(8, 3))
+        ttk.Combobox(
+            actions, textvariable=self._upload_duplicate_var, state="readonly", width=22,
+            values=("Пропустить совпадения", "Заменить назначение", "Создать копию"),
+        ).pack(side="left")
         ttk.Label(actions,
                   text="Нажмите тренировку → «Изменить тренировку»; сохранение обновит YAML. "
                        "Перетащите её, чтобы изменить дату.",
@@ -1027,6 +986,11 @@ class App(_AppBase):
         cb.pack(side="left", padx=(4, 10))
         ttk.Label(self._conn_own, text="Таймаут (с):", style="Muted.TLabel").pack(side="left")
         ttk.Entry(self._conn_own, textvariable=self.llm_timeout, width=6).pack(side="left", padx=(4, 10))
+        ttk.Label(self._conn_own, text="Вывод:", style="Muted.TLabel").pack(side="left")
+        ttk.Combobox(
+            self._conn_own, textvariable=self.llm_output_format, width=8,
+            values=("yaml", "compact"), state="readonly",
+        ).pack(side="left", padx=(4, 0))
 
         # ── "LLM автора" connection bar ───────────────────────────────────────
         self._conn_api = ttk.Frame(parent)
@@ -1809,6 +1773,7 @@ class App(_AppBase):
             messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
             return
         count = len(self.workouts)
+        duplicate_action = self._upload_duplicate_var.get()
         period = f"{self.from_var.get() or 'начало не задано'} — {self.to_var.get() or 'конец не задан'}"
         if not messagebox.askyesno(
                 "Отправить план в Garmin Connect",
@@ -1816,10 +1781,15 @@ class App(_AppBase):
                 f"План: {Path(self.yaml_path.get()).name}\n"
                 f"Профиль: {self._active_profile_email}\n"
                 f"Период: {period}\n"
-                f"Тренировок в плане: {count}\n\nПродолжить?",
+                f"Тренировок в плане: {count}\n"
+                f"При совпадении имени и даты: {duplicate_action.lower()}\n\nПродолжить?",
                 icon="warning", parent=self):
             return
         args = ["garmin-calendar"]
+        if duplicate_action == "Заменить назначение":
+            args.append("--replace-duplicates")
+        elif duplicate_action == "Создать копию":
+            args.append("--allow-duplicates")
         if self.yaml_path.get():
             args += ["--plan", self.yaml_path.get()]
         self._append_garmin_args(args)
@@ -1892,6 +1862,7 @@ class App(_AppBase):
         # to raw completions if chat fails or returns unusable content.
         kwargs = {"model": self.llm_model.get(), "base_url": self.llm_url.get(),
                   "api_type": self.llm_type.get(), "openai_mode": "auto",
+                  "output_format": self.llm_output_format.get(),
                   # Re-running an edited plan regenerates only the changed workouts.
                   "segment_cache_dir": ARTIFACTS_DIR / "llm_segment_cache"}
         if for_generation:
@@ -1989,7 +1960,7 @@ class App(_AppBase):
 
         from garmin_fit.marked_plan import is_marked_plan
         marked = is_marked_plan(plan_text)
-        hr_zones = self._builder_hr_zones() if marked else {}
+        hr_zones = self._builder_hr_zones()
         if marked:
             self._set_progress("⏳ Разбираю размеченный план (без LLM)…")
         else:
@@ -2011,7 +1982,9 @@ class App(_AppBase):
                     client = self._make_llm_client(for_generation=True)
                     client.cancel_event = cancel_event
                     client.progress_callback = lambda info: self.after(0, self._on_llm_progress, info)
-                    result = build_plan_draft(client, plan_text, max_retries=1)
+                    result = build_plan_draft(
+                        client, plan_text, max_retries=1, hr_zones=hr_zones,
+                    )
                 if cancel_event.is_set():
                     raise GenerationCancelled("cancelled")  # API mode cannot abort mid-request
 
@@ -2176,1472 +2149,6 @@ class App(_AppBase):
             self._reload_yaml()
             self._set_progress(f"Сохранено: {Path(path).name}", GREEN)
             self._nb.select(0)
-
-    # ── Builder tab (visual, no-LLM workout construction) ─────────────────────
-    def _build_builder_tab(self, parent):
-        from garmin_fit.workout_builder import BLOCK_DEFS, TEMPLATES
-
-        self._build_page_header(
-            parent, "Визуальный конструктор", "Соберите новую тренировку из блоков, шаблонов и повторов")
-        # Top bar: filename + templates
-        top = ttk.Frame(parent)
-        top.pack(fill="x", pady=(0, 4))
-        ttk.Label(top, text="Тренировка:", style="Muted.TLabel").pack(side="left")
-        self._builder_filename_var = tk.StringVar()
-        ttk.Entry(top, textvariable=self._builder_filename_var, width=32).pack(
-            side="left", padx=(4, 12))
-        ttk.Label(top, text="Дата и тип задаются в имени Wнеделя_ММ-ДД_…",
-                  style="Muted.TLabel").pack(side="left", padx=(0, 8))
-        for key, (label, _factory) in TEMPLATES.items():
-            ttk.Button(top, text=label,
-                       command=lambda k=key: self._builder_apply_template(k)).pack(side="left", padx=2)
-        ttk.Button(top, text="Очистить", command=self._builder_clear).pack(side="left", padx=(12, 2))
-        tk.Label(parent, text="Имя по шаблону W{неделя}_{ММ-ДД}_{День}_{Тип}_{Детали}, "
-                              "иначе тренировка не появится в календаре по дате",
-                 bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w").pack(fill="x", pady=(0, 6))
-
-        # Personal template library (per-profile)
-        my_templates_bar = ttk.Frame(parent)
-        my_templates_bar.pack(fill="x", pady=(0, 6))
-        ttk.Label(my_templates_bar, text="Мои шаблоны:", style="Muted.TLabel").pack(side="left")
-        self._builder_my_templates_frame = ttk.Frame(my_templates_bar)
-        self._builder_my_templates_frame.pack(side="left", padx=(6, 12))
-        ttk.Button(my_templates_bar, text="💾  Сохранить как шаблон",
-                   command=self._builder_save_as_template).pack(side="left")
-
-        ttk.Separator(parent).pack(fill="x", pady=(0, 6))
-
-        body = ttk.Frame(parent)
-        body.pack(fill="both", expand=True)
-
-        # Palette
-        palette = tk.Frame(body, bg=BG, width=170)
-        palette.pack(side="left", fill="y")
-        palette.pack_propagate(False)
-        ttk.Label(palette, text="БЛОКИ", style="Section.TLabel").pack(anchor="w", pady=(0, 4))
-        for key, block_def in BLOCK_DEFS.items():
-            ttk.Button(palette, text=block_def.label,
-                       command=lambda k=key: self._builder_add_block(k)).pack(fill="x", pady=2)
-
-        ttk.Separator(body, orient="vertical").pack(side="left", fill="y", padx=4)
-
-        # Sequence list
-        sequence = ttk.Frame(body)
-        sequence.pack(side="left", fill="both", expand=True)
-
-        repeat_bar = ttk.Frame(sequence)
-        repeat_bar.pack(fill="x", pady=(0, 4))
-        self._builder_repeat_btn = ttk.Button(
-            repeat_bar, text="🔁  Повторить ×N", state="disabled", command=self._builder_add_repeat)
-        self._builder_repeat_btn.pack(side="left")
-        self._builder_repeat_count = tk.StringVar(value="4")
-        ttk.Spinbox(repeat_bar, from_=2, to=20, textvariable=self._builder_repeat_count,
-                    width=4).pack(side="left", padx=(6, 6))
-        tk.Label(repeat_bar, text="выделите блоки: клик, затем Shift+клик",
-                 bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left")
-
-        seq_container = ttk.Frame(sequence)
-        seq_container.pack(fill="both", expand=True)
-        self._builder_canvas = tk.Canvas(seq_container, bg=BG2, highlightthickness=0)
-        seq_vsb = ttk.Scrollbar(seq_container, orient="vertical", command=self._builder_canvas.yview)
-        self._builder_canvas.configure(yscrollcommand=seq_vsb.set)
-        seq_vsb.pack(side="right", fill="y")
-        self._builder_canvas.pack(side="left", fill="both", expand=True)
-
-        self._builder_list_frame = tk.Frame(self._builder_canvas, bg=BG2)
-        self._builder_list_win = self._builder_canvas.create_window(
-            (0, 0), window=self._builder_list_frame, anchor="nw")
-        self._builder_list_frame.bind("<Configure>", self._builder_on_frame_resize)
-        self._builder_canvas.bind("<Configure>", self._builder_on_canvas_resize)
-        self._builder_canvas.bind("<MouseWheel>", self._builder_scroll)
-
-        ttk.Separator(body, orient="vertical").pack(side="left", fill="y", padx=4)
-
-        # Block editor
-        self._builder_editor_frame = tk.Frame(body, bg=BG, width=250)
-        self._builder_editor_frame.pack(side="left", fill="y")
-        self._builder_editor_frame.pack_propagate(False)
-
-        ttk.Separator(parent).pack(fill="x", pady=6)
-
-        bottom = ttk.Frame(parent)
-        bottom.pack(fill="x")
-        self._builder_validation_lbl = tk.Label(bottom, text="Добавьте хотя бы один блок",
-                                                 bg=BG, fg=MUTED, font=("Segoe UI", 9))
-        self._builder_validation_lbl.pack(side="left")
-        builder_actions = ttk.Frame(bottom)
-        builder_actions.pack(side="right")
-        self._builder_add_btn = ttk.Button(builder_actions, text="Добавить в локальный план",
-                                           style="Primary.TButton", state="disabled",
-                                           command=self._builder_commit)
-        self._builder_add_btn.pack(side="left", padx=3)
-        self._builder_save_yaml_btn = ttk.Button(
-            builder_actions, text="Сохранить YAML", state="disabled",
-            command=self._builder_export_yaml)
-        self._builder_save_yaml_btn.pack(side="left", padx=3)
-        self._builder_send_garmin_btn = ttk.Button(
-            builder_actions, text="Отправить в Garmin", state="disabled",
-            command=self._builder_send_to_garmin)
-        self._builder_send_garmin_btn.pack(side="left", padx=3)
-
-        self._builder_render_list()
-        self._builder_render_editor()
-        self._builder_refresh_my_templates()
-
-    def _builder_scroll(self, e):
-        self._builder_canvas.yview_scroll(-1 * (e.delta // 120), "units")
-
-    def _builder_bind_wheel(self, widget):
-        widget.bind("<MouseWheel>", self._builder_scroll)
-        for child in widget.winfo_children():
-            self._builder_bind_wheel(child)
-
-    def _builder_on_frame_resize(self, _e=None):
-        self._builder_canvas.configure(scrollregion=self._builder_canvas.bbox("all"))
-
-    def _builder_on_canvas_resize(self, e):
-        self._builder_canvas.itemconfig(self._builder_list_win, width=e.width)
-
-    def _builder_hr_zones(self) -> dict[str, dict[str, int]]:
-        email = self._active_profile_email
-        if not email:
-            return {}
-        try:
-            from garmin_fit.profile_store import user_profile_yaml_path
-
-            path = user_profile_yaml_path(email)
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-            zones = data.get("hr_zones", {}) if isinstance(data, dict) else {}
-            return {
-                str(name).lower(): {"low": int(bounds["low"]), "high": int(bounds["high"])}
-                for name, bounds in zones.items()
-                if isinstance(bounds, dict) and bounds.get("low") and bounds.get("high")
-            }
-        except (OSError, ValueError, TypeError, yaml.YAMLError):
-            return {}
-
-    def _builder_has_repeat(self) -> bool:
-        return any(s.step_type == "repeat" for s in self._builder_steps)
-
-    def _builder_add_block(self, key: str):
-        from garmin_fit.workout_builder import BLOCK_DEFS
-        step = BLOCK_DEFS[key].make()
-        self._builder_steps.append(step)
-        self._builder_select(len(self._builder_steps) - 1)
-
-    def _builder_apply_template(self, key: str):
-        from garmin_fit.workout_builder import TEMPLATES
-        if self._builder_steps and not messagebox.askyesno(
-                "Заменить черновик?",
-                "Текущий черновик будет заменён шаблоном. Продолжить?"):
-            return
-        self._builder_edit_workout_id = None
-        self._builder_garmin_edit_event = None
-        self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
-        _label, factory = TEMPLATES[key]
-        self._builder_steps = factory()
-        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
-        self._builder_render_list()
-        self._builder_render_editor()
-
-    def _builder_clear(self):
-        self._builder_steps = []
-        self._builder_edit_workout_id = None
-        self._builder_garmin_edit_event = None
-        self._builder_filename_var.set("")
-        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
-        self._builder_render_list()
-        self._builder_render_editor()
-        self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
-
-    # ── Personal template library (per-profile, separate from the 3
-    #    built-in TEMPLATES) ──────────────────────────────────────────────
-    def _builder_refresh_my_templates(self):
-        for w in self._builder_my_templates_frame.winfo_children():
-            w.destroy()
-        if not self._active_profile_email:
-            return
-        from garmin_fit.profile_store import list_user_templates
-        templates = list_user_templates(self._active_profile_email)
-        for name in templates:
-            row = ttk.Frame(self._builder_my_templates_frame)
-            row.pack(side="left", padx=2)
-            ttk.Button(row, text=name,
-                       command=lambda n=name: self._builder_apply_my_template(n)).pack(side="left")
-            tk.Button(row, text="✕", command=lambda n=name: self._builder_delete_my_template(n),
-                      bg=BG, fg=RED, relief="flat", bd=0, font=("Segoe UI", 8),
-                      cursor="hand2").pack(side="left")
-
-    def _builder_save_as_template(self):
-        if not self._active_profile_email:
-            messagebox.showwarning(
-                "Нет профиля", "Выберите или создайте профиль (email в сайдбаре), "
-                "чтобы сохранять личные шаблоны.")
-            return
-        if not self._builder_steps:
-            messagebox.showwarning("Пустой черновик", "Добавьте хотя бы один блок перед сохранением.")
-            return
-        name = simpledialog.askstring("Сохранить как шаблон", "Название шаблона:", parent=self)
-        if not name:
-            return
-        from garmin_fit.plan_domain import step_to_data
-        from garmin_fit.profile_store import save_user_template
-        steps_data = [step_to_data(s) for s in self._builder_steps]
-        save_user_template(self._active_profile_email, name.strip(), steps_data)
-        self._log(f"[OK] Шаблон «{name}» сохранён")
-        self._builder_refresh_my_templates()
-
-    def _builder_apply_my_template(self, name: str):
-        if self._builder_steps and not messagebox.askyesno(
-                "Заменить черновик?",
-                "Текущий черновик будет заменён шаблоном. Продолжить?"):
-            return
-        self._builder_edit_workout_id = None
-        self._builder_garmin_edit_event = None
-        self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
-        from garmin_fit.plan_domain import step_from_data
-        from garmin_fit.profile_store import list_user_templates
-        steps_data = list_user_templates(self._active_profile_email).get(name, [])
-        self._builder_steps = [step_from_data(s) for s in steps_data]
-        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
-        self._builder_render_list()
-        self._builder_render_editor()
-
-    def _builder_delete_my_template(self, name: str):
-        if not messagebox.askyesno("Удалить шаблон", f"Удалить шаблон «{name}»?"):
-            return
-        from garmin_fit.profile_store import delete_user_template
-        delete_user_template(self._active_profile_email, name)
-        self._log(f"[OK] Шаблон «{name}» удалён")
-        self._builder_refresh_my_templates()
-
-    def _builder_select(self, idx: int):
-        self._builder_range_start = idx
-        self._builder_range_end = idx
-        self._builder_selected_index = idx
-        self._builder_render_list()
-        self._builder_render_editor()
-
-    def _builder_extend_range(self, idx: int):
-        if self._builder_range_start is None:
-            self._builder_select(idx)
-            return
-        self._builder_range_end = idx
-        self._builder_render_list()
-
-    def _builder_delete(self, idx: int):
-        from garmin_fit.workout_builder import delete_step_from_draft
-        try:
-            delete_step_from_draft(self._builder_steps, idx)
-        except ValueError as exc:
-            messagebox.showinfo("Нельзя удалить шаг", str(exc), parent=self)
-            return
-        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
-        self._builder_render_list()
-        self._builder_render_editor()
-
-    def _builder_move(self, idx: int, delta: int):
-        if self._builder_has_repeat():
-            messagebox.showinfo(
-                "Нельзя переместить",
-                "В тренировке уже есть блок повтора. Удалите его, чтобы менять "
-                "порядок остальных шагов, затем добавьте заново.")
-            return
-        new_idx = idx + delta
-        if not (0 <= new_idx < len(self._builder_steps)):
-            return
-        steps = self._builder_steps
-        steps[idx], steps[new_idx] = steps[new_idx], steps[idx]
-        self._builder_selected_index = new_idx
-        self._builder_range_start = self._builder_range_end = None
-        self._builder_render_list()
-        self._builder_render_editor()
-
-    def _builder_add_repeat(self):
-        from garmin_fit.workout_builder import insert_repeat_into_draft
-        start, end = self._builder_range_start, self._builder_range_end
-        if start is None or end is None:
-            return
-        lo, hi = min(start, end), max(start, end)
-        try:
-            count = int(self._builder_repeat_count.get())
-        except (TypeError, ValueError):
-            messagebox.showwarning("Некорректно", "Количество повторов должно быть числом.")
-            return
-        try:
-            insert_repeat_into_draft(self._builder_steps, lo, hi, count)
-        except ValueError as exc:
-            messagebox.showwarning("Нельзя повторить", str(exc))
-            return
-        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
-        self._builder_render_list()
-        self._builder_render_editor()
-
-    def _builder_update_repeat_button_state(self):
-        start, end = self._builder_range_start, self._builder_range_end
-        valid = False
-        if start is not None and end is not None and self._builder_steps:
-            from garmin_fit.workout_builder import compute_repeat_step
-
-            lo, hi = min(start, end), max(start, end)
-            try:
-                # Whole existing groups may be nested; a cut through one may not.
-                compute_repeat_step(self._builder_steps, lo, hi, 2)
-                valid = True
-            except ValueError:
-                valid = False
-        self._builder_repeat_btn.config(state="normal" if valid else "disabled")
-
-    def _builder_summarize(self, idx: int, step) -> str:
-        if step.step_type == "repeat":
-            return f"🔁  ×{step.count}  (шаги {step.back_to_offset + 1}-{idx})"
-        parts = []
-        if step.km is not None:
-            parts.append(f"{step.km} км")
-        if step.seconds is not None:
-            parts.append(f"{step.seconds} с")
-        if step.hr_low is not None and step.hr_high is not None:
-            parts.append(f"HR {step.hr_low}-{step.hr_high}")
-        if step.pace_fast and step.pace_slow:
-            parts.append(f"{step.pace_fast}-{step.pace_slow}")
-        if step.cad_low is not None and step.cad_high is not None:
-            parts.append(f"{step.cad_low}-{step.cad_high} шаг/мин")
-        if step.step_type == "sbu_block":
-            parts.append(f"{len(step.drills or [])} упражнений СБУ")
-        body = " · ".join(parts) if parts else step.step_type
-        intensity_ru = {"warmup": "Разминка", "active": "Активно",
-                        "recovery": "Восст.", "cooldown": "Заминка"}.get(step.intensity)
-        prefix = f"{intensity_ru}: " if intensity_ru else ""
-        return f"{idx + 1}. {prefix}{body}"
-
-    def _builder_row_bg(self, idx: int) -> str:
-        start, end = self._builder_range_start, self._builder_range_end
-        if start is not None and end is not None and min(start, end) <= idx <= max(start, end):
-            return BG3
-        return BG2
-
-    def _builder_render_row(self, idx: int, step):
-        bg = self._builder_row_bg(idx)
-        row = tk.Frame(self._builder_list_frame, bg=bg, pady=2)
-        row.pack(fill="x", padx=4, pady=1)
-
-        color = PURPLE if step.step_type == "repeat" else STEP_INTENSITY_COLORS.get(
-            step.intensity, DEFAULT_WO_COLOR)
-        tk.Label(row, text=" ", bg=color, width=2).pack(side="left", padx=(4, 6))
-
-        lbl = tk.Label(row, text=self._builder_summarize(idx, step), bg=bg, fg=FG,
-                       font=("Segoe UI", 9), anchor="w")
-        lbl.pack(side="left", fill="x", expand=True)
-
-        for widget in (row, lbl):
-            widget.bind("<Button-1>", lambda e, i=idx: self._builder_select(i))
-            widget.bind("<Shift-Button-1>", lambda e, i=idx: self._builder_extend_range(i))
-
-        tk.Button(row, text="✕", command=lambda i=idx: self._builder_delete(i),
-                  bg=bg, fg=RED, relief="flat", bd=0, font=("Segoe UI", 9),
-                  cursor="hand2").pack(side="right", padx=4)
-        if step.step_type != "repeat":
-            tk.Button(row, text="▼", command=lambda i=idx: self._builder_move(i, 1),
-                      bg=bg, fg=FG, relief="flat", bd=0, font=("Segoe UI", 7),
-                      cursor="hand2").pack(side="right", padx=1)
-            tk.Button(row, text="▲", command=lambda i=idx: self._builder_move(i, -1),
-                      bg=bg, fg=FG, relief="flat", bd=0, font=("Segoe UI", 7),
-                      cursor="hand2").pack(side="right", padx=1)
-
-    def _builder_render_list(self):
-        for w in self._builder_list_frame.winfo_children():
-            w.destroy()
-        for idx, step in enumerate(self._builder_steps):
-            self._builder_render_row(idx, step)
-        self._builder_bind_wheel(self._builder_list_frame)
-        self._builder_update_repeat_button_state()
-        self._builder_update_validation()
-
-    def _builder_render_editor(self):
-        for w in self._builder_editor_frame.winfo_children():
-            w.destroy()
-        self._builder_input_errors.clear()
-        idx = self._builder_selected_index
-        if idx is None or not (0 <= idx < len(self._builder_steps)):
-            tk.Label(self._builder_editor_frame, text="Выберите блок слева",
-                     bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=230,
-                     justify="left").pack(anchor="w", pady=8)
-            return
-        step = self._builder_steps[idx]
-        ttk.Label(self._builder_editor_frame, text=f"Блок №{idx + 1}",
-                  style="Section.TLabel").pack(anchor="w", pady=(4, 8))
-
-        if step.step_type == "repeat":
-            ttk.Label(self._builder_editor_frame, text="Повторов:",
-                      style="Muted.TLabel").pack(anchor="w")
-            count_var = tk.StringVar(value=str(step.count))
-            count_error = tk.StringVar()
-
-            def _on_count_change(_e=None, target_entry=None, s=step, v=count_var,
-                                 err=count_error):
-                value, error = parse_repeat_count(v.get())
-                err.set(error or "")
-                target_entry.configure(style="Invalid.TEntry" if error else "TEntry")
-                if error:
-                    self._builder_input_errors.add((idx, "count"))
-                    self._builder_update_validation()
-                    target_entry.focus_set()
-                    return
-                self._builder_input_errors.discard((idx, "count"))
-                s.count = value
-                self._builder_render_list()
-
-            entry = ttk.Entry(self._builder_editor_frame, textvariable=count_var, width=8)
-            entry.pack(anchor="w")
-            entry.bind("<FocusOut>", lambda e, fn=_on_count_change, target=entry: fn(e, target))
-            entry.bind("<Return>", lambda e, fn=_on_count_change, target=entry: fn(e, target))
-            ttk.Label(self._builder_editor_frame, textvariable=count_error,
-                      style="Error.TLabel", wraplength=230, justify="left").pack(
-                          anchor="w", pady=(2, 6))
-            ttk.Label(self._builder_editor_frame,
-                      text=f"Повторяет шаги {step.back_to_offset + 1}-{idx}",
-                      style="Muted.TLabel", wraplength=230, justify="left").pack(anchor="w")
-            return
-
-        if step.step_type == "sbu_block":
-            ttk.Label(self._builder_editor_frame, text="Упражнения СБУ (по умолчанию):",
-                      style="Muted.TLabel", wraplength=230, justify="left").pack(anchor="w", pady=(0, 4))
-            for d in (step.drills or []):
-                tk.Label(self._builder_editor_frame, text=f"· {d.name} — {d.seconds}с × {d.reps}",
-                         bg=BG, fg=FG, font=("Segoe UI", 9), anchor="w").pack(anchor="w")
-            return
-
-        for field_name, label, py_type in _STEP_TYPE_FIELDS.get(step.step_type, ()):
-            ttk.Label(self._builder_editor_frame, text=f"{label}:",
-                      style="Muted.TLabel").pack(anchor="w")
-            current = getattr(step, field_name)
-            var = tk.StringVar(value="" if current is None else str(current))
-            field_error = tk.StringVar()
-
-            def _on_field_change(_e=None, target_entry=None, s=step, fn=field_name,
-                                 v=var, t=py_type, err=field_error):
-                value, error = parse_builder_value(fn, v.get(), t)
-                err.set(error or "")
-                target_entry.configure(style="Invalid.TEntry" if error else "TEntry")
-                if error:
-                    self._builder_input_errors.add((idx, fn))
-                    self._builder_update_validation()
-                    target_entry.focus_set()
-                    return
-                self._builder_input_errors.discard((idx, fn))
-                setattr(s, fn, value)
-                self._builder_render_list()
-
-            entry = ttk.Entry(self._builder_editor_frame, textvariable=var, width=16)
-            entry.pack(anchor="w")
-            entry.bind("<FocusOut>", lambda e, fn=_on_field_change, target=entry: fn(e, target))
-            entry.bind("<Return>", lambda e, fn=_on_field_change, target=entry: fn(e, target))
-            ttk.Label(self._builder_editor_frame, textvariable=field_error,
-                      style="Error.TLabel", wraplength=230, justify="left").pack(
-                          anchor="w", pady=(2, 6))
-
-        if step.step_type in {"dist_hr", "time_hr"}:
-            zones = self._builder_hr_zones()
-            zone_choices = {
-                f"Z{index} · {zones.get(f'zone{index}', {}).get('low', '?')}–"
-                f"{zones.get(f'zone{index}', {}).get('high', '?')} bpm": zones[f"zone{index}"]
-                for index in range(1, 6) if f"zone{index}" in zones
-            }
-            if zone_choices:
-                ttk.Label(self._builder_editor_frame, text="Подставить пульсовую зону:",
-                          style="Muted.TLabel").pack(anchor="w")
-                zone_var = tk.StringVar()
-
-                def _apply_zone(_e=None, s=step, v=zone_var, choices=zone_choices):
-                    bounds = choices.get(v.get())
-                    if bounds:
-                        s.hr_low, s.hr_high = bounds["low"], bounds["high"]
-                        self._builder_render_list()
-                        self._builder_render_editor()
-                        self._builder_update_validation()
-
-                zone_cb = ttk.Combobox(
-                    self._builder_editor_frame, textvariable=zone_var, width=25,
-                    values=list(zone_choices), state="readonly")
-                zone_cb.pack(anchor="w", pady=(0, 6))
-                zone_cb.bind("<<ComboboxSelected>>", _apply_zone)
-            else:
-                ttk.Label(
-                    self._builder_editor_frame,
-                    text="Настройте пульсовые зоны в профиле, чтобы выбирать Z1–Z5.",
-                    style="Muted.TLabel", wraplength=230, justify="left").pack(
-                        anchor="w", pady=(0, 6))
-
-        ttk.Label(self._builder_editor_frame, text="Интенсивность:",
-                  style="Muted.TLabel").pack(anchor="w")
-        intensity_var = tk.StringVar(value=step.intensity or "")
-
-        def _on_intensity_change(_e=None, s=step, v=intensity_var):
-            s.intensity = v.get() or None
-            self._builder_render_list()
-
-        cb = ttk.Combobox(self._builder_editor_frame, textvariable=intensity_var, width=13,
-                          values=["warmup", "active", "recovery", "cooldown"], state="readonly")
-        cb.pack(anchor="w", pady=(0, 6))
-        cb.bind("<<ComboboxSelected>>", _on_intensity_change)
-
-    def _builder_update_validation(self):
-        from garmin_fit.workout_builder import validate_draft
-        if self._builder_input_errors:
-            self._builder_validation_lbl.config(
-                text="Исправьте ошибки в полях блока", fg=RED)
-            self._builder_add_btn.config(state="disabled")
-            self._builder_update_action_availability(False)
-            return
-        filename = self._builder_filename_var.get().strip()
-        if not self._builder_steps:
-            self._builder_validation_lbl.config(text="Добавьте хотя бы один блок", fg=MUTED)
-            self._builder_add_btn.config(state="disabled")
-            self._builder_update_action_availability(False)
-            return
-        if not filename:
-            self._builder_validation_lbl.config(text="Укажите имя тренировки", fg=YELLOW)
-            self._builder_add_btn.config(state="disabled")
-            self._builder_update_action_availability(False)
-            return
-        errors, warnings = validate_draft(filename, filename, self._builder_steps)
-        if errors:
-            self._builder_validation_lbl.config(text=f"Ошибка: {errors[0]}", fg=RED)
-            self._builder_add_btn.config(state="disabled")
-            self._builder_update_action_availability(False)
-        elif warnings:
-            self._builder_validation_lbl.config(
-                text=(f"Готово, {ru_count(len(warnings), 'предупреждение', 'предупреждения', 'предупреждений')}"
-                      if self._store is not None else
-                      f"Готово · {len(warnings)} предупреждений; сохраните YAML или отправьте в Garmin"),
-                fg=YELLOW)
-            self._builder_add_btn.config(state="normal")
-            self._builder_update_action_availability(True)
-        else:
-            self._builder_validation_lbl.config(
-                text=("Готово к добавлению ✓" if self._store is not None else
-                      "Готово · сохраните YAML или отправьте в Garmin"), fg=GREEN)
-            self._builder_add_btn.config(state="normal")
-            self._builder_update_action_availability(True)
-
-    def _builder_update_action_availability(self, valid: bool) -> None:
-        if not hasattr(self, "_builder_save_yaml_btn"):
-            return
-        self._builder_add_btn.configure(
-            state="normal" if valid and (
-                self._store is not None or (
-                    self._builder_garmin_edit_event is not None
-                    and self._builder_garmin_edit_event.get("profile_email")
-                    == self._active_profile_email
-                )
-            ) else "disabled")
-        self._builder_save_yaml_btn.configure(state="normal" if valid else "disabled")
-        self._builder_send_garmin_btn.configure(
-            state="normal" if valid and self._active_profile_email
-            and self._builder_garmin_edit_event is None else "disabled")
-
-    def _builder_current_workout(self):
-        from garmin_fit.plan_domain import Workout
-
-        filename = self._builder_filename_var.get().strip()
-        if not filename or not self._builder_steps:
-            return None
-        return Workout(
-            filename=filename,
-            name=filename,
-            desc="",
-            type_code="mixed",
-            steps=list(self._builder_steps),
-        )
-
-    def _builder_export_yaml(self) -> None:
-        from garmin_fit.plan_domain import WorkoutPlan, plan_to_data
-        from garmin_fit.workout_builder import validate_draft
-
-        workout = self._builder_current_workout()
-        if workout is None:
-            return
-        errors, _warnings = validate_draft(workout.filename, workout.name, workout.steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
-            return
-        path = filedialog.asksaveasfilename(
-            title="Сохранить тренировку в YAML",
-            defaultextension=".yaml",
-            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
-            initialdir=PROJECT_ROOT / "Plan",
-            initialfile=f"{Path(workout.filename).stem}.yaml",
-        )
-        if not path:
-            return
-        data = plan_to_data(WorkoutPlan(workouts=[workout]))
-        atomic_write_text(path, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
-        self._result_var.set(f"YAML сохранён: {Path(path).name}")
-        self._log(f"[OK] YAML тренировки сохранён: {path}")
-
-    def _builder_send_to_garmin(self) -> None:
-        from garmin_fit.garmin_step_mapper import extract_date_from_filename
-        from garmin_fit.workout_builder import validate_draft
-
-        workout = self._builder_current_workout()
-        if workout is None:
-            return
-        if not self._active_profile_email:
-            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
-            return
-        errors, _warnings = validate_draft(workout.filename, workout.name, workout.steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
-            return
-        year_str = self.year_var.get().strip()
-        year = int(year_str) if year_str.isdigit() else None
-        scheduled_date = extract_date_from_filename(workout.filename, year=year)
-        if not scheduled_date:
-            scheduled_date = simpledialog.askstring(
-                "Дата тренировки", "Дата для календаря Garmin (ГГГГ-ММ-ДД):", parent=self)
-        if not scheduled_date:
-            return
-        try:
-            scheduled_date = datetime.date.fromisoformat(scheduled_date).isoformat()
-        except ValueError:
-            messagebox.showerror(
-                "Неверная дата", "Введите дату в формате ГГГГ-ММ-ДД.", parent=self)
-            return
-        if not messagebox.askyesno(
-                "Отправить тренировку в Garmin Connect",
-                f"Будет загружена и назначена реальная тренировка.\n\n"
-                f"Тренировка: {workout.name}\nДата: {scheduled_date}\n"
-                f"Профиль: {self._active_profile_email}\n\nПродолжить?",
-                icon="warning", parent=self):
-            return
-        if not self._begin_operation("Отправка тренировки в Garmin"):
-            return
-        self._result_var.set("Отправляю тренировку и назначаю её на выбранную дату…")
-
-        def worker():
-            try:
-                from garmin_fit.garmin_calendar_export import GarminCalendarExporter
-                from garmin_fit.workflow import _connect_garmin_cli_client
-
-                client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                result = GarminCalendarExporter(client).upload_and_schedule(
-                    workout, date=scheduled_date)
-                if result.error:
-                    if result.workout_id:
-                        message = (
-                            f"Тренировка загружена (ID {result.workout_id}), "
-                            f"но назначить её на {scheduled_date} не удалось: {result.error}"
-                        )
-                    else:
-                        message = f"Не удалось отправить тренировку: {result.error}"
-                    success = False
-                else:
-                    message = f"Тренировка отправлена и назначена на {scheduled_date}."
-                    success = True
-                self.after(0, self._result_var.set, message)
-                self.after(0, self._log, f"{'[OK]' if success else '[ERR]'} {message}")
-                self.after(0, self._record_gc_operation,
-                           "Отправка из конструктора", success, message)
-                self.after(0, self._end_operation, success)
-                if success:
-                    self.after(0, self._nb.select, 3)
-                    self.after(0, self._gc_calendar_load)
-            except Exception as exc:
-                message = self._gc_friendly_error(exc, "загрузку тренировки")
-                self.after(0, self._result_var.set, f"Ошибка отправки: {message}")
-                self.after(0, self._log, f"[ERR] Отправка из конструктора: {message}")
-                self.after(0, self._record_gc_operation,
-                           "Отправка из конструктора", False, message)
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _builder_commit(self):
-        from garmin_fit.workout_builder import validate_draft
-
-        filename = self._builder_filename_var.get().strip()
-        if not filename or not self._builder_steps:
-            return
-        if self._store is None:
-            messagebox.showwarning(
-                "Нет плана", "Сначала откройте или создайте YAML план вверху окна.")
-            return
-        errors, warnings = validate_draft(filename, filename, self._builder_steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors))
-            return
-
-        self._store.add_workout(filename=filename, name=filename, steps=self._builder_steps)
-        self._log(f"[OK] Тренировка «{filename}» добавлена в план")
-
-        from garmin_fit.plan_domain import plan_to_data
-        data = plan_to_data(self._store.get_plan())
-        self.workouts = self._parse_workouts(data)
-        self._draw_calendar()
-
-        self._builder_clear()
-
-    def _builder_save_edit(self):
-        from garmin_fit.workout_builder import validate_draft
-
-        workout_id = self._builder_edit_workout_id
-        filename = self._builder_filename_var.get().strip()
-        if workout_id is None or not filename or not self._builder_steps:
-            return
-        errors, warnings = validate_draft(filename, filename, self._builder_steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
-            return
-        try:
-            self._store.replace_workout_steps(
-                workout_id, self._builder_steps, filename=filename)
-        except Exception as exc:
-            messagebox.showerror("Не удалось сохранить", str(exc), parent=self)
-            return
-        from garmin_fit.plan_domain import plan_to_data
-        self.workouts = self._parse_workouts(plan_to_data(self._store.get_plan()))
-        updated_workout = next(
-            (item for item in self.workouts if item.get("filename") == filename), None)
-        if updated_workout and updated_workout.get("date"):
-            self.cal_month = datetime.date.fromisoformat(
-                updated_workout["date"]).replace(day=1)
-        self._draw_calendar()
-        self._builder_clear()
-        if updated_workout is not None:
-            self._show_detail(updated_workout)
-        self._nb.select(0)
-        self._result_var.set(f"Тренировка сохранена в YAML: {filename}")
-        self._log(f"[OK] Изменения сохранены в {self.yaml_path.get()}: «{filename}»")
-
-    def _builder_replace_garmin_event(self) -> None:
-        event = self._builder_garmin_edit_event
-        workout = self._builder_current_workout()
-        if not event or workout is None:
-            return
-        if event.get("profile_email") != self._active_profile_email:
-            messagebox.showwarning(
-                "Профиль изменён",
-                "Выберите исходный профиль Garmin и снова откройте тренировку из календаря.",
-                parent=self,
-            )
-            return
-        from garmin_fit.workout_builder import validate_draft
-
-        errors, _warnings = validate_draft(
-            workout.filename or "", workout.name or "", self._builder_steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
-            return
-        if not messagebox.askyesno(
-            "Сохранить изменения в Garmin Connect",
-            f"Загрузить новую версию «{workout.name}» на {event['date']} и убрать "
-            "старое назначение из календаря?\n\n"
-            "Исходный шаблон останется в библиотеке Garmin.",
-            parent=self,
-        ):
-            return
-        if not self._begin_operation("Обновление тренировки Garmin"):
-            return
-        workout.desc = event.get("description", "")
-        profile_email = self._active_profile_email
-        password = self.pass_var.get() or None
-        self._result_var.set("Отправляю изменённую тренировку в Garmin Connect…")
-
-        def worker() -> None:
-            try:
-                from garmin_fit.garmin_calendar_edit import replace_scheduled_workout
-                from garmin_fit.workflow import _connect_garmin_cli_client
-
-                client = _connect_garmin_cli_client(
-                    email=profile_email,
-                    password=password,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                new_id = replace_scheduled_workout(
-                    client, workout,
-                    old_schedule_id=event["schedule_id"],
-                    date=event["date"],
-                )
-                message = (
-                    f"Тренировка Garmin обновлена на {event['date']} · новая версия ID {new_id}. "
-                    "Исходный шаблон сохранён в библиотеке."
-                )
-                self.after(0, self._result_var.set, message)
-                self.after(0, self._log, f"[OK] {message}")
-                self.after(0, self._record_gc_operation, "Изменение тренировки", True, message)
-                self.after(0, self._builder_clear)
-                self.after(0, self._nb.select, 3)
-                self.after(0, self._gc_views.select, 0)
-                self.after(0, self._end_operation, True)
-                self.after(150, self._gc_calendar_load)
-            except Exception as exc:
-                detail = self._gc_friendly_error(exc, "изменение тренировки")
-                self.after(0, self._result_var.set, f"Не удалось обновить Garmin: {detail}")
-                self.after(0, self._log, f"[ERR] Обновление Garmin: {detail}")
-                self.after(0, self._record_gc_operation, "Изменение тренировки", False, detail)
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    # ── Garmin Connect tab ────────────────────────────────────────────────────
-    def _build_garmin_tab(self, parent):
-        self._build_page_header(
-            parent, "Garmin Connect", "Календарь аккаунта и сохранённые тренировки")
-
-        self._gc_views = ttk.Notebook(parent)
-        self._gc_views.pack(fill="both", expand=True)
-        calendar_tab = ttk.Frame(self._gc_views, padding=(6, 6))
-        library_tab = ttk.Frame(self._gc_views, padding=(6, 6))
-        self._gc_views.add(calendar_tab, text="Календарь Garmin")
-        self._gc_views.add(library_tab, text="Библиотека тренировок")
-
-        calendar_bar = ttk.Frame(calendar_tab)
-        calendar_bar.pack(fill="x", pady=(0, 6))
-        ttk.Button(calendar_bar, text="◀", command=self._gc_calendar_prev, width=3).pack(side="left")
-        self._gc_calendar_month_lbl = tk.Label(
-            calendar_bar, text="", bg=BG, fg=PURPLE, font=("Segoe UI", 12, "bold"))
-        self._gc_calendar_month_lbl.pack(side="left", padx=10)
-        ttk.Button(calendar_bar, text="▶", command=self._gc_calendar_next, width=3).pack(side="left")
-        ttk.Button(calendar_bar, text="Обновить календарь",
-                   style="Primary.TButton", command=self._gc_calendar_load).pack(
-                       side="left", padx=(14, 8))
-        self._gc_calendar_status_var = tk.StringVar(value="Нажмите «Обновить календарь Garmin»")
-        ttk.Label(calendar_bar, textvariable=self._gc_calendar_status_var,
-                  style="Muted.TLabel").pack(side="left", padx=4)
-        self._gc_calendar_frame = tk.Frame(calendar_tab, bg=BG2)
-        self._gc_calendar_frame.pack(fill="both", expand=True)
-        self._gc_calendar_detail_var = tk.StringVar(value="")
-        ttk.Label(calendar_tab, textvariable=self._gc_calendar_detail_var,
-                  style="Status.TLabel").pack(fill="x", pady=(4, 0))
-        self._gc_edit_event_btn = ttk.Button(
-            calendar_tab, text="Изменить выбранную тренировку Garmin",
-            command=self._gc_edit_selected_event, state="disabled")
-        self._gc_edit_event_btn.pack(anchor="e", pady=(4, 0))
-        self._gc_calendar_render()
-
-        bar = ttk.Frame(library_tab)
-        bar.pack(fill="x", pady=(0, 6))
-        self._gc_check_btn = ttk.Button(
-            bar, text="✓  Проверить подключение", command=self._gc_check_connection)
-        self._gc_check_btn.pack(side="left", padx=(0, 8))
-        ttk.Button(bar, text="⇩  Экспорт диагностики",
-                   command=self._export_gc_diagnostics).pack(side="left", padx=(0, 8))
-        ttk.Button(bar, text="🔄  Загрузить из Garmin",
-                   style="Primary.TButton",
-                   command=self._gc_load).pack(side="left", padx=(0, 8))
-        self._gc_limit_frame = ttk.Frame(bar)
-        self._gc_limit_frame.pack(side="left")
-        ttk.Label(self._gc_limit_frame, text="Лимит:", style="Muted.TLabel").pack(side="left")
-        self._gc_limit = tk.StringVar(value="200")
-        ttk.Entry(self._gc_limit_frame, textvariable=self._gc_limit, width=6).pack(
-            side="left", padx=(4, 16))
-        self._gc_del_btn = ttk.Button(bar, text="🗑  Удалить выбранные (0)",
-                                      style="Danger.TButton",
-                                      state="disabled",
-                                      command=self._gc_delete_selected)
-        self._gc_del_btn.pack(side="left", padx=(0, 8))
-        self._gc_status = tk.Label(bar, text="Подключение ещё не проверено",
-                                   bg=BG, fg=MUTED, font=("Segoe UI", 9))
-        self._gc_status.pack(side="left")
-
-        ttk.Separator(library_tab).pack(fill="x", pady=(0, 6))
-
-        container = ttk.Frame(library_tab)
-        container.pack(fill="both", expand=True)
-
-        self._gc_canvas = tk.Canvas(container, bg=BG2, highlightthickness=0)
-        vsb = ttk.Scrollbar(container, orient="vertical",
-                            command=self._gc_canvas.yview)
-        self._gc_canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        self._gc_canvas.pack(side="left", fill="both", expand=True)
-
-        self._gc_list_frame = tk.Frame(self._gc_canvas, bg=BG2)
-        self._gc_list_win = self._gc_canvas.create_window(
-            (0, 0), window=self._gc_list_frame, anchor="nw")
-        self._gc_list_frame.bind("<Configure>", self._gc_on_frame_resize)
-        self._gc_canvas.bind("<Configure>", self._gc_on_canvas_resize)
-        self._gc_canvas.bind("<MouseWheel>", self._gc_scroll)
-
-        self._gc_summary = tk.Label(library_tab, text="", bg=BG3, fg=MUTED,
-                                    font=("Segoe UI", 9), anchor="w", padx=8, pady=3)
-        self._gc_summary.pack(fill="x", side="bottom", pady=(4, 0))
-
-        self._gc_workouts: list[dict] = []
-        self._gc_history: list[dict] = []
-        self._gc_checks:   dict[str, tk.BooleanVar] = {}
-        self._gc_month_ids: dict[str, list[str]] = {}
-
-        history_box = ttk.LabelFrame(library_tab, text="Последние операции", padding=4)
-        history_box.pack(fill="x", side="bottom", pady=(4, 0))
-        self._gc_history_tree = ttk.Treeview(
-            history_box, columns=("time", "action", "result"),
-            show="headings", height=4)
-        self._gc_history_tree.heading("time", text="Время")
-        self._gc_history_tree.heading("action", text="Операция")
-        self._gc_history_tree.heading("result", text="Результат")
-        self._gc_history_tree.column("time", width=58, stretch=False)
-        self._gc_history_tree.column("action", width=180, stretch=True)
-        self._gc_history_tree.column("result", width=210, stretch=True)
-        self._gc_history_tree.pack(fill="x")
-
-    def _gc_calendar_shift(self, months: int) -> None:
-        year = self._gc_calendar_month.year
-        month = self._gc_calendar_month.month + months
-        if month < 1:
-            year -= 1
-            month = 12
-        elif month > 12:
-            year += 1
-            month = 1
-        self._gc_calendar_month = self._gc_calendar_month.replace(year=year, month=month, day=1)
-        self._gc_scheduled_workouts = []
-        self._gc_selected_event = None
-        if hasattr(self, "_gc_edit_event_btn"):
-            self._gc_edit_event_btn.configure(state="disabled")
-        self._gc_calendar_detail_var.set("")
-        self._gc_calendar_render()
-        if self._active_profile_email:
-            self._gc_calendar_load()
-        else:
-            self._gc_calendar_status_var.set("Выберите профиль Garmin, чтобы загрузить календарь")
-
-    def _gc_calendar_prev(self) -> None:
-        self._gc_calendar_shift(-1)
-
-    def _gc_calendar_next(self) -> None:
-        self._gc_calendar_shift(1)
-
-    def _gc_calendar_render(self) -> None:
-        if not hasattr(self, "_gc_calendar_frame"):
-            return
-        for child in self._gc_calendar_frame.winfo_children():
-            child.destroy()
-        month = self._gc_calendar_month
-        self._gc_calendar_month_lbl.config(text=f"{MONTHS_RU[month.month - 1]} {month.year}")
-        by_date: dict[str, list[dict[str, str]]] = {}
-        for event in self._gc_scheduled_workouts:
-            by_date.setdefault(event["date"], []).append(event)
-        for col, day_name in enumerate(DAYS_RU):
-            tk.Label(self._gc_calendar_frame, text=day_name, bg=BG2, fg=ACCENT,
-                     font=("Segoe UI", 9, "bold"), pady=4).grid(
-                         row=0, column=col, sticky="ew", padx=1, pady=1)
-            self._gc_calendar_frame.columnconfigure(col, weight=1, uniform="gc_day")
-        weeks = calendar.monthcalendar(month.year, month.month)
-        for row_index, week in enumerate(weeks, start=1):
-            self._gc_calendar_frame.rowconfigure(row_index, weight=1, uniform="gc_week")
-            for col, day in enumerate(week):
-                cell = tk.Frame(self._gc_calendar_frame, bg=BG3 if day else BG2)
-                cell.grid(row=row_index, column=col, sticky="nsew", padx=1, pady=1)
-                if not day:
-                    continue
-                event_date = datetime.date(month.year, month.month, day).isoformat()
-                tk.Label(cell, text=str(day), bg=BG3, fg=FG,
-                         font=("Segoe UI", 8, "bold"), anchor="nw", padx=4).pack(fill="x")
-                for event in by_date.get(event_date, []):
-                    name = event["name"]
-                    color = WORKOUT_COLORS.get(self._infer_type(name), DEFAULT_WO_COLOR)
-                    chip = tk.Label(cell, text=name, bg=color, fg=BG,
-                                    font=("Segoe UI", 8, "bold"), anchor="w",
-                                    padx=4, pady=2, wraplength=145, justify="left")
-                    chip.pack(fill="x", padx=2, pady=1)
-                    chip.bind("<Button-1>", lambda _e, item=event: self._gc_calendar_show_event(item))
-
-    def _gc_calendar_show_event(self, event: dict[str, str]) -> None:
-        self._gc_selected_event = event
-        editable = bool(event.get("schedule_id"))
-        detail = f"Garmin Connect · {event['date']} · {event['name']}"
-        if not editable:
-            detail += " · Garmin не передал ID записи; обновите календарь, чтобы редактировать"
-        self._gc_calendar_detail_var.set(detail)
-        self._gc_edit_event_btn.configure(
-            state="normal" if editable else "disabled")
-
-    def _gc_edit_selected_event(self) -> None:
-        event = self._gc_selected_event
-        if not event or not event.get("schedule_id"):
-            return
-        if not self._active_profile_email:
-            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
-            return
-        profile_email = self._active_profile_email
-        password = self.pass_var.get() or None
-        if not self._begin_operation("Загрузка тренировки Garmin для редактирования"):
-            return
-        self._gc_calendar_status_var.set("Загружаю шаги тренировки Garmin…")
-
-        def worker() -> None:
-            try:
-                from garmin_fit.garmin_workout_import import workout_from_garmin
-                from garmin_fit.workflow import _connect_garmin_cli_client
-
-                client = _connect_garmin_cli_client(
-                    email=profile_email,
-                    password=password,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                schedule = client.get_scheduled_workout_by_id(event["schedule_id"])
-                if not isinstance(schedule, dict):
-                    raise RuntimeError("Garmin вернул неожиданный формат назначения")
-                workout_id = event.get("workout_id") or schedule.get("workoutId")
-                if not workout_id and isinstance(schedule.get("workout"), dict):
-                    workout_id = schedule["workout"].get("workoutId")
-                if not workout_id:
-                    raise RuntimeError("Garmin не вернул ID шаблона тренировки")
-                payload = client.get_workout_by_id(str(workout_id))
-                workout = workout_from_garmin(payload, date=event["date"])
-                resolved_event = dict(
-                    event, workout_id=str(workout_id),
-                    description=str(payload.get("description") or ""),
-                    profile_email=profile_email or "")
-                self.after(0, self._builder_load_garmin_event, workout, resolved_event)
-                self.after(0, self._record_gc_operation,
-                           "Открытие тренировки Garmin", True, workout.name or "")
-                self.after(0, self._end_operation, True)
-            except Exception as exc:
-                detail = self._gc_friendly_error(exc, "чтение тренировки")
-                self.after(0, self._gc_calendar_status_var.set,
-                           f"Не удалось открыть для редактирования: {detail}")
-                self.after(0, self._record_gc_operation,
-                           "Открытие тренировки Garmin", False, detail)
-                self.after(0, self._log, f"[ERR] Редактирование Garmin: {detail}")
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _builder_load_garmin_event(self, workout, event: dict[str, str]) -> None:
-        from garmin_fit.plan_domain import step_from_data, step_to_data
-
-        self._builder_clear()
-        self._builder_garmin_edit_event = event
-        self._builder_filename_var.set(workout.name or event["name"])
-        self._builder_steps = [step_from_data(step_to_data(step)) for step in workout.steps]
-        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
-        self._builder_add_btn.configure(
-            text="Сохранить в Garmin Connect", command=self._builder_replace_garmin_event)
-        self._builder_render_list()
-        self._builder_render_editor()
-        self._builder_update_validation()
-        self._nb.select(2)
-        self._result_var.set(
-            f"Открыта тренировка Garmin · {event['date']} · {len(self._builder_steps)} шагов")
-
-    def _gc_calendar_load(self) -> None:
-        if not self._active_profile_email:
-            messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
-            return
-        month = self._gc_calendar_month
-        if not self._begin_operation("Загрузка календаря Garmin"):
-            return
-        self._gc_selected_event = None
-        self._gc_edit_event_btn.configure(state="disabled")
-        self._gc_calendar_detail_var.set("")
-        self._gc_calendar_status_var.set("Загружаю события Garmin Connect…")
-
-        def worker():
-            try:
-                from garmin_fit.garmin_calendar_view import normalize_scheduled_workouts
-                from garmin_fit.workflow import _connect_garmin_cli_client
-
-                client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                get_month = getattr(client, "get_scheduled_workouts", None)
-                if not callable(get_month):
-                    raise RuntimeError(
-                        "Установленная версия garminconnect не поддерживает чтение календаря. "
-                        "Обновите Garmin-компонент приложения."
-                    )
-                events = normalize_scheduled_workouts(get_month(month.year, month.month))
-                stamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-                self.after(0, self._gc_calendar_set_events, events, stamp)
-                self.after(0, self._record_gc_operation,
-                           "Календарь Garmin", True, f"Получено событий: {len(events)}")
-                self.after(0, self._end_operation, True)
-            except Exception as exc:
-                detail = self._gc_friendly_error(exc, "чтение календаря")
-                self.after(0, self._gc_calendar_status_var.set, f"Не удалось загрузить: {detail}")
-                self.after(0, self._record_gc_operation, "Календарь Garmin", False, detail)
-                self.after(0, self._log, f"[ERR] Календарь Garmin: {detail}")
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _gc_calendar_set_events(self, events: list[dict[str, str]], stamp: str) -> None:
-        self._gc_scheduled_workouts = events
-        self._gc_calendar_render()
-        self._gc_calendar_status_var.set(
-            f"{ru_workouts(len(events))} · обновлено {stamp} · источник: Garmin Connect"
-        )
-        self._result_var.set(f"Календарь Garmin обновлён: {ru_workouts(len(events))}")
-
-    def _refresh_gc_history(self) -> None:
-        if not hasattr(self, "_gc_history_tree"):
-            return
-        for item in self._gc_history_tree.get_children():
-            self._gc_history_tree.delete(item)
-        for entry in self._gc_history[-8:][::-1]:
-            self._gc_history_tree.insert(
-                "", "end",
-                values=(entry.get("time", ""), entry.get("action", ""),
-                        entry.get("result", "")),
-            )
-
-    def _record_gc_operation(self, action: str, success: bool, result: str) -> None:
-        self._gc_history.append({
-            "time": datetime.datetime.now().strftime("%H:%M"),
-            "action": action,
-            "result": result,
-        })
-        self._gc_history = self._gc_history[-8:]
-        self._refresh_gc_history()
-        self._save_current_profile_session()
-
-    def _gc_scroll(self, e):
-        self._gc_canvas.yview_scroll(-1 * (e.delta // 120), "units")
-
-    def _gc_bind_wheel(self, widget):
-        widget.bind("<MouseWheel>", self._gc_scroll)
-        for child in widget.winfo_children():
-            self._gc_bind_wheel(child)
-
-    def _gc_on_frame_resize(self, _e=None):
-        self._gc_canvas.configure(scrollregion=self._gc_canvas.bbox("all"))
-
-    def _gc_on_canvas_resize(self, e):
-        self._gc_canvas.itemconfig(self._gc_list_win, width=e.width)
-
-    def _gc_check_connection(self):
-        if not self.email_var.get():
-            messagebox.showwarning("Нет email", "Сначала выберите профиль Garmin слева.")
-            return
-        if not self._begin_operation("Проверка подключения к Garmin"):
-            return
-        self._gc_status.config(text="⏳ Проверяю авторизацию Garmin Connect…", fg=YELLOW)
-
-        def worker():
-            try:
-                from garmin_fit.workflow import _connect_garmin_cli_client
-                client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                # A small read request verifies both authentication and API access.
-                client.get_workouts(0, 1)
-                self.after(0, self._gc_status.config,
-                           {"text": "✅ Garmin Connect подключён", "fg": GREEN})
-                self.after(0, self._record_gc_operation,
-                           "Проверка подключения", True, "Подключено")
-                self.after(0, self._end_operation, True)
-            except Exception as exc:
-                self.after(0, self._gc_status.config,
-                           {"text": f"❌ {self._gc_friendly_error(exc, 'вход')}", "fg": RED})
-                self.after(0, self._record_gc_operation,
-                           "Проверка подключения", False, self._gc_friendly_error(exc, "вход"))
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _export_gc_diagnostics(self):
-        path = filedialog.asksaveasfilename(
-            title="Сохранить диагностику Garmin",
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile="fitweaver_garmin_diagnostics.json",
-        )
-        if not path:
-            return
-        payload = {
-            "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
-            "profile_email": self.email_var.get().strip(),
-            "yaml_file": Path(self.yaml_path.get()).name if self.yaml_path.get() else "",
-            "history": self._gc_history[-8:],
-        }
-        try:
-            Path(path).write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            self._gc_status.config(text=f"Диагностика сохранена: {Path(path).name}", fg=GREEN)
-            self._log(f"[OK] Диагностика Garmin сохранена: {Path(path).name}")
-        except OSError as exc:
-            messagebox.showerror("Не удалось сохранить диагностику", str(exc), parent=self)
-
-    def _gc_load(self):
-        if not self.email_var.get():
-            messagebox.showwarning("Нет email", "Введите email в левой панели.")
-            return
-        if not self._begin_operation("Загрузка тренировок из Garmin"):
-            return
-        self._gc_status.config(text="⏳ Подключаюсь к Garmin Connect…", fg=YELLOW)
-        self._gc_clear_list()
-
-        def worker():
-            try:
-                from garmin_fit.workflow import _connect_garmin_cli_client
-                client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                limit = int(self._gc_limit.get() or 200)
-                workouts = client.get_workouts(0, limit)
-                self.after(0, self._gc_render, workouts)
-                self.after(0, self._record_gc_operation,
-                           "Загрузка тренировок", True, f"Получено: {len(workouts)}")
-                self.after(0, self._end_operation, True)
-                self.after(0, self._gc_update_del_btn)
-            except Exception as exc:
-                self.after(0, self._gc_status.config,
-                           {"text": f"❌ {exc}", "fg": RED})
-                self.after(0, self._record_gc_operation,
-                           "Загрузка тренировок", False, str(exc))
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _gc_clear_list(self):
-        self._gc_checks.clear()
-        self._gc_month_ids.clear()
-        for w in self._gc_list_frame.winfo_children():
-            w.destroy()
-        self._gc_update_del_btn()
-
-    def _gc_render(self, workouts: list[dict]):
-        self._gc_workouts = workouts
-        self._gc_clear_list()
-
-        from garmin_fit.garmin_step_mapper import extract_date_from_filename
-        year_str = self.year_var.get()
-        year = int(year_str) if year_str.isdigit() else None
-
-        by_month: dict[str, list[dict]] = {}
-        no_date:  list[dict] = []
-        for wo in workouts:
-            name = (wo.get("workoutName") or wo.get("name") or wo.get("title") or "")
-            date_str = extract_date_from_filename(name, year=year)
-            wo["_date"] = date_str
-            wo["_name"] = name
-            if date_str:
-                mk = date_str[:7]
-                by_month.setdefault(mk, []).append(wo)
-            else:
-                no_date.append(wo)
-
-        for mk in sorted(by_month.keys(), reverse=True):
-            self._gc_render_month(mk, sorted(by_month[mk],
-                                             key=lambda w: w["_date"], reverse=True))
-        if no_date:
-            self._gc_render_month("no_date", no_date)
-
-        # Bind wheel to all newly created widgets
-        self._gc_bind_wheel(self._gc_list_frame)
-
-        total     = len(workouts)
-        fitweaver = sum(1 for w in workouts if w.get("_date"))
-        self._gc_status.config(
-            text=f"✅ {ru_workouts(total)} · {fitweaver} с датой в имени", fg=GREEN)
-        self._gc_summary.config(
-            text=f"Сохранено: {total}  |  Дата указана в имени: {fitweaver}  |  Без метки даты: {len(no_date)}")
-
-    def _gc_render_month(self, month_key: str, workouts: list[dict]):
-        ids = [str(wo.get("workoutId") or wo.get("id") or "") for wo in workouts]
-        self._gc_month_ids[month_key] = ids
-
-        if month_key != "no_date":
-            try:
-                dt = datetime.date.fromisoformat(month_key + "-01")
-                label = f"В имени: {MONTHS_RU[dt.month - 1]} {dt.year}  ({len(workouts)})"
-            except ValueError:
-                label = f"{month_key}  ({len(workouts)})"
-        else:
-            label = f"Без метки даты в имени  ({len(workouts)})"
-
-        hdr = tk.Frame(self._gc_list_frame, bg=BG3)
-        hdr.pack(fill="x", pady=(10, 2), padx=4)
-        tk.Label(hdr, text=label, bg=BG3, fg=ACCENT,
-                 font=("Segoe UI", 10, "bold"), anchor="w",
-                 padx=8, pady=4).pack(side="left")
-
-        # "Select all" toggle for this section
-        sel_var = tk.BooleanVar(value=False)
-        def toggle_month(v=sel_var, section_ids=ids):
-            state = v.get()
-            for wid in section_ids:
-                if wid in self._gc_checks:
-                    self._gc_checks[wid].set(state)
-            self._gc_update_del_btn()
-
-        tk.Checkbutton(hdr, text="Все", variable=sel_var,
-                       bg=BG3, fg=MUTED, selectcolor=BG3,
-                       activebackground=BG3, font=("Segoe UI", 8),
-                       command=toggle_month).pack(side="right", padx=8)
-
-        for wo in workouts:
-            self._gc_render_row(wo)
-
-    def _gc_render_row(self, wo: dict):
-        row = tk.Frame(self._gc_list_frame, bg=BG2, pady=1)
-        row.pack(fill="x", padx=4, pady=1)
-
-        date_str = wo.get("_date") or ""
-        name     = wo.get("_name") or ""
-        wo_id    = str(wo.get("workoutId") or wo.get("id") or "")
-
-        # Checkbox
-        var = tk.BooleanVar(value=False)
-        self._gc_checks[wo_id] = var
-        tk.Checkbutton(row, variable=var, bg=BG2, selectcolor=BG3,
-                       activebackground=BG2,
-                       command=self._gc_update_del_btn).pack(side="left", padx=(4, 2))
-
-        # Date chip
-        date_lbl = date_str[5:] if date_str else "——"
-        tk.Label(row, text=date_lbl, bg=BG3, fg=MUTED,
-                 font=("Consolas", 9), width=6, anchor="center",
-                 padx=4, pady=3).pack(side="left", padx=(0, 6))
-
-        # Type colour badge
-        color = WORKOUT_COLORS.get(self._infer_type(name), DEFAULT_WO_COLOR)
-        tk.Label(row, text=" ", bg=color, width=2).pack(side="left", padx=(0, 6))
-
-        # Short name
-        short = re.sub(r"^W\d+_\d{2}-\d{2}_\w+_", "", name)
-        tk.Label(row, text=short or name, bg=BG2, fg=FG,
-                 font=("Segoe UI", 9), anchor="w").pack(side="left", fill="x", expand=True)
-
-        # Delete single
-        def _delete(wid=wo_id, wname=name, r=row):
-            if messagebox.askyesno("Удалить тренировку",
-                                   f"Удалить из Garmin Connect?\n\n{wname}",
-                                   icon="warning"):
-                self._gc_checks.pop(wid, None)
-                self._gc_delete_one(wid, r)
-
-        tk.Button(row, text="✕", bg=BG2, fg=RED, font=("Segoe UI", 9),
-                  relief="flat", cursor="hand2", bd=0, padx=6,
-                  command=_delete).pack(side="right", padx=4)
-
-    def _gc_update_del_btn(self):
-        n = sum(1 for v in self._gc_checks.values() if v.get())
-        if n:
-            self._gc_del_btn.config(text=f"🗑  Удалить выбранные ({n})",
-                                    state="normal")
-        else:
-            self._gc_del_btn.config(text="🗑  Удалить выбранные (0)",
-                                    state="disabled")
-
-    def _infer_type(self, name: str) -> str:
-        n = name.lower()
-        if "long"      in n or "длинн" in n: return "long"
-        if "interval"  in n or "интерв" in n: return "intervals"
-        if "tempo"     in n or "темп"  in n: return "tempo"
-        if "recovery"  in n or "восст" in n: return "recovery"
-        if "sbu"       in n or "сбу"   in n: return "sbu"
-        if "aerobic"   in n or "аэроб" in n: return "aerobic"
-        return ""
-
-    def _gc_friendly_error(self, exc: Exception, action: str = "операцию") -> str:
-        return garmin_error_message(exc, action)
-
-    def _gc_delete_one(self, workout_id: str, row_widget: tk.Frame):
-        if not self._begin_operation("Удаление тренировки из Garmin"):
-            return
-
-        def worker():
-            try:
-                from garmin_fit.workflow import _connect_garmin_cli_client
-                client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-                client.delete_workout(workout_id)
-                self.after(0, row_widget.destroy)
-                self.after(0, self._gc_update_del_btn)
-                self.after(0, self._gc_status.config,
-                           {"text": f"✅ Удалено {workout_id}, обновляю список…", "fg": GREEN})
-                self.after(0, self._record_gc_operation,
-                           "Удаление тренировки", True, f"Удалено: {workout_id}")
-                self.after(0, self._end_operation, True)
-                self.after(0, self._gc_load)
-            except Exception as exc:
-                self.after(0, messagebox.showerror,
-                           "Не удалось удалить", self._gc_friendly_error(exc, "удаление"))
-                self.after(0, self._gc_status.config,
-                           {"text": "❌ Ошибка удаления", "fg": RED})
-                self.after(0, self._record_gc_operation,
-                           "Удаление тренировки", False, self._gc_friendly_error(exc, "удаление"))
-                self.after(0, self._end_operation, False)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _gc_delete_selected(self):
-        to_delete = [(wid, v) for wid, v in self._gc_checks.items() if v.get()]
-        if not to_delete:
-            return
-        if not messagebox.askyesno(
-                "Удалить выбранные",
-                f"Удалить {ru_workouts(len(to_delete))} из Garmin Connect?\n\nЭто необратимо.",
-                icon="warning"):
-            return
-
-        if not self._begin_operation("Удаление выбранных тренировок"):
-            return
-
-        self._gc_del_btn.config(state="disabled")
-        self._gc_status.config(text=f"⏳ Удаляю {len(to_delete)} тренировок…", fg=YELLOW)
-
-        def worker():
-            try:
-                from garmin_fit.workflow import _connect_garmin_cli_client
-                client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
-                    prompt_mfa=self._gui_mfa_prompt,
-                )
-            except Exception as exc:
-                self.after(0, self._gc_status.config,
-                           {"text": f"❌ {exc}", "fg": RED})
-                self.after(0, self._record_gc_operation,
-                           "Удаление выбранных", False, str(exc))
-                self.after(0, self._end_operation, False)
-                return
-
-            deleted, failed, atp = 0, 0, 0
-            for wid, _var in to_delete:
-                try:
-                    client.delete_workout(wid)
-                    deleted += 1
-                except Exception as exc:
-                    msg = str(exc)
-                    if "ATP" in msg:
-                        atp += 1
-                    else:
-                        failed += 1
-
-            def finish():
-                parts = [f"✅ Удалено: {deleted}"]
-                if atp:    parts.append(f"ATP (пропущено): {atp}")
-                if failed: parts.append(f"Ошибок: {failed}")
-                self._gc_status.config(text="  |  ".join(parts),
-                                       fg=GREEN if not failed else YELLOW)
-                self._record_gc_operation(
-                    "Удаление выбранных", not failed,
-                    f"Удалено: {deleted}; ошибок: {failed}; ATP: {atp}",
-                )
-                self._end_operation(not failed)
-                self._gc_load()   # refresh list from Garmin after the batch
-
-            self.after(0, finish)
-
-        threading.Thread(target=worker, daemon=True).start()
 
     # ── LLM example ───────────────────────────────────────────────────────────
     def _insert_example(self):

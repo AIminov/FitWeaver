@@ -497,6 +497,7 @@ def workflow_garmin_calendar(
     from_date=None,
     to_date=None,
     allow_duplicates=False,
+    replace_duplicates=False,
 ):
     """
     Upload a YAML workout plan to Garmin Connect Calendar.
@@ -589,7 +590,8 @@ def workflow_garmin_calendar(
         plan, schedule=schedule, dry_run=dry_run, year=year,
         week_pause=week_pause, skip_past=skip_past,
         from_date=from_date, to_date=to_date,
-        skip_duplicates=not allow_duplicates,
+        skip_duplicates=not (allow_duplicates or replace_duplicates),
+        replace_duplicates=replace_duplicates,
     )
 
     # ------------------------------------------------------------------ summary

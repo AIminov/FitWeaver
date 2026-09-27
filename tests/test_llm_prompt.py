@@ -39,6 +39,7 @@ class TestLlmPrompt(unittest.TestCase):
         self.assertIn("Examples show syntax only", prompt)
         self.assertIn("EXAMPLE hills_series", prompt)
         self.assertIn("W09_03-04_Wed_Intervals_Hills_2x5x40m", prompt)
+        self.assertLess(prompt.index("SOURCE RULES"), prompt.index("EXAMPLE hills_series"))
 
     def test_unmatched_source_does_not_receive_unrelated_examples(self):
         examples = load_strict_examples(
