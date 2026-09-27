@@ -68,6 +68,11 @@ class FreeTextRulesTests(unittest.TestCase):
         # "10р" may mean 10 minutes or 10 km of warmup.
         self.assertIsNone(free_text_to_marked("10р + 5 км (4:50-5:00) + 10з"))
 
+    def test_cadence_is_not_mistaken_for_heart_rate(self):
+        for text in ("Бег 5 км, каденс 175-185", "Бег 5 км (175-185 шаг/мин)"):
+            steps = parse_workout_with_rules(text)["steps"]
+            self.assertEqual(steps, [{"type": "dist_cadence", "km": 5.0, "cad_low": 175, "cad_high": 185}])
+
     def test_hr_cap_becomes_60_to_cap(self):
         workout = parse_workout_with_rules("Лёгкий бег 8 км, пульс до 140")
         self.assertEqual(workout["steps"], [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 140}])

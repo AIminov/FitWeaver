@@ -370,21 +370,44 @@ def _measure(text: str) -> tuple[str, str]:
     return "Длительность", f"{value} сек"
 
 
-def _target(text: str) -> tuple[str, str] | None:
-    pace = _PACE_RANGE_RE.search(text)
+_CADENCE_RE = re.compile(
+    r"(?:каденс\w*|частот\w*(?:\s+шаг\w*)?|cadence|spm)\D{0,12}?(?P<low>\d{2,3})\s*[-–—]\s*(?P<high>\d{2,3})"
+    r"|(?P<low2>\d{2,3})\s*[-–—]\s*(?P<high2>\d{2,3})\s*(?:шаг\w*(?:\s*/\s*мин)?|spm)",
+    re.IGNORECASE,
+)
+
+
+def _targets(text: str) -> list[tuple[str, str]]:
+    """Every target stated in a step line, in reading order.
+
+    A cadence range is recognised by its label ("каденс", "частота шагов",
+    "шаг/мин") so it never becomes a heart-rate range. When a line names
+    more than one target, all are passed on and the marked parser keeps the
+    first with a warning (a Garmin step has one target).
+    """
+    found: list[tuple[int, str, str]] = []
+    cadence = _CADENCE_RE.search(text)
+    rest = text
+    if cadence:
+        low = int(cadence.group("low") or cadence.group("low2"))
+        high = int(cadence.group("high") or cadence.group("high2"))
+        found.append((cadence.start(), "Частота шагов", f"{low}-{high}"))
+        rest = text[: cadence.start()] + " " * (cadence.end() - cadence.start()) + text[cadence.end():]
+    pace = _PACE_RANGE_RE.search(rest)
     if pace:
-        return "Темп", f"{pace.group(1)}-{pace.group(2)} мин/км"
-    hr = _HR_RANGE_RE.search(text)
+        found.append((pace.start(), "Темп", f"{pace.group(1)}-{pace.group(2)} мин/км"))
+    hr = _HR_RANGE_RE.search(rest)
     if hr:
         low, high = int(hr.group(1)), int(hr.group(2))
-        if 40 <= low < high <= 230:
-            return "Пульс", f"{low}-{high} уд/мин"
-        raise _NotUnderstood
-    cap = _HR_CAP_RE.search(text)
-    if cap:
-        # Upper-only cap: the marked parser encodes it as 60-cap.
-        return "Пульс", f"до {cap.group(1)} уд/мин"
-    return None
+        if not 40 <= low < high <= 230:
+            raise _NotUnderstood
+        found.append((hr.start(), "Пульс", f"{low}-{high} уд/мин"))
+    else:
+        cap = _HR_CAP_RE.search(rest)
+        if cap:
+            # Upper-only cap: the marked parser encodes it as 60-cap.
+            found.append((cap.start(), "Пульс", f"до {cap.group(1)} уд/мин"))
+    return [(label, value) for _pos, label, value in sorted(found)]
 
 
 def _check_numbers_consumed(text: str) -> None:
@@ -404,9 +427,8 @@ def _step_lines(text: str, role: str | None) -> list[str]:
     if role:
         lines.append(f"Тип: {role}")
     lines.append(f"{label}: {value}")
-    target = _target(text)
-    if target:
-        lines.append(f"{target[0]}: {target[1]}")
+    for label_name, target_value in _targets(text):
+        lines.append(f"{label_name}: {target_value}")
     return lines
 
 
