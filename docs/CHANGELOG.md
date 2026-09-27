@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-27 - GUI smoke test in the suite
+
+### Added
+- `tests/test_gui_smoke.py` drives the real GUI under a Tk mainloop: marked text compiled
+  without the LLM, result shown as marked text and put back into the editor, a CLI command run
+  in-process, and the Garmin password redacted in the log. Session, profiles and logs go to a
+  temp directory; network and dialogs are stubbed. Runs where a display exists (Windows CI job,
+  local), skipped otherwise.
+- `llm/client.py` split: `llm/source_facts.py` (source-text heuristics) and `llm/yaml_cleanup.py`
+  (raw answer cleanup); old helper names remain as aliases.
+
 ## 2026-09-27 - Crash-safe writes of user files
 
 ### Fixed
