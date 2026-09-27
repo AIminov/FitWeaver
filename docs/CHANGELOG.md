@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-27 - Building FIT files no longer moves the plan or the FIT files
+
+### Fixed
+- After a successful build ("Собрать FIT-файлы", `garmin-fit run`) the automatic archive moved
+  the FIT files out of `Output_fit/` and moved the plan file — even one opened from any folder —
+  into `Plan/plan_done/`. The GUI then pointed at a missing plan and "Открыть папку FIT" showed
+  an empty folder. The post-build archive is now a snapshot (copies); the explicit `archive`
+  command still archives and cleans.
+
 ## 2026-09-27 - Garmin duration estimate from stated facts
 
 ### Added

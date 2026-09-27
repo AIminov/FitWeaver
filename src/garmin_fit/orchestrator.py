@@ -152,11 +152,16 @@ def run_generation_pipeline(
 
     if success and auto_archive:
         try:
+            # A snapshot, not "archive and clean": the plan stays where the
+            # user keeps (and edits) it, and the FIT files stay in Output_fit/
+            # for copying to the watch -- they are the build's own output.
             archive_path = archive_current_plan(
                 run_id=run_id,
                 owner_tag=archive_owner_tag,
                 plan_paths=[yaml_path],
                 artifact_paths=artifact_paths,
+                keep_plan=True,
+                keep_fit=True,
             )
         except Exception as exc:
             success = False

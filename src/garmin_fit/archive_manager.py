@@ -155,13 +155,16 @@ def archive_current_plan(
     owner_tag=None,
     plan_paths=None,
     artifact_paths=None,
+    keep_fit=False,
 ):
     """
-    Archive the current plan, FIT files, and optional debug template exports.
+    Archive the current plan, FIT files and build artifacts.
 
     Args:
         archive_name: Optional custom archive name
         keep_plan: If True, copy plan to archive but keep in Plan/
+        keep_fit: If True, copy FIT files to the archive but keep them in Output_fit/
+            (a snapshot after a build, as opposed to the explicit "archive and clean")
         plan_paths: Optional iterable of specific plan file paths to archive/move
         artifact_paths: Optional iterable of additional build artifact paths
 
@@ -207,9 +210,10 @@ def archive_current_plan(
             shutil.copy2(fit, dest)
             if not dest.exists() or dest.stat().st_size != fit.stat().st_size:
                 raise IOError(f"Failed to archive FIT file: {fit.name}")
-            fit.unlink()
+            if not keep_fit:
+                fit.unlink()
 
-        logger.info(f"Archived {len(fits)} FIT files")
+        logger.info(f"{'Copied' if keep_fit else 'Archived'} {len(fits)} FIT files")
     else:
         logger.warning("No FIT files to archive")
 
@@ -259,6 +263,7 @@ def archive_current_plan(
         f.write(f"Build artifacts archived: {artifact_count}\n")
         f.write(f"Plan files: {len(plan_files)}\n")
         f.write(f"Plan kept in Plan/: {keep_plan}\n")
+        f.write(f"FIT files kept in Output_fit/: {keep_fit}\n")
 
     logger.info(f"Archive created successfully: {archive_path}")
     return archive_path
