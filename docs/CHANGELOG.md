@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-27 - Rules cover one-line coach notes
+
+### Changed
+- `free_text_rules.py` also understands weekday-first headers (`вт 3.03: …`), weekday-only
+  headers (`чт: …`), a `Название: …` title, sentences wrapped over lines, and several steps in
+  one line separated by commas / «затем» / «потом» (a part without a distance or duration belongs
+  to the previous step; `отдых …` after an interval is its recovery). HR ranges followed by
+  punctuation (`пульс 135-145,`) are recognised.
+- New precision guards: a unit without a number (`километр заминки`, `км разминки`, `беги час`)
+  and a warmup mentioned after the main work (or cooldown before it) send the workout to the LLM.
+- Golden dataset: 25 of 59 valid variants parsed (was 15), none of the unclear/unsupported cases;
+  all agree with the reference except one where the reference drops a stated distance.
+
 ## 2026-09-27 - Upper-only HR caps become 60-cap
 
 ### Changed

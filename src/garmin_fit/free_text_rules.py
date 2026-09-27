@@ -22,18 +22,29 @@ import re
 from typing import Any
 
 _NUMBER = r"\d+(?:[.,]\d+)?"
+_WEEKDAY_WORDS = r"пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье"
 _DATE_HEADER_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?(?P<date>\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)\s*"
-    r"(?:\(?\s*(?P<weekday>пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье)\s*\)?)?"
+    rf"(?:\(?\s*(?P<weekday>{_WEEKDAY_WORDS})\s*\)?)?"
     r"\s*[,:—–-]?\s*(?P<rest>.*)$",
     re.IGNORECASE,
 )
+# "вт 3.03: ..." -- weekday before the date
+_WEEKDAY_FIRST_RE = re.compile(
+    rf"^\s*(?P<weekday>{_WEEKDAY_WORDS})\.?\s+(?P<date>\d{{1,2}}\.\d{{1,2}}(?:\.\d{{2,4}})?)"
+    r"\s*[,:—–-]?\s*(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+# "чт: ..." -- weekday only, no date
+_WEEKDAY_ONLY_RE = re.compile(rf"^\s*(?P<weekday>{_WEEKDAY_WORDS})\s*:\s*(?P<rest>.+)$", re.IGNORECASE)
 _MEASURE_RE = re.compile(
     rf"(?P<value>{_NUMBER})\s*(?P<unit>км|km|м|m|мин(?:ут[аы]?)?|min|сек(?:унд[аы]?)?|с|s)(?![а-яa-z])",
     re.IGNORECASE,
 )
 _PACE_RANGE_RE = re.compile(r"(?<![\d:])(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})(?![\d:])")
-_HR_RANGE_RE = re.compile(r"(?<![\d:.,])(\d{2,3})\s*[-–—]\s*(\d{2,3})(?![\d:.,])")
+# Punctuation around a range is fine ("пульс 135-145,"); only a decimal
+# continuation ("1,135-145" / "135-145.5") means these are not HR values.
+_HR_RANGE_RE = re.compile(r"(?<![\d:])(?<!\d[.,])(\d{2,3})\s*[-–—]\s*(\d{2,3})(?![\d:])(?![.,]\d)")
 _HR_CAP_RE = re.compile(r"пульс\w*\s*(?:до|не выше|<=?|≤)\s*(\d{2,3})", re.IGNORECASE)
 _INTERVAL_RE = re.compile(
     r"^\s*(?P<count>\d{1,2})\s*(?:[xх×*]\s*(?=\d)|цикл(?:а|ов)?\s*:?\s*|раз\s*:?\s*)(?P<work>.+)$",
@@ -41,6 +52,8 @@ _INTERVAL_RE = re.compile(
 )
 # "Интервалы 6x800м": a title that names the interval set without targets.
 _INTERVAL_TITLE_RE = re.compile(r"^[А-Яа-яA-Za-z][^\d]*\d+\s*[xх×]\s*\d", re.IGNORECASE)
+# "Пороговая тренировка: разминка 2 км, ..." -- a title before the first step.
+_COLON_TITLE_RE = re.compile(r"^(?P<title>[А-ЯA-Zа-яa-z«\"][^:\d]{2,60}?)\s*:\s*(?P<rest>.*\d.*)$")
 _SUMMARY_RE = re.compile(r"^\s*(?:итого|всего)\s*:?\s*(?P<rest>.*)$", re.IGNORECASE)
 _SBU_RE = re.compile(r"^\s*сбу\s*:?\s*(?P<rest>.+)$", re.IGNORECASE)
 _DRILL_RE = re.compile(
@@ -111,7 +124,7 @@ def _normalise(text: str) -> str:
 
 def _split_lines(block_text: str) -> list[str]:
     lines: list[str] = []
-    for raw in _normalise(block_text).splitlines():
+    for raw in _join_wrapped(_normalise(block_text).splitlines()):
         # Several sentences on one line: split at ". " before a capital/digit.
         for part in re.split(r"(?<=[^\d])\.\s+(?=[А-ЯA-Z0-9])", raw.strip()):
             part = part.strip().rstrip(".").strip()
@@ -120,9 +133,55 @@ def _split_lines(block_text: str) -> list[str]:
             chained = " + " in part and not _INTERVAL_RE.match(part)
             for segment in _split_plus(part) if chained else [part]:
                 segment = _expand_shorthand(segment.strip())
-                if segment:
-                    lines.append(segment)
+                for clause in _split_clauses(segment):
+                    if clause:
+                        lines.append(clause)
     return lines
+
+
+def _join_wrapped(raw_lines: list[str]) -> list[str]:
+    """Re-join a sentence wrapped over several lines (next line lowercase or after a comma)."""
+    joined: list[str] = []
+    for raw in raw_lines:
+        line = raw.strip()
+        if joined and line and joined[-1] and (line[0].islower() or joined[-1].endswith(",")):
+            joined[-1] = f"{joined[-1]} {line}"
+        else:
+            joined.append(line)
+    return joined
+
+
+_CLAUSE_SPLIT_RE = re.compile(
+    r"\s*[,;]\s*(?:(?:а\s+)?затем|потом|после этого|и)?\s*|\s+(?:затем|потом|после этого)\s+",
+    re.IGNORECASE,
+)
+_RECOVERY_START_RE = re.compile(r"^(?:отдых|восстановлени|трусц|между|спуск)", re.IGNORECASE)
+
+
+def _split_clauses(line: str) -> list[str]:
+    """Split "разминка 2 км, затем 5x1 км ..., отдых 400 м, заминка 1 км" into steps.
+
+    A part without its own distance/duration ("пульс 135-145", "ровно")
+    belongs to the step before it; a recovery part right after an interval
+    ("отдых 400 м трусцой") stays in that interval clause. Lines with fewer
+    than two measured parts are returned unchanged.
+    """
+    if _INTERVAL_RE.match(line) and len(_MEASURE_RE.findall(line)) <= 2:
+        return [line]  # "6x800м по ..., восстановление 400 м" is one interval clause
+    if _SUMMARY_RE.match(line) or _SBU_RE.match(line):
+        return [line]  # "Итого: 10 км, 55 мин" / "СБУ: A 30с x2, B 30с x2" are single lines
+    clauses: list[str] = []
+    for part in (p for p in _CLAUSE_SPLIT_RE.split(line) if p and p.strip()):
+        part = part.strip()
+        has_measure = bool(_MEASURE_RE.search(part))
+        joins_interval = (
+            clauses and _INTERVAL_RE.match(clauses[-1]) and _RECOVERY_START_RE.match(part)
+        )
+        if clauses and (not has_measure or joins_interval):
+            clauses[-1] = f"{clauses[-1]}, {part}"
+        else:
+            clauses.append(part)
+    return clauses if len(clauses) >= 2 else [line]
 
 
 def _split_plus(text: str) -> list[str]:
@@ -146,9 +205,9 @@ def _split_plus(text: str) -> list[str]:
 # unambiguous forms: "р2"/"з1"/"темп5" (letter first) are kilometres, while
 # "10р" could be 10 minutes or 10 km and is left alone (-> LLM).
 _SHORTHAND = [
-    (re.compile(r"^р\s*(\d+(?:[.,]\d+)?)(?=\s|\(|$)", re.IGNORECASE), r"Разминка \1 км"),
-    (re.compile(r"^з\s*(\d+(?:[.,]\d+)?)(?=\s|\(|$)", re.IGNORECASE), r"Заминка \1 км"),
-    (re.compile(r"^темп\s*(\d+(?:[.,]\d+)?)(?=\s|\(|$)", re.IGNORECASE), r"Темп \1 км"),
+    (re.compile(r"^р\s*(\d+(?:[.,]\d+)?)(?!\s*(?:км|km|м|m|мин|сек|с)(?![а-яa-z]))(?=\s|\(|$)", re.IGNORECASE), r"Разминка \1 км"),
+    (re.compile(r"^з\s*(\d+(?:[.,]\d+)?)(?!\s*(?:км|km|м|m|мин|сек|с)(?![а-яa-z]))(?=\s|\(|$)", re.IGNORECASE), r"Заминка \1 км"),
+    (re.compile(r"^темп\s*(\d+(?:[.,]\d+)?)(?!\s*(?:км|km|м|m|мин|сек|с)(?![а-яa-z]))(?=\s|\(|$)", re.IGNORECASE), r"Темп \1 км"),
     # dotted pace range "4.50-5.00" -> "4:50-5:00"
     (re.compile(r"(?<![\d.:])(\d{1,2})\.(\d{2})\s*-\s*(\d{1,2})\.(\d{2})(?![\d.:])"), r"\1:\2-\3:\4"),
     # "6х800" (no unit, >= 100) -> metres
@@ -173,23 +232,33 @@ def _convert(block_text: str) -> str:
     lines = _split_lines(block_text)
     if not lines:
         raise _NotUnderstood
-    if any(_UNSUPPORTED_RE.search(line) for line in lines):
+    if any(_UNSUPPORTED_RE.search(line) for line in lines) or any(map(_has_unit_without_number, lines)):
         raise _NotUnderstood
 
     header_date = "без даты"
     title = ""
-    first = _DATE_HEADER_RE.match(lines[0])
+    first = _DATE_HEADER_RE.match(lines[0]) or _WEEKDAY_FIRST_RE.match(lines[0])
+    weekday_only = None if first else _WEEKDAY_ONLY_RE.match(lines[0])
     if first:
         weekday = (first.group("weekday") or "").lower()
         weekday = _WEEKDAY_NAMES.get(weekday, weekday)
         header_date = first.group("date") + (f" ({weekday})" if weekday else "")
-        rest = _expand_shorthand(first.group("rest").strip())
+    header = first or weekday_only
+    if header:
+        rest = _expand_shorthand(header.group("rest").strip())
         lines = lines[1:]
         if rest:
             lines.insert(0, rest)
 
     if lines and _is_title(lines[0]):
         title = lines.pop(0)
+    elif lines:
+        colon_title = _COLON_TITLE_RE.match(lines[0])
+        if colon_title and not _role_only(colon_title.group("title")) and not re.match(
+            r"^(?:сбу|итого|всего|другое)$", colon_title.group("title").strip(), re.IGNORECASE
+        ):
+            title = colon_title.group("title").strip()
+            lines[0] = colon_title.group("rest").strip()
 
     meta: list[str] = []
     body: list[str] = []
@@ -217,8 +286,37 @@ def _convert(block_text: str) -> str:
 
     if not body:
         raise _NotUnderstood
+    _check_role_order(body)
     header = f"==== ТРЕНИРОВКА ==== {header_date}" + (f" — {title}" if title else "")
     return "\n".join([header, *meta, "", *body]) + "\n"
+
+
+_UNIT_WORD_RE = re.compile(
+    r"(?<![а-яa-z])(?:километр\w*|км|метр\w*|минут\w*|мин|секунд\w*|сек|час\w*)(?![а-яa-z])",
+    re.IGNORECASE,
+)
+
+
+def _has_unit_without_number(line: str) -> bool:
+    """"километр заминки", "км разминки", "беги час": a unit whose amount is a word."""
+    for match in _UNIT_WORD_RE.finditer(line):
+        before = line[: match.start()].rstrip()
+        if not re.search(r"\d(?:[.,]\d+)?\s*$", before) and not before.endswith(("x", "х", "×")):
+            return True
+    return False
+
+
+def _check_role_order(body: list[str]) -> None:
+    """Warmup must come first and cooldown last; otherwise the text's order is not the run's."""
+    roles = [line.split(": ", 1)[1] for line in body if line.startswith("Тип: ")]
+    seen_other = False
+    for index, role in enumerate(roles):
+        if role == "разминка" and seen_other:
+            raise _NotUnderstood
+        if role != "разминка":
+            seen_other = True
+        if role == "заминка" and any(r != "заминка" for r in roles[index + 1:]):
+            raise _NotUnderstood
 
 
 def _is_title(line: str) -> bool:
