@@ -25,6 +25,7 @@ from pathlib import Path
 import yaml
 
 from .config import PROJECT_ROOT, USER_PROFILE
+from .fileio import atomic_write_text
 
 PROFILES_ROOT = PROJECT_ROOT / "profiles"
 
@@ -87,8 +88,8 @@ def save_session(email: str, data: dict) -> None:
     payload = dict(data)
     payload["email"] = email
     session_path = profile_dir(email) / "session.json"
-    session_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    atomic_write_text(session_path,
+        json.dumps(payload, ensure_ascii=False, indent=2),
     )
 
 
@@ -112,16 +113,16 @@ def list_user_templates(email: str) -> dict[str, list[dict]]:
 def save_user_template(email: str, name: str, steps_data: list[dict]) -> None:
     templates = list_user_templates(email)
     templates[name] = steps_data
-    user_templates_path(email).write_text(
-        json.dumps(templates, ensure_ascii=False, indent=2), encoding="utf-8"
+    atomic_write_text(user_templates_path(email),
+        json.dumps(templates, ensure_ascii=False, indent=2),
     )
 
 
 def delete_user_template(email: str, name: str) -> None:
     templates = list_user_templates(email)
     templates.pop(name, None)
-    user_templates_path(email).write_text(
-        json.dumps(templates, ensure_ascii=False, indent=2), encoding="utf-8"
+    atomic_write_text(user_templates_path(email),
+        json.dumps(templates, ensure_ascii=False, indent=2),
     )
 
 
@@ -169,8 +170,8 @@ def write_user_profile(email: str, max_hr: int) -> None:
         "max_hr": max_hr,
         "hr_zones": compute_hr_zones(max_hr),
     }
-    user_profile_yaml_path(email).write_text(
-        yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    atomic_write_text(user_profile_yaml_path(email),
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
     )
 
 
@@ -179,8 +180,8 @@ def mark_user_profile_skipped(email: str) -> None:
     prompt again on every activation. An empty/comment-only file parses to
     None via yaml.safe_load, which load_user_profile()'s callers already
     treat the same as "no personal HR zones configured"."""
-    user_profile_yaml_path(email).write_text(
-        "# no personal HR profile -- skipped during onboarding\n", encoding="utf-8"
+    atomic_write_text(user_profile_yaml_path(email),
+        "# no personal HR profile -- skipped during onboarding\n",
     )
 
 

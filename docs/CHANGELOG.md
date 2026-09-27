@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-27 - Crash-safe writes of user files
+
+### Fixed
+- The open plan (rewritten after every edit in the GUI), the GUI session, per-profile session,
+  templates and HR profile, and YAML saved from the GUI are written atomically
+  (`fileio.atomic_write_text`: temp file + fsync + `os.replace`). A crash or failing write can no
+  longer leave a truncated plan or profile.
+
 ## 2026-09-27 - Rules cover one-line coach notes
 
 ### Changed

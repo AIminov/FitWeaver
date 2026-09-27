@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 
+from .fileio import atomic_write_text
 from .plan_domain import Drill, Workout, WorkoutPlan, WorkoutStep, plan_from_data, plan_to_data
 from .plan_processing import repair_plan_data
 from .plan_validator import validate_plan_data
@@ -109,8 +110,8 @@ class PlanStore:
 
     def export_to_yaml(self, yaml_path: Path) -> None:
         data = plan_to_data(self.get_plan())
-        with open(yaml_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        # Atomic: the user's plan is rewritten after every edit in the GUI.
+        atomic_write_text(yaml_path, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
     def _write_through(self) -> None:
         if self._yaml_path is not None:

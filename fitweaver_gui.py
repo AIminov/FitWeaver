@@ -18,6 +18,7 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 import yaml
 
+from garmin_fit.fileio import atomic_write_text
 from garmin_fit.gui_messages import (
     garmin_error_message,
     hint_for_line,
@@ -614,8 +615,7 @@ class App(_AppBase):
             "api_token":         self.api_token.get(),
             "ui_mode":           self.ui_mode.get(),
         }
-        SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
-                                encoding="utf-8")
+        atomic_write_text(SESSION_FILE, json.dumps(data, ensure_ascii=False, indent=2))
 
     def _on_close(self):
         self._save_session()
@@ -2159,7 +2159,7 @@ class App(_AppBase):
             initialdir=PROJECT_ROOT / "Plan",
         )
         if path:
-            Path(path).write_text(text, encoding="utf-8")
+            atomic_write_text(path, text)
             self.yaml_path.set(path)
             self._reload_yaml()
             self._set_progress(f"Сохранено: {Path(path).name}", GREEN)
@@ -2782,8 +2782,7 @@ class App(_AppBase):
         if not path:
             return
         data = plan_to_data(WorkoutPlan(workouts=[workout]))
-        Path(path).write_text(
-            yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        atomic_write_text(path, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
         self._result_var.set(f"YAML сохранён: {Path(path).name}")
         self._log(f"[OK] YAML тренировки сохранён: {path}")
 
