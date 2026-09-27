@@ -54,6 +54,8 @@ python fitweaver_gui.py
 
 ### Как подать план
 
+Подробная инструкция с примерами: [docs/PLAN_WRITING_GUIDE.md](docs/PLAN_WRITING_GUIDE.md).
+
 1. **Размеченный формат** — надёжнее всего: разбирается мгновенно, повторы и индексы считает
    код. Формат: [docs/MARKED_PLAN_FORMAT.md](docs/MARKED_PLAN_FORMAT.md), пример —
    `examples/marked_plan_example.txt`.
@@ -510,6 +512,7 @@ python -m garmin_fit.bot
 ## Документация
 
 - [YAML Guide](docs/YAML_GUIDE.md)
+- [Как записать беговой план](docs/PLAN_WRITING_GUIDE.md) — формы записи, которые разбираются без LLM
 - [Размеченный формат плана](docs/MARKED_PLAN_FORMAT.md) — ввод без LLM
 - [Garmin Payload Spec](docs/GARMIN_PAYLOAD_SPEC.md) — проверенные имена полей API (ID, targetValueOne/Two, description)
 - [Garmin Calendar](docs/GARMIN_CALENDAR.md) — настройка и детали облачной загрузки

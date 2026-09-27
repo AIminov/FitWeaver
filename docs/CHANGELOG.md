@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-27 - Plan writing guide
+
+### Added
+- `docs/PLAN_WRITING_GUIDE.md` (Russian): how to write a running plan so FitWeaver parses it
+  without an LLM — headers and dates, steps, targets, repeats, SBU, coach shorthand, what goes
+  to the LLM and how to rewrite it, how to check the result. Linked from both READMEs,
+  `docs/README.md` and `MARKED_PLAN_FORMAT.md`.
+- `tests/test_plan_writing_guide.py` parses every example in the guide and checks the forms it
+  says go to the LLM.
+
 ## 2026-09-27 - Rules: cadence, titles, dates
 
 ### Fixed

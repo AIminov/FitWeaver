@@ -68,7 +68,7 @@ pip install -e ".[gui]"          # add customtkinter -- optional GUI theming (GU
 ## Common Commands
 
 ```bash
-# Run all tests (458 passed with the api extra, as of 2026-09-27)
+# Run all tests (466 passed with the api extra, as of 2026-09-27)
 python3 -m pytest tests/
 
 # Run a single test file
@@ -368,6 +368,7 @@ Compact version injected into prompt with `get_system_prompt(include_json_schema
 
 ## Docs
 
+- `docs/PLAN_WRITING_GUIDE.md` — user guide (Russian): how to write a plan so it parses without an LLM; `tests/test_plan_writing_guide.py` checks every example in it
 - `docs/YAML_GUIDE.md` — full YAML reference
 - `docs/MARKED_PLAN_FORMAT.md` — marked plan text format (LLM-free input)
 - `docs/CHANGELOG.md` — version history

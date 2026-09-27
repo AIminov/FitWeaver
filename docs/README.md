@@ -182,6 +182,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ## Смежные документы
 
 - [YAML Guide](YAML_GUIDE.md)
+- [Как записать беговой план](PLAN_WRITING_GUIDE.md) — как писать план, чтобы он разбирался без LLM
 - [Размеченный формат плана](MARKED_PLAN_FORMAT.md) — детерминированный разбор без LLM
 - [LLM Validation System](LLM_VALIDATION_SYSTEM.md) — Три слоя валидации: контракт, примеры, runtime проверки
 - [Project Flow](PROJECT_FLOW.md)
