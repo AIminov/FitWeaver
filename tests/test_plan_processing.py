@@ -187,7 +187,7 @@ class PlanProcessingTests(unittest.TestCase):
         self.assertEqual(repaired["workouts"][0]["filename"], "N01_Mon_easy_6km")
         self.assertEqual(repaired["workouts"][1]["filename"], "N02_threshold")
 
-    def test_repair_plan_data_converts_cooldown_single_hr_cap_to_hr_range(self):
+    def test_repair_plan_data_encodes_single_hr_cap_with_60_floor(self):
         data = {
             "workouts": [
                 {
@@ -207,11 +207,11 @@ class PlanProcessingTests(unittest.TestCase):
         self.assertEqual(cooldown["type"], "dist_hr")
         self.assertEqual(cooldown["km"], 2)
         self.assertEqual(cooldown["intensity"], "cooldown")
-        self.assertEqual(cooldown["hr_low"], 80)
+        self.assertEqual(cooldown["hr_low"], 60)
         self.assertEqual(cooldown["hr_high"], 130)
-        self.assertTrue(any("repaired cooldown upper-only HR cap" in note for note in notes))
+        self.assertTrue(any("encoded upper-only HR cap as 60-130" in note for note in notes))
 
-    def test_repair_plan_data_converts_equal_cooldown_hr_range_to_80_based_range(self):
+    def test_repair_plan_data_converts_equal_cooldown_hr_range_to_60_based_range(self):
         data = {
             "workouts": [
                 {
@@ -229,7 +229,7 @@ class PlanProcessingTests(unittest.TestCase):
 
         self.assertEqual(cooldown["type"], "time_hr")
         self.assertEqual(cooldown["seconds"], 600)
-        self.assertEqual(cooldown["hr_low"], 80)
+        self.assertEqual(cooldown["hr_low"], 60)
         self.assertEqual(cooldown["hr_high"], 130)
 
     def test_repair_plan_data_normalizes_single_step_warmup_to_active(self):

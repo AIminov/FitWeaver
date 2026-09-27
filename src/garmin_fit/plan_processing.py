@@ -12,6 +12,7 @@ from datetime import date
 from typing import Any
 
 from .plan_domain import (
+    HR_CAP_FLOOR_BPM,
     INTENSITY_ALIASES,
     INTENSITY_DEFAULTS,
     PACE_CONSTANT_VALUES,
@@ -25,7 +26,6 @@ FILENAME_SAFE_RE = re.compile(r"[^\w.-]+", re.UNICODE)
 _POSITIONAL_INTENSITY_TYPES = frozenset({
     "dist_hr", "dist_pace", "time_hr", "time_pace", "dist_cadence", "time_cadence",
 })
-HR_CAP_ONLY_DEFAULT_LOW = 80
 INTERVAL_MULTIPLIER_RE = re.compile(r"(?<=\d)\s*[xX\u0445\u0425\u00D7]\s*(?=\d)")
 MULTISPACE_RE = re.compile(r"[ \t]{2,}")
 TOO_MANY_BLANKS_RE = re.compile(r"\n{3,}")
@@ -679,12 +679,11 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
                     notes.append(f"{s_prefix}: coerced km to number {coerced_km}")
 
             step_type = step.get("type")
-            if _is_cooldown_hr_cap_only_step(step):
+            if _is_hr_cap_only_step(step):
                 hr_high = step["hr_high"]
-                step["hr_low"] = HR_CAP_ONLY_DEFAULT_LOW
+                step["hr_low"] = HR_CAP_FLOOR_BPM
                 notes.append(
-                    f"{s_prefix}: repaired cooldown upper-only HR cap "
-                    f"to {HR_CAP_ONLY_DEFAULT_LOW}-{hr_high}"
+                    f"{s_prefix}: encoded upper-only HR cap as {HR_CAP_FLOOR_BPM}-{hr_high}"
                 )
 
             if (
@@ -733,19 +732,20 @@ def repair_plan_data(data: Any) -> tuple[Any, list[str]]:
     return repaired, _unique(notes)
 
 
-def _is_cooldown_hr_cap_only_step(step: dict[str, Any]) -> bool:
-    step_type = step.get("type")
-    if step_type not in {"dist_hr", "time_hr"}:
+def _is_hr_cap_only_step(step: dict[str, Any]) -> bool:
+    """HR step with only an upper bound (hr_low missing; for cooldown also hr_low >= hr_high)."""
+    if step.get("type") not in {"dist_hr", "time_hr"}:
         return False
-    if step.get("intensity") != "cooldown":
-        return False
-
     hr_low = step.get("hr_low")
     hr_high = step.get("hr_high")
+    if not isinstance(hr_high, int) or hr_high <= HR_CAP_FLOOR_BPM:
+        return False
+    if hr_low is None:
+        return True
     return (
-        isinstance(hr_high, int)
-        and hr_high > HR_CAP_ONLY_DEFAULT_LOW
-        and (hr_low is None or (isinstance(hr_low, int) and hr_low >= hr_high))
+        step.get("intensity") == "cooldown"
+        and isinstance(hr_low, int)
+        and hr_low >= hr_high
     )
 
 

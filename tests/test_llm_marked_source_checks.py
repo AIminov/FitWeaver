@@ -36,7 +36,7 @@ class TestMarkedSourceChecks(unittest.TestCase):
         self.assertTrue(repairs)
         self.assertTrue(warnings)
 
-    def test_one_sided_hr_cap_does_not_invent_missing_bound(self):
+    def test_one_sided_hr_cap_is_encoded_with_the_60_floor(self):
         source = """==== ТРЕНИРОВКА ==== без даты — Лёгкий бег
 **** ШАГ ****
 Тип: работа
@@ -50,10 +50,9 @@ class TestMarkedSourceChecks(unittest.TestCase):
         repairs, warnings = sanitize_marked_source_targets(source, data)
 
         self.assertEqual(data["workouts"][0]["steps"][0], {
-            "type": "dist_open", "km": 6, "intensity": "active",
+            "type": "dist_hr", "km": 6, "hr_low": 60, "hr_high": 140, "intensity": "active",
         })
-        self.assertEqual(len(repairs), 2)
-        self.assertEqual(len(warnings), 1)
+        self.assertTrue(any("restored explicit hr target" in r for r in repairs))
 
     def test_effort_percentage_does_not_become_heart_rate(self):
         source = """==== ТРЕНИРОВКА ==== без даты — Ускорения

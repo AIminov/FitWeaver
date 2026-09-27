@@ -168,6 +168,13 @@ steps:
 
 ---
 
+## Heart-rate caps
+
+An upper-only cap ("пульс до 140", "не выше 140", "HR <= 140") is encoded as `hr_low: 60,
+hr_high: 140` everywhere (`plan_domain.HR_CAP_FLOOR_BPM`, agreed with the user 2026-09-27):
+60 is a typical resting HR, so the watch alerts only above the cap. Any other incomplete target
+(lower-only bound, single pace value except the agreed ±10 s/km widening) is never completed.
+
 ## sbu_block expansion
 
 Each drill expands to `reps × 2` FIT steps (active + open recovery).

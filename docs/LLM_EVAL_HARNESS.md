@@ -56,8 +56,9 @@ garmin-fit-llm-eval --suite Build_artifacts\llm_eval\golden_suite\suite.yaml --m
 
 `expected_steps` is checked fact by fact (`llm/golden.py`): step kinds, distances/durations and
 repeat structure must match; a target may be missing (the reference sometimes adds targets the
-text does not state) but never different. The reference's `hr_low: 80` for an upper-only cap
-counts as "no target". The harness never enables the deterministic rules
+text does not state) but never different. An upper-only HR cap compares by its top value:
+the app encodes it as `hr_low: 60`, the reference as `hr_low: 80`, and a reference range with the
+same top (an invented lower bound) also matches. The harness never enables the deterministic rules
 (`free_text_rules.py`), so scores measure the model.
 
 ## Commands

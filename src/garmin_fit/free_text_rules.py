@@ -278,8 +278,8 @@ def _target(text: str) -> tuple[str, str] | None:
         raise _NotUnderstood
     cap = _HR_CAP_RE.search(text)
     if cap:
-        # An upper cap alone is not a Garmin range; keep it as a note.
-        return "Примечание", f"пульс до {cap.group(1)}"
+        # Upper-only cap: the marked parser encodes it as 60-cap.
+        return "Пульс", f"до {cap.group(1)} уд/мин"
     return None
 
 

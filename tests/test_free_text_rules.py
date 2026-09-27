@@ -63,9 +63,9 @@ class FreeTextRulesTests(unittest.TestCase):
         # "10р" may mean 10 minutes or 10 km of warmup.
         self.assertIsNone(free_text_to_marked("10р + 5 км (4:50-5:00) + 10з"))
 
-    def test_hr_cap_is_kept_as_a_note_not_an_invented_range(self):
+    def test_hr_cap_becomes_60_to_cap(self):
         workout = parse_workout_with_rules("Лёгкий бег 8 км, пульс до 140")
-        self.assertEqual(workout["steps"], [{"type": "dist_open", "km": 8.0}])
+        self.assertEqual(workout["steps"], [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 140}])
 
     def test_unexplained_number_falls_back_to_llm(self):
         self.assertIsNone(free_text_to_marked("Разминка 2 км, потом 3 ускорения"))

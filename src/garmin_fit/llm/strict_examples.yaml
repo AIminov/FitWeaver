@@ -101,13 +101,15 @@ examples:
       workouts:
         - filename: W09_03-03_Tue_Easy_8km
           name: W09_03-03_Tue_Easy_8km
-          desc: "Easy run; source states HR up to 140 bpm"
+          desc: "Easy run; HR up to 140 bpm"
           type_code: easy
           distance_km: 8.0
           estimated_duration_min: null
           steps:
-            - type: dist_open
+            - type: dist_hr
               km: 8.0
+              hr_low: 60
+              hr_high: 140
               intensity: recovery
   - id: fartlek_time
     tags: [fartlek, time, mixed]
@@ -183,13 +185,15 @@ examples:
       workouts:
         - filename: W09_03-04_Wed_Intervals_Hills_2x5x40m
           name: W09_03-04_Wed_Intervals_Hills_2x5x40m
-          desc: "Hill sprint workout; source mentions one-sided HR caps of 140 and 150 bpm"
+          desc: "Hill sprint workout: 2 series of 5 x 40 m uphill"
           type_code: intervals
           distance_km: null
           estimated_duration_min: null
           steps:
-            - type: dist_open
+            - type: dist_hr
               km: 2.0
+              hr_low: 60
+              hr_high: 140
               intensity: warmup
             - type: dist_open
               km: 0.04
@@ -200,8 +204,10 @@ examples:
             - type: repeat
               back_to_offset: 1
               count: 5
-            - type: dist_open
+            - type: dist_hr
               km: 1.0
+              hr_low: 60
+              hr_high: 150
               intensity: recovery
             - type: dist_open
               km: 0.04

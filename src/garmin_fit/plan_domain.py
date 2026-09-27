@@ -5,10 +5,30 @@ Shared plan domain objects and schema constants.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
+
+# An upper-only heart-rate cap ("пульс до 140", "не выше 140", "HR <= 140") is
+# encoded as the range HR_CAP_FLOOR_BPM..cap: 60 is a typical resting heart
+# rate, so the watch only alerts when the cap is exceeded.
+HR_CAP_FLOOR_BPM = 60
+HR_CAP_PHRASE_RE = re.compile(
+    r"(?:\bдо\b|не\s+выше|не\s+более|\bмаксимум\b|\bмакс\.?|\bmax\b|\bup\s*to\b|<=?|≤)\s*(?P<cap>\d{2,3})",
+    re.IGNORECASE,
+)
+
+
+def parse_hr_cap(text: str) -> int | None:
+    """Cap value of an upper-only HR phrase ("до 140"), or None."""
+    match = HR_CAP_PHRASE_RE.search(str(text or ""))
+    if not match:
+        return None
+    cap = int(match.group("cap"))
+    return cap if HR_CAP_FLOOR_BPM < cap <= 250 else None
+
 
 KNOWN_PACE_CONSTANTS = frozenset(
     {

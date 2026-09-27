@@ -145,8 +145,17 @@ class CompileTests(unittest.TestCase):
         self.assertEqual(result.data["workouts"][0]["steps"][0], {"type": "dist_open", "km": 5.0})
         self.assertTrue(any("Z2" in w for w in result.warnings))
 
-    def test_incomplete_hr_cap_is_not_guessed(self):
-        result = compile_marked_text(_workout("**** ШАГ ****\nДлительность: 30 мин\nПульс: до 150 уд/мин\n"))
+    def test_hr_cap_is_encoded_with_60_floor(self):
+        for phrase in ("до 150 уд/мин", "не выше 150", "<= 150"):
+            result = compile_marked_text(_workout(f"**** ШАГ ****\nДлительность: 30 мин\nПульс: {phrase}\n"))
+            self.assertEqual(
+                result.data["workouts"][0]["steps"][0],
+                {"type": "time_hr", "seconds": 1800, "hr_low": 60, "hr_high": 150},
+                phrase,
+            )
+
+    def test_lower_only_hr_bound_is_not_guessed(self):
+        result = compile_marked_text(_workout("**** ШАГ ****\nДлительность: 30 мин\nПульс: от 130\n"))
         self.assertEqual(result.data["workouts"][0]["steps"][0], {"type": "time_step", "seconds": 1800})
         self.assertTrue(any("полный диапазон" in w for w in result.warnings))
 

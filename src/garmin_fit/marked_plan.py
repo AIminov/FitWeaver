@@ -479,10 +479,17 @@ def _parse_target(
             return Target("hr", bounds[0], bounds[1], zone=f"Z{zone.group('zone')}")
 
     bounds_match = _RANGE_RE.search(value)
-    if bounds_match:
+    if bounds_match and not re.match(r"^\s*до\b", value, re.IGNORECASE):
         low, high = sorted((int(bounds_match.group("low")), int(bounds_match.group("high"))))
         if low < high and 30 <= low and high <= 250:
             return Target(kind, low, high)
+    if kind == "hr":
+        from .plan_domain import HR_CAP_FLOOR_BPM, parse_hr_cap
+
+        cap = parse_hr_cap(value)
+        if cap is not None:
+            # Upper-only cap: the watch alerts only above the cap.
+            return Target("hr", HR_CAP_FLOOR_BPM, cap)
     if zone:
         plan.warnings.append(
             ParseIssue(line, f"зона Z{zone.group('zone')} не настроена в HR-профиле; цель по пульсу не задана")

@@ -319,7 +319,7 @@ class TestUnifiedLLMClient(unittest.TestCase):
         issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact)
         self.assertTrue(any("missing source distance step 6km" in item for item in issues))
 
-    def test_one_sided_hr_cap_does_not_allow_invented_lower_bound(self):
+    def test_one_sided_hr_cap_gets_the_60_floor_instead_of_an_invented_bound(self):
         fact = UnifiedLLMClient._extract_single_workout_fact(
             "10.03 (Tue)\nЛегкий кросс\n6 км\nПульс до 140\n"
         )
@@ -327,11 +327,12 @@ class TestUnifiedLLMClient(unittest.TestCase):
             "filename": "W10_03-10_Tue_Easy_6km",
             "name": "W10_03-10_Tue_Easy_6km",
             "type_code": "easy",
-            "steps": [{"type": "dist_hr", "km": 6.0, "hr_low": 80, "hr_high": 140}],
+            "steps": [{"type": "dist_hr", "km": 6.0, "hr_low": 120, "hr_high": 140}],
         }
 
-        issues = UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact)
-        self.assertTrue(any("one-sided HR cap" in item for item in issues))
+        UnifiedLLMClient._encode_source_hr_cap(workout, fact)
+        self.assertEqual(workout["steps"][0]["hr_low"], 60)
+        self.assertEqual(UnifiedLLMClient._detect_suspicious_workout_against_fact(workout, fact), [])
 
     def test_detect_suspicious_workout_ignores_aggregate_distance_summary(self):
         fact = UnifiedLLMClient._extract_single_workout_fact(

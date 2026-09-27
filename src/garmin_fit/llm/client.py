@@ -1354,6 +1354,7 @@ class UnifiedLLMClient:
                 )
 
             self._repair_missing_source_repeat(workout, fact)
+            self._encode_source_hr_cap(workout, fact)
             suspicious = self._detect_suspicious_workout_against_fact(workout, fact)
             if not suspicious:
                 self._store_cached_segment(cache_path, workout)
@@ -1369,6 +1370,26 @@ class UnifiedLLMClient:
             )
 
         return None, last_error or f"segment {segment_index}: suspicious output"
+
+    @staticmethod
+    def _encode_source_hr_cap(workout: dict[str, Any], fact: SourceWorkoutFact | None) -> None:
+        """The source states only "пульс до N": any HR step capped at N gets the 60 floor.
+
+        Models tend to invent a lower bound (80, 120, ...); the agreed encoding of
+        an upper-only cap is HR_CAP_FLOOR_BPM..N.
+        """
+        from ..plan_domain import HR_CAP_FLOOR_BPM
+
+        if fact is None or not isinstance(fact.hr_cap, int):
+            return
+        for step in workout.get("steps") or []:
+            if (
+                isinstance(step, dict)
+                and str(step.get("type", "")).endswith("_hr")
+                and step.get("hr_high") == fact.hr_cap
+                and step.get("hr_low") != HR_CAP_FLOOR_BPM
+            ):
+                step["hr_low"] = HR_CAP_FLOOR_BPM
 
     @staticmethod
     def _repair_missing_source_repeat(
@@ -1600,20 +1621,6 @@ class UnifiedLLMClient:
                     f"missing source distance step {fact.steady_distance_km:.3g}km"
                 )
 
-        if isinstance(fact.hr_cap, int):
-            has_hr_target = any(
-                isinstance(step, dict)
-                and (
-                    str(step.get("type", "")).endswith("_hr")
-                    or "hr_low" in step
-                    or "hr_high" in step
-                )
-                for step in steps
-            )
-            if has_hr_target:
-                issues.append(
-                    "source contains only a one-sided HR cap; omit the HR target instead of guessing a missing bound"
-                )
 
         return issues
 

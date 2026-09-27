@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from ..marked_plan import STEP_MARKER, MarkedStep, iter_marked_steps, parse_marked_plan
+from ..plan_domain import HR_CAP_FLOOR_BPM, parse_hr_cap
 
 _TARGET_FIELDS = {
     "hr": {"hr_low", "hr_high"},
@@ -63,7 +64,10 @@ def _expected_step_target(
             bounds = _RANGE.search(value)
             if bounds:
                 return "hr", (int(bounds.group("low")), int(bounds.group("high"))), True
-            # A single cap/value cannot become a Garmin range without guessing.
+            cap = parse_hr_cap(value)
+            if cap is not None:
+                return "hr", (HR_CAP_FLOOR_BPM, cap), True
+            # A single value that is not a cap cannot become a range without guessing.
             return None, None, bool(value)
 
         match = _PACE_LABEL.match(line)

@@ -39,12 +39,12 @@ class GoldenSuiteTests(unittest.TestCase):
         wrong = [{"type": "dist_hr", "km": 2.0, "hr_low": 120, "hr_high": 145}]
         self.assertTrue(compare_to_canonical(wrong, reference))
 
-    def test_cap_only_reference_equals_no_target(self):
+    def test_cap_floor_60_and_reference_80_are_the_same_cap(self):
         reference = [{"type": "dist_hr", "km": 8.0, "hr_low": 80, "hr_high": 140}]
-        self.assertEqual(
-            compare_to_canonical([{"type": "dist_open", "km": 8.0}], reference, allow_missing_targets=False),
-            [],
-        )
+        ours = [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 140}]
+        self.assertEqual(compare_to_canonical(ours, reference, allow_missing_targets=False), [])
+        other_cap = [{"type": "dist_hr", "km": 8.0, "hr_low": 60, "hr_high": 150}]
+        self.assertTrue(compare_to_canonical(other_cap, reference))
 
 
 if __name__ == "__main__":

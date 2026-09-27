@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-27 - Upper-only HR caps become 60-cap
+
+### Changed
+- "Пульс до 140" / "не выше 140" / "HR <= 140" is encoded as `hr_low: 60, hr_high: 140`
+  everywhere (60 = typical resting HR, the watch alerts only above the cap): YAML repair (any HR
+  step with only `hr_high`, previously 80 and cooldown only), the marked parser, the rules, the
+  marked-source checks, the LLM prompt/contract/examples, and a repair of model-invented lower
+  bounds when the source states only a cap. Lower-only bounds are still never completed.
+
 ## 2026-09-26 - Golden dataset in the LLM evaluation harness
 
 ### Added

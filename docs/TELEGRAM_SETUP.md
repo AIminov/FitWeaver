@@ -390,7 +390,7 @@ FitWeaver трактует одиночный верхний порог как `
 ```yaml
 - type: dist_hr
   km: 2.0
-  hr_low: 80
+  hr_low: 60
   hr_high: 130
   intensity: cooldown
 ```

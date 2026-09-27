@@ -42,8 +42,9 @@ validation_rules:
   heart_rate:
     - hr_low must be less than hr_high
     - HR range 30 to 240 bpm
-    - Use a HR target only when the source provides a complete numeric range or explicitly named profile zone
-    - Never infer a missing HR bound or assign a default HR range from workout type/intensity
+    - Use a HR target only when the source provides a numeric range, an upper-only cap or an explicitly named profile zone
+    - Upper-only HR cap ("пульс до 140", "не выше 140", "HR <= 140") -> hr_low 60, hr_high 140
+    - Never infer any other missing HR bound or assign a default HR range from workout type/intensity
 
   pace_format:
     - Pace values quoted strings MM:SS format

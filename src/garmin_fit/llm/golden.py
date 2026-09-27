@@ -5,9 +5,8 @@ workout texts with a reference ("canonical") Garmin YAML. Comparison works on
 facts -- step kind, distance/duration, repeat structure and target -- so key
 order or equivalent spellings do not matter.
 
-One convention differs between the reference and this project: the reference
-encodes an upper-only heart-rate cap as ``hr_low: 80``; here a missing bound
-is never invented. Such targets therefore count as "no target".
+An upper-only heart-rate cap is encoded as ``hr_low: 60`` here and as
+``hr_low: 80`` in the reference; both compare as the same cap (by hr_high).
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from typing import Any
 import yaml
 
 DEFAULT_GOLDEN_PATH = Path(__file__).resolve().parents[3] / "docs" / "golden_dataset" / "golden_examples_v1.yaml"
-_CAP_ONLY_LOW = 80
+_CAP_FLOORS = (60, 80)
 
 
 def step_facts(step: dict[str, Any]) -> tuple:
@@ -32,7 +31,9 @@ def step_facts(step: dict[str, Any]) -> tuple:
         )
         return ("sbu", drills, None)
     target = None
-    if step.get("hr_low") is not None and step.get("hr_low") != _CAP_ONLY_LOW:
+    if step.get("hr_low") in _CAP_FLOORS:
+        target = ("hr_cap", step.get("hr_high"))
+    elif step.get("hr_low") is not None:
         target = ("hr", step.get("hr_low"), step.get("hr_high"))
     elif step.get("pace_fast") is not None:
         target = ("pace", str(step.get("pace_fast")), str(step.get("pace_slow")))
@@ -60,9 +61,20 @@ def compare_to_canonical(
     for index, (ours, reference) in enumerate(zip(got, want)):
         if ours[:-1] != reference[:-1]:
             problems.append(f"step {index}: expected {reference[:-1]}, got {ours[:-1]}")
-        elif ours[-1] != reference[-1] and not (allow_missing_targets and ours[-1] is None):
+        elif ours[-1] != reference[-1] and not (
+            allow_missing_targets and (ours[-1] is None or _cap_of_reference_range(ours[-1], reference[-1]))
+        ):
             problems.append(f"step {index}: expected target {reference[-1]}, got {ours[-1]}")
     return problems
+
+
+def _cap_of_reference_range(ours: tuple | None, reference: tuple | None) -> bool:
+    """Our upper-only cap vs a reference range with the same top: the reference
+    invented the lower bound ("не выше 138" -> 120-138), the cap is the fact."""
+    return (
+        ours is not None and reference is not None
+        and ours[0] == "hr_cap" and reference[0] == "hr" and ours[1] == reference[2]
+    )
 
 
 def build_suite_from_golden(golden_path: Path, out_dir: Path, *, suite_name: str = "golden-v1") -> Path:
