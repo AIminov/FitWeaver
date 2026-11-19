@@ -131,6 +131,21 @@ def test_gui_main_flows(tmp_path):
             app._builder_save_edit()
             results["editor_isolated"] = second_plan.read_bytes() == before
             results["draft_retained"] = bool(app._builder_steps)
+            draft = app._draft_snapshot()
+            results["draft_saved"] = app._save_drafts()
+            app._active_profile_email = "other@example.test"
+            app._restore_drafts()
+            results["draft_isolated"] = not any(app._draft_snapshot().values())
+            app._active_profile_email = ""
+            app._restore_drafts()
+            results["draft_restored"] = app._draft_snapshot() == draft
+            results["draft_detached"] = app._builder_edit_workout_id is None
+            app._builder_clear()
+            app._plan_text.delete("1.0", "end")
+            app._show_generated("")
+            app._save_drafts()
+            app._restore_drafts()
+            results["draft_cleared"] = not any(app._draft_snapshot().values())
             app.yaml_path.set("")
             results["empty_context_closed_store"] = app._store is None
             app.quit()
@@ -154,6 +169,8 @@ def test_gui_main_flows(tmp_path):
     assert results["validate_seconds"] < 10  # in-process, no exe start-up
     assert results["editor_isolated"]
     assert results["draft_retained"]
+    assert results["draft_saved"] and results["draft_isolated"]
+    assert results["draft_restored"] and results["draft_detached"] and results["draft_cleared"]
     assert results["empty_context_closed_store"]
     assert not any("topsecret-password" in line for line in log_lines)
     assert any("--password ***" in line for line in log_lines)

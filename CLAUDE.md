@@ -33,8 +33,9 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (updated 2026-11-19, start here):**
-0. Implement desktop draft recovery first, then undo and upload preview. The seven
-   reliability fixes from `docs/UX_CODE_AUDIT_2026-11-19.md` have offline regression coverage.
+0. Implement undo/redo in the desktop builder and calendar, then upload preview.
+   Desktop drafts now autosave and restore per profile. The seven reliability fixes
+   from `docs/UX_CODE_AUDIT_2026-11-19.md` have offline regression coverage.
 1. Finish the running 59-case Unsloth IQ4_XS baseline; compare the same 12-case pilot using
    the reordered YAML prompt and compact `W/S/R/E/B` output. Record strict pass, token count,
    cold/warm latency and CPU thread settings before changing defaults.

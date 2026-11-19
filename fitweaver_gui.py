@@ -159,6 +159,8 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._update_yaml_context()
         self._setup_text_bindings()
         self._load_session()
+        self._restore_drafts()
+        self.after(1500, self._autosave_drafts)
         self.after(1500, self._check_for_updates)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -476,10 +478,14 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         new_email = self.email_var.get().strip()
         if not new_email or new_email == self._active_profile_email:
             return
+        if self._operation_active or not self._save_drafts():
+            self.email_var.set(self._active_profile_email or "")
+            return
         self._save_current_profile_session()
         # Пароль не сохраняется в профиле и не должен переноситься между email.
         self.pass_var.set("")
         self._activate_profile(new_email, reset_if_missing=True)
+        self._restore_drafts()
         self._refresh_profile_list()
         if self.yaml_path.get() and Path(self.yaml_path.get()).exists():
             self._reload_yaml()
@@ -573,10 +579,77 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         atomic_write_text(SESSION_FILE, json.dumps(data, ensure_ascii=False, indent=2))
 
     def _on_close(self):
+        if not self._save_drafts() and not messagebox.askyesno(
+            "Черновик не сохранён", "Закрыть приложение без сохранения черновика?", parent=self
+        ):
+            return
         self._save_session()
         if self._store is not None:
             self._store.close()
         self.destroy()
+
+    def _draft_snapshot(self) -> dict:
+        from garmin_fit.plan_domain import step_to_data
+
+        return {
+            "text": self._plan_text.get("1.0", "end-1c"),
+            "generated": self._generated_yaml,
+            "name": self._builder_filename_var.get(),
+            "steps": [step_to_data(step) for step in self._builder_steps],
+        }
+
+    def _save_drafts(self) -> bool:
+        from garmin_fit.profile_store import save_draft
+
+        snapshot = self._draft_snapshot()
+        if snapshot == self._last_draft_snapshot:
+            return True
+        try:
+            save_draft(self._active_profile_email or "", snapshot)
+        except (OSError, ValueError, TypeError) as exc:
+            if str(exc) != getattr(self, "_draft_save_error", None):
+                self._log(f"[ERR] Черновик не сохранён: {exc}")
+            self._draft_save_error = str(exc)
+            return False
+        self._last_draft_snapshot = snapshot
+        self._draft_save_error = None
+        return True
+
+    def _autosave_drafts(self) -> None:
+        try:
+            self._save_drafts()
+        finally:
+            self.after(1500, self._autosave_drafts)
+
+    def _restore_drafts(self) -> None:
+        from garmin_fit.plan_domain import step_from_data
+        from garmin_fit.profile_store import load_draft
+
+        data = {}
+        steps = []
+        try:
+            data = load_draft(self._active_profile_email or "")
+            for key in ("text", "generated", "name"):
+                if not isinstance(data.get(key, ""), str):
+                    raise ValueError("Некорректное поле черновика")
+            steps = [step_from_data(item) for item in data.get("steps", [])]
+            if any(step.step_type == "repeat" and not isinstance(step.back_to_offset, int) for step in steps):
+                raise ValueError("Некорректная группа повторов в черновике")
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            self._log(f"[ERR] Черновик не восстановлен: {exc}")
+            data, steps = {}, []
+        self._plan_text.delete("1.0", "end")
+        self._plan_text.insert("1.0", data.get("text", ""))
+        self._plan_text.edit_reset()
+        self._out_view = "yaml"
+        self._show_generated(data.get("generated", ""))
+        self._builder_clear()
+        self._builder_steps = steps
+        self._builder_filename_var.set(data.get("name", ""))
+        self._builder_render_list()
+        self._last_draft_snapshot = self._draft_snapshot()
+        if any(self._last_draft_snapshot.values()):
+            self._log("[OK] Черновик восстановлен")
 
     # ── Style ─────────────────────────────────────────────────────────────────
     def _setup_style(self):

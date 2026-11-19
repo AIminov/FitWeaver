@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-19 - Desktop draft recovery
+
+- Autosave and restore generator text, generated YAML and builder steps per profile,
+  including use without a Garmin account. Restored builder drafts open independently
+  of any existing YAML workout or Garmin event.
+
 ## 2026-11-19 - Desktop reliability fixes
 
 - Preserve cadence in the plan store, restore staging after failed YAML writes,

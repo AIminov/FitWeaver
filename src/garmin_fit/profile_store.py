@@ -97,6 +97,24 @@ def user_templates_path(email: str) -> Path:
     return profile_dir(email) / "templates.json"
 
 
+def _draft_path(email: str) -> Path:
+    return (profile_dir(email) if email else PROFILES_ROOT / "local") / "draft.json"
+
+
+def load_draft(email: str) -> dict:
+    try:
+        data = json.loads(_draft_path(email).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    if not isinstance(data, dict) or data.get("version") != 1:
+        raise ValueError("Неизвестный формат черновика")
+    return data
+
+
+def save_draft(email: str, data: dict) -> None:
+    atomic_write_text(_draft_path(email), json.dumps({**data, "version": 1}, ensure_ascii=False))
+
+
 def list_user_templates(email: str) -> dict[str, list[dict]]:
     """Personal workout-builder templates for this profile: name -> list of
     step dicts (plan_domain.step_to_data() shape, JSON-serializable)."""
