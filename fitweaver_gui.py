@@ -1953,28 +1953,97 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         if not self._active_profile_email:
             messagebox.showwarning("Нет профиля", "Сначала выберите профиль Garmin.", parent=self)
             return
-        count = len(self.workouts)
-        duplicate_action = self._upload_duplicate_var.get()
-        period = f"{self.from_var.get() or 'начало не задано'} — {self.to_var.get() or 'конец не задан'}"
-        if not messagebox.askyesno(
-                "Отправить план в Garmin Connect",
-                f"Сейчас будут отправлены реальные изменения.\n\n"
-                f"План: {Path(self.yaml_path.get()).name}\n"
-                f"Профиль: {self._active_profile_email}\n"
-                f"Период: {period}\n"
-                f"Тренировок в плане: {count}\n"
-                f"При совпадении имени и даты: {duplicate_action.lower()}\n\nПродолжить?",
-                icon="warning", parent=self):
+        path = self.yaml_path.get().strip()
+        if not path or not self._begin_operation("Предпросмотр Garmin"):
             return
-        args = ["garmin-calendar"]
-        if duplicate_action == "Заменить назначение":
-            args.append("--replace-duplicates")
-        elif duplicate_action == "Создать копию":
-            args.append("--allow-duplicates")
-        if self.yaml_path.get():
-            args += ["--plan", self.yaml_path.get()]
-        self._append_garmin_args(args)
-        self._run(args)
+        profile = self._active_profile_email
+        password = self.pass_var.get()
+        year = self.year_var.get()
+        from_date, to_date = self.from_var.get(), self.to_var.get()
+        mode = self._upload_duplicate_var.get()
+        args = ["--plan", path]
+        context = self._validation_context(args)
+
+        def show_preview(exporter, plan, options, preview):
+            if context is None or self._validation_context(["--plan", self.yaml_path.get()]) != context:
+                self._end_operation(False)
+                self._log("[WARN] План изменился. Откройте предпросмотр заново.")
+                return
+            dialog = tk.Toplevel(self)
+            dialog.title("Предпросмотр Garmin Connect")
+            dialog.transient(self)
+            ttk.Label(dialog, text=f"{Path(path).name} · {profile} · {mode}").pack(padx=12, pady=8)
+            table = ttk.Treeview(dialog, columns=("date", "workout", "action"), show="headings")
+            for column, title, width in (
+                ("date", "Дата", 100), ("workout", "Тренировка", 280), ("action", "Действие", 340)
+            ):
+                table.heading(column, text=title)
+                table.column(column, width=width)
+            scroll = ttk.Scrollbar(dialog, command=table.yview)
+            table.configure(yscrollcommand=scroll.set)
+            footer = ttk.Frame(dialog)
+            footer.pack(side="bottom", fill="x", padx=12, pady=8)
+            scroll.pack(side="right", fill="y")
+            table.pack(fill="both", expand=True, padx=(12, 0))
+            for row in preview.results:
+                action = (row.error or ("Пропустить" if row.skipped_duplicate else
+                          "Заменить назначение" if row.replaced_duplicate else
+                          "Загрузить и назначить" if row.date else "Загрузить без даты"))
+                table.insert("", "end", values=(row.date or "—", row.filename, action))
+            if not preview.results:
+                ttk.Label(footer, text="За выбранный период тренировок нет.").pack(side="left")
+
+            def close():
+                dialog.destroy()
+                self._end_operation()
+
+            def upload():
+                dialog.destroy()
+                threading.Thread(target=send, args=(exporter, plan, options, preview), daemon=True).start()
+
+            ttk.Button(footer, text="Закрыть", command=close).pack(side="right")
+            if any(row.ok and not row.skipped_duplicate for row in preview.results) and not preview.failed:
+                ttk.Button(footer, text="Отправить в Garmin", command=upload).pack(side="right", padx=8)
+            dialog.protocol("WM_DELETE_WINDOW", close)
+            dialog.grab_set()
+
+        def fail(exc):
+            self._log(f"[ERR] Garmin: {exc}")
+            self._end_operation(False)
+
+        def send(exporter, plan, options, preview):
+            try:
+                current = exporter.upload_plan(plan, dry_run=True, preview_calendar=True, **options)
+                if current != preview:
+                    raise ValueError("Календарь изменился. Откройте предпросмотр заново.")
+                result = exporter.upload_plan(plan, **options)
+                self.after(0, self._log, result.summary())
+                for row in result.results:
+                    if row.error:
+                        self.after(0, self._log, f"[ERR] {row.filename}: {row.error}")
+                self.after(0, self._end_operation, not result.failed)
+            except Exception as exc:
+                self.after(0, fail, str(exc))
+
+        def prepare():
+            try:
+                from garmin_fit.build_from_plan import load_plan_build_input
+                from garmin_fit.garmin_calendar_export import GarminCalendarExporter
+                from garmin_fit.workflow import _connect_garmin_cli_client
+
+                plan = load_plan_build_input(Path(path)).plan
+                options = dict(year=int(year) if year else None,
+                               from_date=from_date or None, to_date=to_date or None,
+                               replace_duplicates=mode == "Заменить назначение",
+                               skip_duplicates=mode == "Пропустить совпадения")
+                exporter = GarminCalendarExporter(_connect_garmin_cli_client(
+                    email=profile, password=password or None, prompt_mfa=self._gui_mfa_prompt))
+                preview = exporter.upload_plan(plan, dry_run=True, preview_calendar=True, **options)
+                self.after(0, show_preview, exporter, plan, options, preview)
+            except Exception as exc:
+                self.after(0, fail, str(exc))
+
+        threading.Thread(target=prepare, daemon=True).start()
 
     def _cmd_delete(self):
         if not self._active_profile_email:

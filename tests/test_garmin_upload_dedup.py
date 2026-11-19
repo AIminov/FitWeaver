@@ -37,6 +37,26 @@ class UploadDedupTests(unittest.TestCase):
         self.assertIn("skipped 1 already scheduled", result.summary())
         client.get_scheduled_workouts.assert_called_once_with(2026, 10)
 
+    def test_preview_reads_calendar_and_marks_replacement_without_writes(self):
+        client = _client([{
+            "date": "2026-10-01", "workoutScheduleId": 17,
+            "workoutName": "W40_10-01_Thu_Easy",
+        }])
+        result = self._upload(client, skip_duplicates=False, replace_duplicates=True,
+                              dry_run=True, preview_calendar=True)
+        self.assertEqual(len(result.results), 2)
+        self.assertTrue(result.results[0].replaced_duplicate)
+        self.assertEqual(result.results[0].replaced_schedule_id, "17")
+        self.assertFalse(result.results[1].replaced_duplicate)
+        self.assertEqual([call[0] for call in client.method_calls], ["get_scheduled_workouts"])
+
+    def test_preview_blocks_when_calendar_cannot_be_read(self):
+        client = _client([])
+        client.get_scheduled_workouts.side_effect = RuntimeError("503")
+        result = self._upload(client, dry_run=True, preview_calendar=True)
+        self.assertEqual(result.failed, 2)
+        client.upload_workout.assert_not_called()
+
     def test_same_name_on_another_date_is_not_a_duplicate(self):
         client = _client([{"date": "2026-10-02", "workoutId": 7, "workoutName": "W40_10-01_Thu_Easy"}])
         self.assertEqual(self._upload(client).skipped_duplicates, 0)

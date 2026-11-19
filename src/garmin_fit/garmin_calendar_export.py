@@ -108,6 +108,7 @@ class WorkoutUploadResult:
     # Set when the same workout name is already scheduled on that date.
     skipped_duplicate: bool = False
     replaced_duplicate: bool = False
+    replaced_schedule_id: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -289,6 +290,7 @@ class GarminCalendarExporter:
         to_date: str | None = None,
         skip_duplicates: bool = True,
         replace_duplicates: bool = False,
+        preview_calendar: bool = False,
     ) -> PlanUploadResult:
         """
         Upload all workouts in a plan to Garmin Connect Calendar.
@@ -326,12 +328,17 @@ class GarminCalendarExporter:
         """
         if skip_duplicates and replace_duplicates:
             raise ValueError("Choose either skip_duplicates or replace_duplicates")
+        if preview_calendar and not dry_run:
+            raise ValueError("preview_calendar requires dry_run")
         if replace_duplicates and not schedule:
             raise ValueError("replace_duplicates requires calendar scheduling")
         plan_result = PlanUploadResult()
 
         from_d = _parse_date(from_date)
         to_d = _parse_date(to_date)
+        if preview_calendar and ((from_date and not from_d) or (to_date and not to_d)
+                                 or (from_d and to_d and from_d > to_d)):
+            raise ValueError("Укажите корректный период в формате ГГГГ-ММ-ДД")
 
         # ------------------------------------------------------------------ pre-filter
         included: list[Workout] = []
@@ -367,7 +374,7 @@ class GarminCalendarExporter:
 
         existing: dict[tuple[str, str], list[dict[str, str]]] = {}
         unreadable_months: set[tuple[int, int]] = set()
-        if (skip_duplicates or replace_duplicates) and schedule and not dry_run:
+        if (skip_duplicates or replace_duplicates) and schedule and (not dry_run or preview_calendar):
             dates = [extract_date_from_filename(w.filename or "", year=year) for w in included]
             existing, unreadable_months = self._scheduled_events_by_date(d for d in dates if d)
 
@@ -401,7 +408,7 @@ class GarminCalendarExporter:
 
                 name = workout.filename or workout.name or ""
                 key = (date, name) if date else None
-                if key and replace_duplicates and (int(date[:4]), int(date[5:7])) in unreadable_months:
+                if key and (replace_duplicates or preview_calendar) and (int(date[:4]), int(date[5:7])) in unreadable_months:
                     error = f"Не удалось прочитать календарь Garmin за {date[:7]}; замена отменена"
                     plan_result.results.append(WorkoutUploadResult(filename=name, date=date, error=error))
                     continue
@@ -423,6 +430,15 @@ class GarminCalendarExporter:
                             filename=name, date=date, error=error))
                         continue
                     from .garmin_calendar_edit import replace_scheduled_workout
+
+                    if dry_run:
+                        result = self.upload_and_schedule(workout, date=date, dry_run=True)
+                        result.replaced_duplicate = result.ok
+                        result.replaced_schedule_id = matches[0]["schedule_id"]
+                        plan_result.results.append(result)
+                        if result.ok:
+                            processed.add(key)
+                        continue
 
                     try:
                         new_id = replace_scheduled_workout(

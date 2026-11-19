@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-19 - Garmin upload preview
+
+- Show the date and proposed Garmin action for each workout before sending a plan.
+  Preview reads calendar matches and checks for changes after confirmation.
+
 ## 2026-11-19 - Calendar undo and redo
 
 - Undo and redo local calendar moves and copies. History belongs to the open plan
