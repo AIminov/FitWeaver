@@ -4,12 +4,14 @@ Shared pipeline orchestrator for CLI and Telegram bot.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+from uuid import uuid4
 
 from .archive_manager import archive_current_plan
 from .build_from_plan import build_all_fits_from_plan
@@ -151,16 +153,22 @@ def run_generation_pipeline(
         }
 
     prepared_artifacts = prepare_plan_artifacts(yaml_path)
+    run_id = run_id or uuid4().hex
 
     direct_build_error = None
+    fit_provenance = {}
     OUTPUT_DIR.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".fit-build-", dir=OUTPUT_DIR.parent) as tmp:
         staging = Path(tmp)
+        prior = {}
         if not cleanup_first:
             for path in OUTPUT_DIR.glob("*.fit"):
                 shutil.copy2(path, staging / path.name)
+                prior[path.name] = hashlib.sha256((staging / path.name).read_bytes()).hexdigest()
         try:
-            built_count, build_total_count = build_all_fits_from_plan(yaml_path, output_dir=staging)
+            snapshot = staging / "source.yaml"
+            snapshot.write_text(prepared_artifacts.raw_yaml_text or "", encoding="utf-8")
+            built_count, build_total_count = build_all_fits_from_plan(snapshot, output_dir=staging)
         except Exception as exc:
             built_count, build_total_count = 0, 0
             direct_build_error = str(exc)
@@ -179,8 +187,13 @@ def run_generation_pipeline(
             errors.append("FIT file count differs from workout count")
         if not errors:
             try:
+                for path in staging.glob("*.fit"):
+                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                    if prior.get(path.name) != digest:
+                        fit_provenance[path.name] = digest
                 _publish_fits(staging, OUTPUT_DIR)
             except OSError as exc:
+                fit_provenance.clear()
                 errors.append(f"Could not publish FIT files: {exc}")
 
     # A failed run must not advertise files from the previous successful build.
@@ -198,6 +211,7 @@ def run_generation_pipeline(
         valid_count=valid_count,
         total_count=validate_total_count,
         fit_files=fit_files,
+        fit_provenance=fit_provenance,
         errors=errors,
         archive_path=None,
         started_at=started_at,
@@ -217,6 +231,7 @@ def run_generation_pipeline(
                 artifact_paths=artifact_paths,
                 keep_plan=True,
                 keep_fit=True,
+                scope_fits_to_plan=True,
             )
         except Exception as exc:
             success = False
@@ -233,6 +248,7 @@ def run_generation_pipeline(
                 valid_count=valid_count,
                 total_count=validate_total_count,
                 fit_files=fit_files,
+                fit_provenance=fit_provenance,
                 errors=errors,
                 archive_path=archive_path,
                 started_at=started_at,

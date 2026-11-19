@@ -4,6 +4,7 @@ Helpers for repaired YAML and machine-readable build reports.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from .config import ARTIFACTS_DIR
+from .fileio import atomic_write_text
 from .plan_processing import repair_plan_data, sanitize_workout_name
 from .plan_validator import group_issues_by_category, validate_plan_data_detailed
 
@@ -127,18 +129,21 @@ def write_build_report(
     archive_path: Path | None = None,
     started_at: datetime | None = None,
     finished_at: datetime | None = None,
+    fit_provenance: dict[str, str] | None = None,
 ) -> Path:
     prepared.build_report_path.parent.mkdir(parents=True, exist_ok=True)
     started_at = started_at or datetime.now(timezone.utc)
     finished_at = finished_at or datetime.now(timezone.utc)
 
     report = {
-        "report_version": 2,
+        "report_version": 3,
         "run_id": run_id,
         "generated_at": finished_at.isoformat(),
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
         "source_yaml_path": str(prepared.source_yaml_path),
+        "source_yaml_resolved": str(prepared.source_yaml_path.resolve()),
+        "source_yaml_sha256": hashlib.sha256((prepared.raw_yaml_text or "").encode("utf-8")).hexdigest(),
         "repaired_yaml_path": (
             str(prepared.repaired_yaml_path) if prepared.repaired_yaml_path.exists() else None
         ),
@@ -155,6 +160,7 @@ def write_build_report(
             "built_count": built_count,
             "build_total_count": build_total_count,
             "fit_files": [path.name for path in fit_files],
+            "fit_sha256": fit_provenance or {},
         },
         "validation": {
             "valid_count": valid_count,
@@ -162,7 +168,8 @@ def write_build_report(
         },
         "errors": errors,
     }
-    prepared.build_report_path.write_text(
+    atomic_write_text(
+        prepared.build_report_path,
         json.dumps(report, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

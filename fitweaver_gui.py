@@ -2087,7 +2087,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             return
         if messagebox.askyesno(
             "Архивировать план",
-            f"Переместить план {Path(path).name}, связанный Markdown и его FIT-файлы в архив?\n"
+            f"Переместить план {Path(path).name}, связанный Markdown и подтверждённые FIT-файлы в архив?\n"
             "Остальные планы и FIT-файлы останутся на месте.",
             parent=self,
         ):

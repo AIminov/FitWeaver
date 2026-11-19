@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-20 - Verify FIT provenance before archiving
+
+- Selected-plan archives use build report hashes for the plan and FIT files.
+  Legacy or changed FIT files stay in the output folder unless bulk archiving is requested.
+
 ## 2026-11-20 - Readable generator results
 
 - Show workout steps and nested repetitions by default, with failed segments, repairs,

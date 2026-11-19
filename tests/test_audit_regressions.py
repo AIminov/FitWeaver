@@ -266,7 +266,10 @@ def test_archive_cli_routes_selected_plan(tmp_path):
     assert archive.call_args.kwargs["assume_yes"] is True
 
 
-def test_selected_archive_preserves_unrelated_plans_and_fits(store_factory, tmp_path):
+@pytest.mark.parametrize("change", ["none", "fit", "plan", "path", "missing_report"])
+def test_selected_archive_verifies_build_provenance(store_factory, tmp_path, change):
+    import hashlib
+
     store, selected = store_factory("selected")
     _, other = store_factory("other")
     out = tmp_path / "out"
@@ -274,6 +277,23 @@ def test_selected_archive_preserves_unrelated_plans_and_fits(store_factory, tmp_
     fit_name = store.get_plan().workouts[0].filename + ".fit"
     (out / fit_name).write_bytes(b"selected")
     (out / "unrelated.fit").write_bytes(b"unrelated")
+    if change != "missing_report":
+        prepared = plan_artifacts.prepare_plan_artifacts(selected, artifacts_dir=tmp_path / "artifacts")
+        plan_artifacts.write_build_report(
+            prepared, validate_strict=False, run_id="test-build", success=True,
+            built_count=1, build_total_count=1, valid_count=1, total_count=1,
+            fit_files=[out / fit_name], errors=[],
+            fit_provenance={fit_name: hashlib.sha256(b"selected").hexdigest()},
+        )
+    if change == "fit":
+        (out / fit_name).write_bytes(b"replaced")
+    elif change == "plan":
+        selected.write_text("workouts: []", encoding="utf-8")
+    elif change == "path":
+        copied = tmp_path / "another" / selected.name
+        copied.parent.mkdir()
+        copied.write_bytes(selected.read_bytes())
+        selected = copied
     with patch.multiple(archive_manager, OUTPUT_DIR=out, PLAN_DIR=tmp_path,
         PLAN_DONE_DIR=tmp_path / "done", ARCHIVE_DIR=tmp_path / "archive",
         ARTIFACTS_DIR=tmp_path / "artifacts"):
@@ -282,8 +302,8 @@ def test_selected_archive_preserves_unrelated_plans_and_fits(store_factory, tmp_
     assert not selected.exists()
     assert other.exists()
     assert (out / "unrelated.fit").read_bytes() == b"unrelated"
-    assert not (out / fit_name).exists()
-    assert (archive / "output_fit" / fit_name).exists()
+    assert (out / fit_name).exists() is (change != "none")
+    assert (archive / "output_fit" / fit_name).exists() is (change == "none")
 
 
 def test_gui_archive_passes_selected_path(tmp_path):

@@ -4,6 +4,8 @@ Archive management for completed training plans.
 Moves completed workouts and plans to archive, keeping main directories clean.
 """
 
+import hashlib
+import json
 import logging
 import re
 import shutil
@@ -123,6 +125,22 @@ def _collect_artifact_files(plan_files, artifact_paths=None):
     return artifacts
 
 
+def _verified_plan_outputs(plan_file: Path) -> tuple[dict[str, str], list[Path]]:
+    repaired, report_path = get_plan_artifact_paths(plan_file, artifacts_dir=ARTIFACTS_DIR)
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        digest = hashlib.sha256(plan_file.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
+        if (report["report_version"] == 3
+                and report["source_yaml_resolved"] == str(plan_file.resolve())
+                and report["source_yaml_sha256"] == digest):
+            hashes = report["build"]["fit_sha256"]
+            if isinstance(hashes, dict):
+                return hashes, [path for path in (report_path, repaired) if path.is_file()]
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        pass
+    return {}, []
+
+
 
 def get_archive_name(plan_name=None, owner_tag=None):
     """
@@ -193,20 +211,18 @@ def archive_current_plan(
 
     plan_files = _collect_plan_files(plan_paths=plan_paths)
     fits = list(OUTPUT_DIR.glob("*.fit"))
+    verified_artifacts = []
     if scope_fits_to_plan:
-        # Resolve and validate before moving anything. No matching FIT is fine;
-        # unrelated results must never be swept into a selected-plan archive.
-        from .build_from_plan import load_plan_build_input
-        from .plan_processing import sanitize_workout_name
-
         if not plan_paths or not plan_files:
             raise ValueError("Selected-plan archiving requires an existing YAML plan")
-        names = set()
+        hashes = {}
         for plan_file in plan_files:
             if plan_file.suffix.lower() in (".yaml", ".yml"):
-                for workout in load_plan_build_input(plan_file).plan.workouts:
-                    names.add((sanitize_workout_name(workout.filename or workout.name) + ".fit").casefold())
-        fits = [fit for fit in fits if fit.name.casefold() in names]
+                plan_hashes, artifacts = _verified_plan_outputs(plan_file)
+                hashes.update(plan_hashes)
+                verified_artifacts.extend(artifacts)
+        fits = [fit for fit in fits if fit.name in hashes
+                and hashlib.sha256(fit.read_bytes()).hexdigest() == hashes[fit.name]]
 
     archive_path = ARCHIVE_DIR / archive_name
     archive_path.mkdir(parents=True, exist_ok=True)
@@ -214,7 +230,8 @@ def archive_current_plan(
     logger.info(f"Creating archive: {archive_name}")
     logger.info(f"Archive location: {archive_path}")
 
-    artifact_files = _collect_artifact_files(plan_files, artifact_paths=artifact_paths)
+    artifact_files = (_collect_artifact_files([], [*verified_artifacts, *(artifact_paths or [])])
+                      if scope_fits_to_plan else _collect_artifact_files(plan_files, artifact_paths))
 
     # Archive FIT files
     if fits:
