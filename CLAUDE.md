@@ -33,7 +33,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (updated 2026-11-19, start here):**
-0. Implement undo/redo in the desktop builder and calendar, then upload preview.
+0. Implement undo/redo for calendar moves and copies, then upload preview.
+   Builder undo/redo is available for changes to the workout draft.
    Desktop drafts now autosave and restore per profile. The seven reliability fixes
    from `docs/UX_CODE_AUDIT_2026-11-19.md` have offline regression coverage.
 1. Finish the running 59-case Unsloth IQ4_XS baseline; compare the same 12-case pilot using

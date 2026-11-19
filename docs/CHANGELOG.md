@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-19 - Builder undo and redo
+
+- Undo and redo workout step edits, template application and clearing the draft.
+  History holds up to 50 edits in the current editing session.
+
 ## 2026-11-19 - Desktop draft recovery
 
 - Autosave and restore generator text, generated YAML and builder steps per profile,

@@ -84,7 +84,7 @@ class BuilderTabMixin:
         for key, (label, _factory) in TEMPLATES.items():
             ttk.Button(top, text=label,
                        command=lambda k=key: self._builder_apply_template(k)).pack(side="left", padx=2)
-        ttk.Button(top, text="Очистить", command=self._builder_clear).pack(side="left", padx=(12, 2))
+        ttk.Button(top, text="Очистить", command=self._builder_clear_action).pack(side="left", padx=(12, 2))
         tk.Label(parent, text="Имя по шаблону W{неделя}_{ММ-ДД}_{День}_{Тип}_{Детали}, "
                               "иначе тренировка не появится в календаре по дате",
                  bg=BG, fg=MUTED, font=("Segoe UI", 8), anchor="w").pack(fill="x", pady=(0, 6))
@@ -128,6 +128,14 @@ class BuilderTabMixin:
                     width=4).pack(side="left", padx=(6, 6))
         tk.Label(repeat_bar, text="выделите блоки: клик, затем Shift+клик",
                  bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left")
+        self._builder_undo_stack = []
+        self._builder_redo_stack = []
+        self._builder_redo_btn = ttk.Button(repeat_bar, text="Повторить правку",
+            command=lambda: self._builder_history_move(redo=True), state="disabled")
+        self._builder_redo_btn.pack(side="right")
+        self._builder_undo_btn = ttk.Button(repeat_bar, text="Отменить правку",
+            command=self._builder_history_move, state="disabled")
+        self._builder_undo_btn.pack(side="right", padx=4)
 
         seq_container = ttk.Frame(sequence)
         seq_container.pack(fill="both", expand=True)
@@ -212,10 +220,62 @@ class BuilderTabMixin:
     def _builder_has_repeat(self) -> bool:
         return any(s.step_type == "repeat" for s in self._builder_steps)
 
+    def _builder_history_snapshot(self):
+        from copy import deepcopy
+
+        return (self._builder_filename_var.get(), deepcopy(self._builder_steps),
+                self._builder_edit_workout_id, self._builder_edit_context,
+                self._builder_garmin_edit_event)
+
+    def _builder_history_buttons(self):
+        for button, stack in ((self._builder_undo_btn, self._builder_undo_stack),
+                              (self._builder_redo_btn, self._builder_redo_stack)):
+            button.configure(state="normal" if stack and not self._operation_active else "disabled")
+
+    def _builder_history_reset(self):
+        self._builder_undo_stack.clear()
+        self._builder_redo_stack.clear()
+        self._builder_history_buttons()
+
+    def _builder_record_edit(self, before):
+        if before == self._builder_history_snapshot():
+            return
+        self._builder_undo_stack.append(before)
+        del self._builder_undo_stack[:-50]
+        self._builder_redo_stack.clear()
+        self._builder_history_buttons()
+
+    def _builder_history_move(self, *, redo=False):
+        source, destination = self._builder_undo_stack, self._builder_redo_stack
+        if redo:
+            source, destination = destination, source
+        if self._operation_active or not source:
+            return
+        destination.append(self._builder_history_snapshot())
+        name, steps, workout_id, context, event = source.pop()
+        self._builder_steps = steps
+        self._builder_edit_workout_id = workout_id
+        self._builder_edit_context = context
+        self._builder_garmin_edit_event = event
+        self._builder_filename_var.set(name)
+        if event is not None:
+            label, command = "Сохранить в Garmin Connect", self._builder_replace_garmin_event
+        elif workout_id is not None:
+            label, command = "Сохранить в YAML", self._builder_save_edit
+        else:
+            label, command = "Добавить в локальный план", self._builder_commit
+        self._builder_add_btn.configure(text=label, command=command)
+        self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
+        self._builder_render_editor()
+        self._builder_render_list()
+        self._builder_history_buttons()
+
     def _builder_add_block(self, key: str):
         from garmin_fit.workout_builder import BLOCK_DEFS
         step = BLOCK_DEFS[key].make()
+        before = self._builder_history_snapshot()
         self._builder_steps.append(step)
+        self._builder_record_edit(before)
         self._builder_select(len(self._builder_steps) - 1)
 
     def _builder_apply_template(self, key: str):
@@ -224,16 +284,23 @@ class BuilderTabMixin:
                 "Заменить черновик?",
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
+        before = self._builder_history_snapshot()
         self._builder_edit_workout_id = None
         self._builder_garmin_edit_event = None
         self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
         _label, factory = TEMPLATES[key]
         self._builder_steps = factory()
+        self._builder_record_edit(before)
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
 
-    def _builder_clear(self):
+    def _builder_clear_action(self):
+        before = self._builder_history_snapshot()
+        self._builder_clear(reset_history=False)
+        self._builder_record_edit(before)
+
+    def _builder_clear(self, *, reset_history=True):
         self._builder_steps = []
         self._builder_edit_workout_id = None
         self._builder_edit_context = None
@@ -243,6 +310,8 @@ class BuilderTabMixin:
         self._builder_render_list()
         self._builder_render_editor()
         self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
+        if reset_history:
+            self._builder_history_reset()
 
     # ── Personal template library (per-profile, separate from the 3
     #    built-in TEMPLATES) ──────────────────────────────────────────────
@@ -286,6 +355,7 @@ class BuilderTabMixin:
                 "Заменить черновик?",
                 "Текущий черновик будет заменён шаблоном. Продолжить?"):
             return
+        before = self._builder_history_snapshot()
         self._builder_edit_workout_id = None
         self._builder_garmin_edit_event = None
         self._builder_add_btn.config(text="Добавить в локальный план", command=self._builder_commit)
@@ -293,6 +363,7 @@ class BuilderTabMixin:
         from garmin_fit.profile_store import list_user_templates
         steps_data = list_user_templates(self._active_profile_email).get(name, [])
         self._builder_steps = [step_from_data(s) for s in steps_data]
+        self._builder_record_edit(before)
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
@@ -321,11 +392,13 @@ class BuilderTabMixin:
 
     def _builder_delete(self, idx: int):
         from garmin_fit.workout_builder import delete_step_from_draft
+        before = self._builder_history_snapshot()
         try:
             delete_step_from_draft(self._builder_steps, idx)
         except ValueError as exc:
             messagebox.showinfo("Нельзя удалить шаг", str(exc), parent=self)
             return
+        self._builder_record_edit(before)
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
@@ -341,7 +414,9 @@ class BuilderTabMixin:
         if not (0 <= new_idx < len(self._builder_steps)):
             return
         steps = self._builder_steps
+        before = self._builder_history_snapshot()
         steps[idx], steps[new_idx] = steps[new_idx], steps[idx]
+        self._builder_record_edit(before)
         self._builder_selected_index = new_idx
         self._builder_range_start = self._builder_range_end = None
         self._builder_render_list()
@@ -358,11 +433,13 @@ class BuilderTabMixin:
         except (TypeError, ValueError):
             messagebox.showwarning("Некорректно", "Количество повторов должно быть числом.")
             return
+        before = self._builder_history_snapshot()
         try:
             insert_repeat_into_draft(self._builder_steps, lo, hi, count)
         except ValueError as exc:
             messagebox.showwarning("Нельзя повторить", str(exc))
             return
+        self._builder_record_edit(before)
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
         self._builder_render_list()
         self._builder_render_editor()
@@ -478,7 +555,9 @@ class BuilderTabMixin:
                     target_entry.focus_set()
                     return
                 self._builder_input_errors.discard((idx, "count"))
+                before = self._builder_history_snapshot()
                 s.count = value
+                self._builder_record_edit(before)
                 self._builder_render_list()
 
             entry = ttk.Entry(self._builder_editor_frame, textvariable=count_var, width=8)
@@ -519,7 +598,9 @@ class BuilderTabMixin:
                     target_entry.focus_set()
                     return
                 self._builder_input_errors.discard((idx, fn))
+                before = self._builder_history_snapshot()
                 setattr(s, fn, value)
+                self._builder_record_edit(before)
                 self._builder_render_list()
 
             entry = ttk.Entry(self._builder_editor_frame, textvariable=var, width=16)
@@ -545,7 +626,9 @@ class BuilderTabMixin:
                 def _apply_zone(_e=None, s=step, v=zone_var, choices=zone_choices):
                     bounds = choices.get(v.get())
                     if bounds:
+                        before = self._builder_history_snapshot()
                         s.hr_low, s.hr_high = bounds["low"], bounds["high"]
+                        self._builder_record_edit(before)
                         self._builder_render_list()
                         self._builder_render_editor()
                         self._builder_update_validation()
@@ -567,7 +650,9 @@ class BuilderTabMixin:
         intensity_var = tk.StringVar(value=step.intensity or "")
 
         def _on_intensity_change(_e=None, s=step, v=intensity_var):
+            before = self._builder_history_snapshot()
             s.intensity = v.get() or None
+            self._builder_record_edit(before)
             self._builder_render_list()
 
         cb = ttk.Combobox(self._builder_editor_frame, textvariable=intensity_var, width=13,

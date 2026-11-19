@@ -140,6 +140,14 @@ def test_gui_main_flows(tmp_path):
             app._restore_drafts()
             results["draft_restored"] = app._draft_snapshot() == draft
             results["draft_detached"] = app._builder_edit_workout_id is None
+            app._builder_clear_action()
+            app._builder_history_move()
+            results["undo_restores_draft"] = app._draft_snapshot() == draft
+            app._builder_history_move(redo=True)
+            results["redo_clears_draft"] = not app._builder_steps
+            app._builder_history_move()
+            app._builder_delete(0)
+            results["new_edit_discards_redo"] = not app._builder_redo_stack
             app._builder_clear()
             app._plan_text.delete("1.0", "end")
             app._show_generated("")
@@ -171,6 +179,8 @@ def test_gui_main_flows(tmp_path):
     assert results["draft_retained"]
     assert results["draft_saved"] and results["draft_isolated"]
     assert results["draft_restored"] and results["draft_detached"] and results["draft_cleared"]
+    assert results["undo_restores_draft"] and results["redo_clears_draft"]
+    assert results["new_edit_discards_redo"]
     assert results["empty_context_closed_store"]
     assert not any("topsecret-password" in line for line in log_lines)
     assert any("--password ***" in line for line in log_lines)

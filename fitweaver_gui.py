@@ -1481,6 +1481,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         )
         if workout is None:
             return
+        self._builder_history_reset()
         self._builder_edit_workout_id = workout_id
         self._builder_edit_context = self._current_plan_context()
         self._builder_garmin_edit_event = None
@@ -1709,6 +1710,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._operation_button_states = {}
         self._operation_active = False
         self._operation_label = ""
+        self._builder_history_buttons()
         if success is True:
             self._shell_status_var.set("Готово")
         elif success is False:
