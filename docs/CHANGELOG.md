@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-19 - UX and reliability audit
+
+- Documented seven persistence/context/build/archive defects with offline evidence and
+  prioritized UX improvements in `UX_CODE_AUDIT_2026-11-19.md`; added open work to TODO.
+- Application behavior unchanged. Existing suite: 490 tests and 36 subtests passed.
+
 ## 2026-09-27 - TODO implementation, first pass
 
 ### Added
