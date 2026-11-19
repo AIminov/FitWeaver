@@ -118,6 +118,29 @@ def test_gui_main_flows(tmp_path):
 
         def finish():
             app.pass_var.set("")
+            from types import SimpleNamespace
+
+            def drop(workout, day, *, copy=False):
+                app._drag_moved = True
+                event = SimpleNamespace(x_root=0, y_root=0, state=4 if copy else 0)
+                with patch.object(app, "_cell_date_at_root_coords", return_value=day):
+                    app._calendar_drag_release(event, workout)
+
+            original = app.workouts[0]
+            count = len(app.workouts)
+            drop(original, "2026-10-12")
+            moved = app.workouts[0]
+            drop(moved, "2026-10-13", copy=True)
+            copied = app.workouts[-1]
+            results["calendar_copy"] = len(app.workouts) == count + 1
+            app._calendar_history_move()
+            app._calendar_history_move()
+            results["calendar_undo"] = len(app.workouts) == count and app.workouts[0] == original
+            app._calendar_history_move(redo=True)
+            app._calendar_history_move(redo=True)
+            results["calendar_redo"] = app.workouts[0] == moved and app.workouts[-1] == copied
+            app._calendar_history_move()
+            app._calendar_history_move()
             # An editor opened for A must not write into B even when both
             # disposable databases assign workout ID 1.
             app._show_detail(app.workouts[0])
@@ -126,6 +149,7 @@ def test_gui_main_flows(tmp_path):
             second_plan.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
             app.yaml_path.set(str(second_plan))
             app._reload_yaml()
+            results["calendar_history_isolated"] = not (app._calendar_undo or app._calendar_redo)
             before = second_plan.read_bytes()
             app._builder_filename_var.set("must_not_overwrite_second_plan")
             app._builder_save_edit()
@@ -177,6 +201,8 @@ def test_gui_main_flows(tmp_path):
     assert results["validate_seconds"] < 10  # in-process, no exe start-up
     assert results["editor_isolated"]
     assert results["draft_retained"]
+    assert results["calendar_copy"] and results["calendar_undo"] and results["calendar_redo"]
+    assert results["calendar_history_isolated"]
     assert results["draft_saved"] and results["draft_isolated"]
     assert results["draft_restored"] and results["draft_detached"] and results["draft_cleared"]
     assert results["undo_restores_draft"] and results["redo_clears_draft"]

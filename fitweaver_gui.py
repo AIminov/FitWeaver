@@ -977,6 +977,15 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                                    font=("Segoe UI", 12, "bold"))
         self._month_lbl.pack(side="left", padx=10)
         ttk.Button(nav, text="▶", command=self._next_month, width=3).pack(side="left")
+        self._calendar_undo = []
+        self._calendar_redo = []
+        self._calendar_history_context = None
+        self._calendar_undo_btn = ttk.Button(nav, text="Отменить", state="disabled",
+                                            command=self._calendar_history_move)
+        self._calendar_undo_btn.pack(side="right", padx=4)
+        self._calendar_redo_btn = ttk.Button(nav, text="Повторить", state="disabled",
+                                            command=lambda: self._calendar_history_move(redo=True))
+        self._calendar_redo_btn.pack(side="right")
         tk.Label(nav, text=f"  Сегодня: {datetime.date.today().strftime('%d.%m.%Y')}",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=16)
 
@@ -1247,6 +1256,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
 
     # ── Calendar drawing ──────────────────────────────────────────────────────
     def _draw_calendar(self):
+        self._calendar_history_buttons()
         for w in self._cal_frame.winfo_children():
             w.destroy()
         self._month_lbl.config(
@@ -1392,7 +1402,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             return
         if not is_copy and target_date_str == wo.get("date"):
             return  # dropped on its own day -- no-op
-        if self._store is None:
+        if self._store is None or self._operation_active:
             return
 
         filename = wo.get("filename") or wo.get("name") or ""
@@ -1403,6 +1413,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
 
         new_date = datetime.date.fromisoformat(target_date_str)
         new_filename = self._compute_renamed_filename(filename, new_date)
+        self._calendar_history_buttons()
 
         if is_copy:
             new_filename = self._dedupe_filename(new_filename, exclude_workout_id=-1)
@@ -1420,9 +1431,55 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                 return
             self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
 
+        self._calendar_undo.append((is_copy, filename, new_filename))
+        del self._calendar_undo[:-50]
+        self._calendar_redo.clear()
+        self._calendar_history_context = self._current_plan_context()
+        self._calendar_refresh_after_edit()
+
+    def _calendar_history_buttons(self):
+        if self._calendar_history_context != self._current_plan_context():
+            self._calendar_undo.clear()
+            self._calendar_redo.clear()
+            self._calendar_history_context = None
+        for button, stack in ((self._calendar_undo_btn, self._calendar_undo),
+                              (self._calendar_redo_btn, self._calendar_redo)):
+            button.configure(state="normal" if stack and not self._operation_active else "disabled")
+
+    def _calendar_history_move(self, *, redo=False):
+        self._calendar_history_buttons()
+        source, destination = self._calendar_undo, self._calendar_redo
+        if redo:
+            source, destination = destination, source
+        if self._operation_active or self._store is None or not source:
+            return
+        is_copy, old_name, new_name = source[-1]
+        workout_id = self._store.find_workout_id_by_filename(old_name if redo else new_name)
+        if workout_id is None:
+            messagebox.showerror("Тренировка не найдена", "Обновите локальный план.", parent=self)
+            return
+        try:
+            if is_copy and redo:
+                self._store.duplicate_workout(workout_id, filename=new_name)
+            elif is_copy:
+                self._store.delete_workout(workout_id)
+            else:
+                self._store.rename_workout_filename(workout_id, new_name if redo else old_name)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("Не удалось применить правку", str(exc), parent=self)
+            return
+        destination.append(source.pop())
+        self._calendar_history_context = self._current_plan_context()
+        self._calendar_refresh_after_edit()
+        self._log("[OK] Правка повторена" if redo else "[OK] Правка отменена")
+
+    def _calendar_refresh_after_edit(self):
         from garmin_fit.plan_domain import plan_to_data
-        data = plan_to_data(self._store.get_plan())
-        self.workouts = self._parse_workouts(data)
+
+        self.workouts = self._parse_workouts(plan_to_data(self._store.get_plan()))
+        self._selected_workout = None
+        self._detail_var.set("")
+        self._edit_selected_btn.configure(state="disabled")
         self._draw_calendar()
 
     def _dedupe_filename(self, filename: str, exclude_workout_id: int) -> str:
@@ -1711,6 +1768,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._operation_active = False
         self._operation_label = ""
         self._builder_history_buttons()
+        self._calendar_history_buttons()
         if success is True:
             self._shell_status_var.set("Готово")
         elif success is False:

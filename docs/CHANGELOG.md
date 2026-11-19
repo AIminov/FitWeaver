@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-19 - Calendar undo and redo
+
+- Undo and redo local calendar moves and copies. History belongs to the open plan
+  and is invalidated by changes outside the calendar history.
+
 ## 2026-11-19 - Builder undo and redo
 
 - Undo and redo workout step edits, template application and clearing the draft.
