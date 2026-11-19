@@ -148,6 +148,7 @@ class Workout:
     estimated_duration_min: Any = None
     steps: list[WorkoutStep] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
+    date: str | None = None
 
 
 @dataclass(slots=True)
@@ -231,6 +232,7 @@ def workout_from_data(data: Mapping[str, Any]) -> Workout:
         type_code=data.get("type_code"),
         distance_km=data.get("distance_km"),
         estimated_duration_min=data.get("estimated_duration_min"),
+        date=str(data["date"]) if data.get("date") is not None else None,
         steps=steps,
         extra=_extra_fields(
             data,
@@ -241,6 +243,7 @@ def workout_from_data(data: Mapping[str, Any]) -> Workout:
                 "type_code",
                 "distance_km",
                 "estimated_duration_min",
+                "date",
                 "steps",
             },
         ),
@@ -315,6 +318,8 @@ def workout_to_data(workout: Workout) -> dict[str, Any]:
         data["distance_km"] = workout.distance_km
     if workout.estimated_duration_min is not None:
         data["estimated_duration_min"] = workout.estimated_duration_min
+    if workout.date is not None:
+        data["date"] = workout.date
     data["steps"] = [step_to_data(step) for step in workout.steps]
     return data
 

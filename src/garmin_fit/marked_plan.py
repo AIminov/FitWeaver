@@ -563,6 +563,8 @@ def plan_to_yaml_data(plan: MarkedPlan) -> dict[str, Any]:
         used.add(candidate)
 
         entry: dict[str, Any] = {"filename": candidate, "name": candidate}
+        if workout.date is not None:
+            entry["date"] = workout.date.isoformat()
         desc = _workout_desc(workout)
         if desc:
             entry["desc"] = desc
@@ -738,7 +740,7 @@ def plan_data_to_marked_text(data: dict[str, Any]) -> str:
     plan = MarkedPlan()
     for workout in plan_from_data(data).workouts:
         marked = MarkedWorkout(line=0, title=_review_title(workout))
-        date_text = extract_date_from_filename(workout.filename or "")
+        date_text = workout.date or extract_date_from_filename(workout.filename or "")
         if date_text:
             marked.date = date.fromisoformat(date_text)
         if workout.distance_km:

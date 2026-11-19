@@ -237,7 +237,7 @@ class GarminCalendarExporter:
         -------
         WorkoutUploadResult
         """
-        resolved_date = date or extract_date_from_filename(workout.filename or "")
+        resolved_date = date or workout.date or extract_date_from_filename(workout.filename or "")
         result = WorkoutUploadResult(
             filename=workout.filename or workout.name or "unknown",
             date=resolved_date,
@@ -344,7 +344,7 @@ class GarminCalendarExporter:
         included: list[Workout] = []
         skipped = 0
         for w in plan.workouts:
-            raw_date = extract_date_from_filename(w.filename or "", year=year)
+            raw_date = w.date or extract_date_from_filename(w.filename or "", year=year)
             ok, reason = _date_in_range(raw_date, from_d, to_d, skip_past)
             if ok:
                 included.append(w)
@@ -375,7 +375,7 @@ class GarminCalendarExporter:
         existing: dict[tuple[str, str], list[dict[str, str]]] = {}
         unreadable_months: set[tuple[int, int]] = set()
         if (skip_duplicates or replace_duplicates) and schedule and (not dry_run or preview_calendar):
-            dates = [extract_date_from_filename(w.filename or "", year=year) for w in included]
+            dates = [w.date or extract_date_from_filename(w.filename or "", year=year) for w in included]
             existing, unreadable_months = self._scheduled_events_by_date(d for d in dates if d)
 
         uploaded_total = 0
@@ -393,7 +393,7 @@ class GarminCalendarExporter:
 
                 date: str | None = None
                 if schedule:
-                    date = extract_date_from_filename(workout.filename or "", year=year)
+                    date = workout.date or extract_date_from_filename(workout.filename or "", year=year)
                     if date is None:
                         if replace_duplicates:
                             plan_result.results.append(WorkoutUploadResult(

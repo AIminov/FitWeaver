@@ -13,6 +13,8 @@ The top-level WorkoutPlanSchema can also generate a JSON Schema for the LLM prom
 
 from __future__ import annotations
 
+from datetime import date as CalendarDate
+
 from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -279,6 +281,18 @@ class WorkoutSchema(BaseModel):
     type_code: Optional[str] = None
     distance_km: Optional[float] = None
     estimated_duration_min: Optional[float] = None
+    date: Optional[CalendarDate] = None
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def check_calendar_date(cls, value):
+        if value is None or type(value) is CalendarDate:
+            return value
+        if isinstance(value, str):
+            parsed = CalendarDate.fromisoformat(value)
+            if parsed.isoformat() == value:
+                return parsed
+        raise ValueError("expected a date in YYYY-MM-DD format")
     steps: list[WorkoutStepUnion] = Field(min_length=1)
 
     @field_validator("filename", "name")

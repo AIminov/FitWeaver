@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-20 - Explicit workout dates
+
+- Support optional ISO dates in workout YAML, marked-plan conversion, local calendar
+  edits and Garmin scheduling. Existing plans can still infer dates from filenames.
+
 ## 2026-11-20 - Verify FIT provenance before archiving
 
 - Selected-plan archives use build report hashes for the plan and FIT files.

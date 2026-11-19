@@ -1418,25 +1418,26 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
 
         new_date = datetime.date.fromisoformat(target_date_str)
         new_filename = self._compute_renamed_filename(filename, new_date)
+        old_date = self._store.get_workout_date(workout_id)
         self._calendar_history_buttons()
 
         if is_copy:
             new_filename = self._dedupe_filename(new_filename, exclude_workout_id=-1)
             try:
-                self._store.duplicate_workout(workout_id, filename=new_filename)
+                self._store.duplicate_workout(workout_id, filename=new_filename, date=target_date_str)
             except (ValueError, OSError) as exc:
                 messagebox.showerror("Не удалось скопировать", str(exc), parent=self)
                 return
             self._log(f"[OK] «{filename}» скопирована на {target_date_str} → «{new_filename}»")
         else:
             try:
-                self._store.rename_workout_filename(workout_id, new_filename)
+                self._store.rename_workout_filename(workout_id, new_filename, date=target_date_str, update_date=True)
             except (ValueError, OSError) as exc:
                 messagebox.showerror("Не удалось перенести", str(exc), parent=self)
                 return
             self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
 
-        self._calendar_undo.append((is_copy, filename, new_filename))
+        self._calendar_undo.append((is_copy, filename, new_filename, old_date, target_date_str))
         del self._calendar_undo[:-50]
         self._calendar_redo.clear()
         self._calendar_history_context = self._current_plan_context()
@@ -1458,18 +1459,20 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             source, destination = destination, source
         if self._operation_active or self._store is None or not source:
             return
-        is_copy, old_name, new_name = source[-1]
+        is_copy, old_name, new_name, old_date, new_date = source[-1]
         workout_id = self._store.find_workout_id_by_filename(old_name if redo else new_name)
         if workout_id is None:
             messagebox.showerror("Тренировка не найдена", "Обновите локальный план.", parent=self)
             return
         try:
             if is_copy and redo:
-                self._store.duplicate_workout(workout_id, filename=new_name)
+                self._store.duplicate_workout(workout_id, filename=new_name, date=new_date)
             elif is_copy:
                 self._store.delete_workout(workout_id)
             else:
-                self._store.rename_workout_filename(workout_id, new_name if redo else old_name)
+                self._store.rename_workout_filename(
+                    workout_id, new_name if redo else old_name,
+                    date=new_date if redo else old_date, update_date=True)
         except (ValueError, OSError) as exc:
             messagebox.showerror("Не удалось применить правку", str(exc), parent=self)
             return
@@ -1701,7 +1704,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             result.append({
                 "name":     wo.get("name") or filename,
                 "filename": filename,
-                "date":     extract_date_from_filename(filename, year=year),
+                "date":     wo.get("date") or extract_date_from_filename(filename, year=year),
                 "type_code": wo.get("type_code", ""),
                 "distance_km": wo.get("distance_km"),
                 "estimated_duration_min": wo.get("estimated_duration_min"),

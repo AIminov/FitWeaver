@@ -33,7 +33,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (updated 2026-11-20, start here):**
-0. Add an explicit workout date to the domain model with backward-compatible YAML.
+0. Consolidate plan mutations and improve background task context isolation.
+   Optional workout dates now take precedence over legacy filename dates.
    Selected-plan archiving now verifies FIT provenance against the build report.
    The generator now defaults to a readable plan with review notes.
    Garmin Connect upload now has a per-workout preview before confirmation.

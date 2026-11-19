@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS workouts (
     id INTEGER PRIMARY KEY,
     position INTEGER NOT NULL,
     filename TEXT, name TEXT, desc TEXT, type_code TEXT,
-    distance_km TEXT, estimated_duration_min TEXT,
+    distance_km TEXT, estimated_duration_min TEXT, workout_date TEXT,
     extra_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS steps (
@@ -112,6 +112,8 @@ class PlanStore:
     def open(cls, db_path: Path) -> "PlanStore":
         conn = sqlite3.connect(str(db_path))
         conn.executescript(_SCHEMA)
+        if "workout_date" not in {row[1] for row in conn.execute("PRAGMA table_info(workouts)")}:
+            conn.execute("ALTER TABLE workouts ADD COLUMN workout_date TEXT")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(steps)")}
         for column in ("cad_low", "cad_high"):
             if column not in columns:
@@ -170,14 +172,15 @@ class PlanStore:
     def get_plan(self) -> WorkoutPlan:
         cur = self._conn.execute(
             "SELECT id, filename, name, desc, type_code, distance_km, "
-            "estimated_duration_min, extra_json FROM workouts ORDER BY position"
+            "estimated_duration_min, extra_json, workout_date FROM workouts ORDER BY position"
         )
         workouts = []
-        for wo_id, filename, name, desc, type_code, distance_km, duration, extra_json in cur.fetchall():
+        for wo_id, filename, name, desc, type_code, distance_km, duration, extra_json, workout_date in cur.fetchall():
             workouts.append(Workout(
                 filename=filename, name=name, desc=desc, type_code=type_code,
                 distance_km=_load_float(distance_km),
                 estimated_duration_min=_load_int(duration),
+                date=workout_date,
                 steps=self._get_steps(wo_id), extra=json.loads(extra_json or "{}"),
             ))
         return WorkoutPlan(workouts=workouts)
@@ -225,10 +228,10 @@ class PlanStore:
     def _insert_workout(self, position: int, workout: Workout) -> int:
         cur = self._conn.execute(
             "INSERT INTO workouts (position, filename, name, desc, type_code, "
-            "distance_km, estimated_duration_min, extra_json) VALUES (?,?,?,?,?,?,?,?)",
+            "distance_km, estimated_duration_min, extra_json, workout_date) VALUES (?,?,?,?,?,?,?,?,?)",
             (position, workout.filename, workout.name, workout.desc, workout.type_code,
              _dump_scalar(workout.distance_km), _dump_scalar(workout.estimated_duration_min),
-             json.dumps(workout.extra)),
+             json.dumps(workout.extra), workout.date),
         )
         workout_id = cur.lastrowid
         for s_position, step in enumerate(workout.steps):
@@ -282,15 +285,16 @@ class PlanStore:
         self._conn.commit()
         self._write_through()
 
-    def duplicate_workout(self, workout_id: int, *, filename: str | None = None) -> int:
+    def duplicate_workout(self, workout_id: int, *, filename: str | None = None,
+                          date: str | None = None) -> int:
         row = self._conn.execute(
             "SELECT filename, name, desc, type_code, distance_km, "
-            "estimated_duration_min, extra_json FROM workouts WHERE id = ?",
+            "estimated_duration_min, extra_json, workout_date FROM workouts WHERE id = ?",
             (workout_id,),
         ).fetchone()
         if row is None:
             raise ValueError(f"workout id {workout_id} not found")
-        original_filename, name, desc, type_code, distance_km, duration, extra_json = row
+        original_filename, name, desc, type_code, distance_km, duration, extra_json, workout_date = row
         if filename is None:
             base = original_filename or name or "workout"
             filename = f"{base}_copy"
@@ -307,6 +311,7 @@ class PlanStore:
         new_workout = Workout(
             filename=filename, name=name, desc=desc, type_code=type_code,
             distance_km=distance_km, estimated_duration_min=duration,
+            date=date or workout_date,
             steps=steps, extra=json.loads(extra_json or "{}"),
         )
         new_id = self._insert_workout(max_position + 1, new_workout)
@@ -320,14 +325,20 @@ class PlanStore:
         self._renumber_workouts()
         self._write_through()
 
-    def rename_workout_filename(self, workout_id: int, new_filename: str) -> None:
+    def rename_workout_filename(self, workout_id: int, new_filename: str, *,
+                                date: str | None = None, update_date: bool = False) -> None:
         self._check_unique_name(new_filename, new_filename, workout_id)
         self._conn.execute(
-            "UPDATE workouts SET filename = ?, name = ? WHERE id = ?",
-            (new_filename, new_filename, workout_id),
+            "UPDATE workouts SET filename = ?, name = ?, "
+            "workout_date = CASE WHEN ? THEN ? ELSE workout_date END WHERE id = ?",
+            (new_filename, new_filename, update_date, date, workout_id),
         )
         self._conn.commit()
         self._write_through()
+
+    def get_workout_date(self, workout_id: int) -> str | None:
+        row = self._conn.execute("SELECT workout_date FROM workouts WHERE id = ?", (workout_id,)).fetchone()
+        return row[0] if row else None
 
     def replace_workout_steps(
         self,

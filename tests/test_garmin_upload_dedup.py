@@ -26,6 +26,16 @@ class UploadDedupTests(unittest.TestCase):
         exporter = GarminCalendarExporter(client, upload_delay=0)
         return exporter.upload_plan(_plan(), year=2026, week_pause=0, **kwargs)
 
+    def test_explicit_date_controls_filter_and_schedule_even_with_legacy_year(self):
+        plan = _plan()
+        plan.workouts[0].date = "2027-01-02"
+        client = _client([])
+        result = GarminCalendarExporter(client, upload_delay=0).upload_plan(
+            plan, year=2026, from_date="2027-01-02", to_date="2027-01-02", week_pause=0)
+        self.assertEqual(result.scheduled, 1)
+        client.get_scheduled_workouts.assert_called_once_with(2027, 1)
+        client.schedule_workout.assert_called_once_with("42", "2027-01-02")
+
     def test_already_scheduled_workout_is_skipped(self):
         client = _client([{"date": "2026-10-01", "workoutId": 7, "workoutName": "W40_10-01_Thu_Easy"}])
 
