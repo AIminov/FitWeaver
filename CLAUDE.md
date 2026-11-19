@@ -32,8 +32,9 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Git identity:** `git config --global user.email "iminov@gmail.com" && git config --global user.name "AIminov"`  
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
-**Next tasks (updated 2026-11-19, start here):**
-0. Improve the generator's human-readable workout preview and inline warnings.
+**Next tasks (updated 2026-11-20, start here):**
+0. Bind FIT archiving to the identity of a build run and verify matching output files.
+   The generator now defaults to a readable plan with review notes.
    Garmin Connect upload now has a per-workout preview before confirmation.
    Calendar moves and copies now support undo/redo.
    Builder undo/redo is available for changes to the workout draft.

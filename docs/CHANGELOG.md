@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-20 - Readable generator results
+
+- Show workout steps and nested repetitions by default, with failed segments, repairs,
+  and warnings alongside the output. Keep YAML view and copy available.
+
 ## 2026-11-19 - Garmin upload preview
 
 - Show the date and proposed Garmin action for each workout before sending a plan.

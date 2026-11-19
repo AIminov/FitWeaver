@@ -100,8 +100,9 @@ def test_gui_main_flows(tmp_path):
         def step_views():
             results["status"] = app._llm_progress.cget("text")
             results["yaml"] = app._generated_yaml
-            app._toggle_out_view()
             results["text_view"] = app._yaml_out.get("1.0", "end")
+            app._toggle_out_view()
+            results["yaml_view"] = app._yaml_out.get("1.0", "end")
             app._toggle_out_view()
             app._generated_to_editor()
             results["editor"] = app._plan_text.get("1.0", "end")
@@ -195,7 +196,9 @@ def test_gui_main_flows(tmp_path):
     assert results["sibling_files"] == ["plan.yaml"]  # no *.workdb beside the user's plan
     assert "Разобрано без LLM — 3 тренировки" in results["status"]
     assert str(results["yaml"]).startswith("workouts:")
-    assert str(results["text_view"]).lstrip().startswith("==== ТРЕНИРОВКА")
+    assert "•" in results["text_view"]
+    assert "**** ШАГ ****" not in results["text_view"]
+    assert str(results["yaml_view"]).startswith("workouts:")
     assert str(results["editor"]).startswith("==== ТРЕНИРОВКА")
     assert results["validate_result"] == "[OK] Готово"
     assert results["validate_seconds"] < 10  # in-process, no exe start-up

@@ -594,6 +594,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         return {
             "text": self._plan_text.get("1.0", "end-1c"),
             "generated": self._generated_yaml,
+            "notes": list(self._generated_notes),
             "name": self._builder_filename_var.get(),
             "steps": [step_to_data(step) for step in self._builder_steps],
         }
@@ -633,6 +634,9 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                 if not isinstance(data.get(key, ""), str):
                     raise ValueError("Некорректное поле черновика")
             steps = [step_from_data(item) for item in data.get("steps", [])]
+            notes = data.get("notes", [])
+            if not isinstance(notes, list) or any(not isinstance(note, str) for note in notes):
+                raise ValueError("Некорректные замечания в черновике")
             if any(step.step_type == "repeat" and not isinstance(step.back_to_offset, int) for step in steps):
                 raise ValueError("Некорректная группа повторов в черновике")
         except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -641,8 +645,8 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._plan_text.delete("1.0", "end")
         self._plan_text.insert("1.0", data.get("text", ""))
         self._plan_text.edit_reset()
-        self._out_view = "yaml"
-        self._show_generated(data.get("generated", ""))
+        self._out_view = "text"
+        self._show_generated(data.get("generated", ""), notes=data.get("notes", []))
         self._builder_clear()
         self._builder_steps = steps
         self._builder_filename_var.set(data.get("name", ""))
@@ -1126,13 +1130,14 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._out_title = tk.Label(out_hdr, text="Сгенерированный YAML", bg=BG, fg=ACCENT,
                                    font=("Segoe UI", 9, "bold"), anchor="w")
         self._out_title.pack(side="left")
-        ttk.Button(out_hdr, text="Скопировать", command=self._copy_yaml,
+        ttk.Button(out_hdr, text="Копировать YAML", command=self._copy_yaml,
                    width=12).pack(side="right")
         # Generated YAML is kept here; the panel shows it either as YAML or as
         # marked text, which is easier to check and can be edited and re-run
         # without the LLM.
         self._generated_yaml = ""
-        self._out_view = "yaml"
+        self._out_view = "text"
+        self._generated_notes = []
         self._to_editor_btn = ttk.Button(out_hdr, text="Править как текст",
                                          command=self._generated_to_editor, state="disabled")
         self._to_editor_btn.pack(side="right", padx=(0, 4))
@@ -1155,7 +1160,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         ttk.Button(actions, text="Пример плана", command=self._insert_example).pack(side="left", padx=2)
         ttk.Button(actions, text="Очистить",     command=self._clear_plan).pack(side="left", padx=2)
 
-        self._gen_btn = ttk.Button(actions, text="🤖  Генерировать YAML",
+        self._gen_btn = ttk.Button(actions, text="Разобрать план",
                                    style="Primary.TButton", command=self._llm_generate)
         self._gen_btn.pack(side="left", padx=(16, 2))
         self._cancel_btn = ttk.Button(actions, text="Отменить", command=self._llm_cancel,
@@ -2268,13 +2273,17 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                             self._log(f"  {error}")
                         return
 
-                    self._show_generated(yaml_text)
+                    notes = [f"Не разобрано · {item.get('header', '')}: {item.get('error', '')}"
+                             for item in failed_segments]
+                    notes.extend(f"Исправление · {item}" for item in repairs)
+                    notes.extend(f"Предупреждение · {item}" for item in warnings)
+                    self._show_generated(yaml_text, notes=notes)
 
                     status = f"✅ {'Разобрано без LLM' if marked else 'Готово'} — {ru_workouts(n)}"
                     color = GREEN
                     if failed_segments:
                         status = (f"⚠ Готово {n} из {ru_workouts(n + len(failed_segments))}; "
-                                  "остальные не распознаны — см. лог")
+                                  "остальные не распознаны — см. замечания")
                         color = YELLOW
                     if repairs:
                         status += ", " + ru_count(len(repairs), "правка", "правки", "правок")
@@ -2331,7 +2340,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         threading.Thread(target=worker, daemon=True).start()
 
     def _copy_yaml(self):
-        text = self._yaml_out.get("1.0", "end").strip()
+        text = self._generated_yaml.strip()
         if text:
             self.clipboard_clear()
             self.clipboard_append(text)
@@ -2344,13 +2353,20 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             self._log(f"[WARN] Не удалось показать план как текст: {exc}")
             return ""
 
-    def _show_generated(self, yaml_text: str) -> None:
+    def _show_generated(self, yaml_text: str, *, notes=()) -> None:
         self._generated_yaml = yaml_text or ""
+        self._generated_notes = list(notes)
         if not self._generated_yaml:
-            self._out_view = "yaml"
+            self._out_view = "text"
         shown = self._generated_yaml
         if self._out_view == "text" and self._generated_yaml:
-            shown = self._marked_view_text() or self._generated_yaml
+            from garmin_fit.gui_plan_preview import render_plan_preview
+
+            marked = self._marked_view_text()
+            shown = render_plan_preview(marked) if marked else self._generated_yaml
+            if self._generated_notes:
+                shown = "Проверьте перед сохранением\n\n" + "\n".join(self._generated_notes) + "\n\n" + shown
+        self._yaml_out.config(wrap="word" if self._out_view == "text" else "none")
         self._yaml_out.config(state="normal")
         self._yaml_out.delete("1.0", "end")
         self._yaml_out.insert("end", shown)
@@ -2359,12 +2375,12 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._view_btn.config(state="normal" if has_plan else "disabled",
                               text="Показать YAML" if self._out_view == "text" else "Показать как текст")
         self._to_editor_btn.config(state="normal" if has_plan else "disabled")
-        self._out_title.config(text="План текстом (для проверки)" if self._out_view == "text"
+        self._out_title.config(text="План тренировок" if self._out_view == "text"
                                else "Сгенерированный YAML")
 
     def _toggle_out_view(self):
         self._out_view = "yaml" if self._out_view == "text" else "text"
-        self._show_generated(self._generated_yaml)
+        self._show_generated(self._generated_yaml, notes=self._generated_notes)
 
     def _generated_to_editor(self):
         """Put the generated plan into the input as marked text: fix it there and
@@ -2382,7 +2398,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             return
         self._plan_text.delete("1.0", "end")
         self._plan_text.insert("1.0", text)
-        self._set_progress("Правьте текст и нажмите «Генерировать YAML» — разбор без LLM", ACCENT)
+        self._set_progress("Правьте текст и нажмите «Разобрать план»", ACCENT)
 
     def _clear_plan(self):
         self._plan_text.delete("1.0", "end")
