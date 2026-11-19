@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     archive_parser = subparsers.add_parser("archive", help="Archive the current runtime artifacts")
     archive_parser.add_argument("--yes", action="store_true", help="Do not ask for confirmation")
+    archive_parser.add_argument("--plan", help="Archive only this YAML plan and its related files")
     subparsers.add_parser("list-archives", help="List available archives")
 
     restore_parser = subparsers.add_parser("restore", help="Restore a named archive")
@@ -160,7 +161,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             llm_timeout_sec=args.timeout_sec,
         )
     if command == "archive":
-        return workflow_module.workflow_archive(run_id=run_id, assume_yes=args.yes)
+        return workflow_module.workflow_archive(run_id=run_id, assume_yes=args.yes, plan_path=args.plan)
     if command == "list-archives":
         return workflow_module.workflow_list_archives()
     if command == "restore":

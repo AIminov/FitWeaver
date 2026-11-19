@@ -236,6 +236,7 @@ class BuilderTabMixin:
     def _builder_clear(self):
         self._builder_steps = []
         self._builder_edit_workout_id = None
+        self._builder_edit_context = None
         self._builder_garmin_edit_event = None
         self._builder_filename_var.set("")
         self._builder_range_start = self._builder_range_end = self._builder_selected_index = None
@@ -764,7 +765,11 @@ class BuilderTabMixin:
             messagebox.showwarning("Есть ошибки", "\n".join(errors))
             return
 
-        self._store.add_workout(filename=filename, name=filename, steps=self._builder_steps)
+        try:
+            self._store.add_workout(filename=filename, name=filename, steps=self._builder_steps)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("Не удалось добавить тренировку", str(exc), parent=self)
+            return
         self._log(f"[OK] Тренировка «{filename}» добавлена в план")
 
         from garmin_fit.plan_domain import plan_to_data
@@ -780,6 +785,14 @@ class BuilderTabMixin:
         workout_id = self._builder_edit_workout_id
         filename = self._builder_filename_var.get().strip()
         if workout_id is None or not filename or not self._builder_steps:
+            return
+        if self._store is None or self._builder_edit_context != self._current_plan_context():
+            messagebox.showwarning(
+                "Исходный план изменился",
+                "План или профиль изменён после открытия редактора. Сохраните черновик в отдельный "
+                "YAML или заново откройте тренировку из календаря. Другой план не изменён.",
+                parent=self,
+            )
             return
         errors, warnings = validate_draft(filename, filename, self._builder_steps)
         if errors:
@@ -875,4 +888,3 @@ class BuilderTabMixin:
                 self.after(0, self._end_operation, False)
 
         threading.Thread(target=worker, daemon=True).start()
-

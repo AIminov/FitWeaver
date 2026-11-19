@@ -26,16 +26,6 @@ class DirectPipelineE2ETests(unittest.TestCase):
             output_dir.mkdir()
             artifacts_dir.mkdir()
 
-            original_build_fit = build_from_plan.build_fit_from_workout
-
-            def _build_fit_to_temp(workout, serial_number, timestamp):
-                return original_build_fit(
-                    workout,
-                    serial_number,
-                    timestamp,
-                    output_dir=output_dir,
-                )
-
             with patch.object(orch, "OUTPUT_DIR", output_dir), patch.object(
                 build_from_plan,
                 "OUTPUT_DIR",
@@ -44,10 +34,6 @@ class DirectPipelineE2ETests(unittest.TestCase):
                 plan_artifacts,
                 "ARTIFACTS_DIR",
                 artifacts_dir,
-            ), patch.object(
-                build_from_plan,
-                "build_fit_from_workout",
-                new=_build_fit_to_temp,
             ), patch.object(
                 state_manager, "STATE_FILE", state_file
             ), patch.object(
@@ -148,4 +134,3 @@ class DirectPipelineE2ETests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

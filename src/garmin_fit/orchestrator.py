@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -63,6 +64,49 @@ def cleanup_runtime_dirs() -> None:
         file.unlink(missing_ok=True)
 
 
+def _publish_fits(staging: Path, output: Path) -> None:
+    """Publish validated files; restore the previous output on an I/O failure.
+
+    The directory is shared with the portable runtime, so retain non-FIT files.
+    This rollback protects ordinary I/O errors, not a process/power failure mid-publish.
+    """
+    output.mkdir(parents=True, exist_ok=True)
+    previous = list(output.glob("*.fit"))
+    incoming = list(staging.glob("*.fit"))
+    backup = Path(tempfile.mkdtemp(prefix=".fit-backup-", dir=output.parent))
+    keep_backup = False
+    try:
+        for path in previous:
+            shutil.copy2(path, backup / path.name)
+        changed: list[Path] = []
+        try:
+            for path in incoming:
+                target = output / path.name
+                path.replace(target)
+                changed.append(target)
+            names = {path.name.casefold() for path in incoming}
+            for path in previous:
+                if path.name.casefold() not in names:
+                    path.unlink()
+        except OSError as publish_error:
+            try:
+                for path in changed:
+                    if not (backup / path.name).exists():
+                        path.unlink(missing_ok=True)
+                for path in backup.iterdir():
+                    shutil.copy2(path, output / path.name)
+            except OSError as rollback_error:
+                keep_backup = True
+                raise OSError(
+                    f"Publication failed ({publish_error}); rollback failed ({rollback_error}). "
+                    f"Previous FIT files are retained in {backup}"
+                ) from rollback_error
+            raise
+    finally:
+        if not keep_backup:
+            shutil.rmtree(backup, ignore_errors=True)
+
+
 def run_generation_pipeline(
     yaml_path: Path,
     *,
@@ -106,30 +150,41 @@ def run_generation_pipeline(
             "archive_path": None,
         }
 
-    if cleanup_first:
-        cleanup_runtime_dirs()
-
     prepared_artifacts = prepare_plan_artifacts(yaml_path)
 
     direct_build_error = None
-    try:
-        built_count, build_total_count = build_all_fits_from_plan(yaml_path)
-    except Exception as exc:
-        built_count, build_total_count = 0, 0
-        direct_build_error = str(exc)
-        errors.append(f"Direct build failed: {exc}")
-    if build_total_count == 0 and direct_build_error is None:
-        errors.append("No workouts found in YAML for direct build")
-    elif built_count != build_total_count:
-        errors.append(f"Direct build incomplete: {built_count}/{build_total_count}")
+    OUTPUT_DIR.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".fit-build-", dir=OUTPUT_DIR.parent) as tmp:
+        staging = Path(tmp)
+        if not cleanup_first:
+            for path in OUTPUT_DIR.glob("*.fit"):
+                shutil.copy2(path, staging / path.name)
+        try:
+            built_count, build_total_count = build_all_fits_from_plan(yaml_path, output_dir=staging)
+        except Exception as exc:
+            built_count, build_total_count = 0, 0
+            direct_build_error = str(exc)
+            errors.append(f"Direct build failed: {exc}")
+        if build_total_count == 0 and direct_build_error is None:
+            errors.append("No workouts found in YAML for direct build")
+        elif built_count != build_total_count:
+            errors.append(f"Direct build incomplete: {built_count}/{build_total_count}")
 
-    valid_count, validate_total_count = validate_directory(OUTPUT_DIR, strict=validate_strict)
-    if validate_total_count == 0:
-        errors.append("Validation found 0 FIT files")
-    elif valid_count != validate_total_count:
-        errors.append(f"Validation failed: {valid_count}/{validate_total_count}")
+        valid_count, validate_total_count = validate_directory(staging, strict=validate_strict)
+        if validate_total_count == 0:
+            errors.append("Validation found 0 FIT files")
+        elif valid_count != validate_total_count:
+            errors.append(f"Validation failed: {valid_count}/{validate_total_count}")
+        if cleanup_first and validate_total_count != build_total_count:
+            errors.append("FIT file count differs from workout count")
+        if not errors:
+            try:
+                _publish_fits(staging, OUTPUT_DIR)
+            except OSError as exc:
+                errors.append(f"Could not publish FIT files: {exc}")
 
-    fit_files = sorted(OUTPUT_DIR.glob("*.fit"))
+    # A failed run must not advertise files from the previous successful build.
+    fit_files = sorted(OUTPUT_DIR.glob("*.fit")) if not errors else []
     success = len(errors) == 0
     finished_at = datetime.now(timezone.utc)
 

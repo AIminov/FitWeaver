@@ -28,13 +28,10 @@ class BuildKeepsOutputsTests(unittest.TestCase):
             plan = root / "elsewhere" / "my_plan.yaml"
             shutil.copy(FIXTURE, plan)
             out = root / "Output_fit"
-            original_build = build_from_plan.build_fit_from_workout
 
             patches = [
                 patch.object(orch, "OUTPUT_DIR", out),
                 patch.object(build_from_plan, "OUTPUT_DIR", out),
-                patch.object(build_from_plan, "build_fit_from_workout",
-                             lambda w, s, t: original_build(w, s, t, output_dir=out)),
                 patch.object(archive_manager, "OUTPUT_DIR", out),
                 patch.object(archive_manager, "ARCHIVE_DIR", root / "Archive"),
                 patch.object(archive_manager, "PLAN_DIR", root / "Plan"),

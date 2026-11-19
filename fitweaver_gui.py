@@ -126,6 +126,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._profile_status_var = tk.StringVar(value="Профиль не выбран")
         self._selected_workout: dict | None = None
         self._builder_edit_workout_id: int | None = None
+        self._builder_edit_context = None
         self._builder_garmin_edit_event: dict[str, str] | None = None
         self._gc_selected_event: dict[str, str] | None = None
 
@@ -1331,12 +1332,19 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         new_filename = self._compute_renamed_filename(filename, new_date)
 
         if is_copy:
-            new_id = self._store.duplicate_workout(workout_id)
-            new_filename = self._dedupe_filename(new_filename, exclude_workout_id=new_id)
-            self._store.rename_workout_filename(new_id, new_filename)
+            new_filename = self._dedupe_filename(new_filename, exclude_workout_id=-1)
+            try:
+                self._store.duplicate_workout(workout_id, filename=new_filename)
+            except (ValueError, OSError) as exc:
+                messagebox.showerror("Не удалось скопировать", str(exc), parent=self)
+                return
             self._log(f"[OK] «{filename}» скопирована на {target_date_str} → «{new_filename}»")
         else:
-            self._store.rename_workout_filename(workout_id, new_filename)
+            try:
+                self._store.rename_workout_filename(workout_id, new_filename)
+            except (ValueError, OSError) as exc:
+                messagebox.showerror("Не удалось перенести", str(exc), parent=self)
+                return
             self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
 
         from garmin_fit.plan_domain import plan_to_data
@@ -1401,6 +1409,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         if workout is None:
             return
         self._builder_edit_workout_id = workout_id
+        self._builder_edit_context = self._current_plan_context()
         self._builder_garmin_edit_event = None
         self._builder_steps = [step_from_data(step_to_data(step)) for step in workout.steps]
         self._builder_filename_var.set(workout.filename or "")
@@ -1425,7 +1434,33 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
     def _on_yaml_path_change(self) -> None:
         self._yaml_loaded = False
         self._yaml_ready = False
+        self._selected_workout = None
+        if self._store is not None:
+            self._store.close()
+            self._store = None
+        self.workouts = []
+        self._detail_var.set("")
+        self._edit_selected_btn.configure(state="disabled")
+        self._draw_calendar()
         self._update_yaml_context()
+
+    def _current_plan_context(self):
+        path = self.yaml_path.get().strip()
+        return (
+            self._store, getattr(self._store, "revision", None),
+            str(Path(path).resolve()) if path else "", self._active_profile_email,
+        )
+
+    def _validation_context(self, args):
+        """Identify the exact file/profile whose asynchronous result may be applied."""
+        if "--plan" not in args:
+            return None
+        path = Path(args[args.index("--plan") + 1]).resolve()
+        try:
+            content = path.read_bytes()
+        except OSError:
+            return None
+        return (str(path), content, self._active_profile_email)
 
     def _update_yaml_context(self) -> None:
         """Keep the top status and plan-dependent actions in sync."""
@@ -1458,7 +1493,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         for name, state in states.items():
             button = self._quick_action_buttons.get(name)
             if button is not None:
-                button.configure(state=state)
+                button.configure(state="disabled" if self._operation_active else state)
 
     def _browse_yaml(self):
         path = filedialog.askopenfilename(
@@ -1473,6 +1508,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
     def _reload_yaml(self):
         path = self.yaml_path.get()
         if not path or not Path(path).exists():
+            self._on_yaml_path_change()
             self._yaml_loaded = False
             self._set_yaml_status("План не выбран · выберите YAML", ready=False)
             return
@@ -1482,6 +1518,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
 
             if self._store is not None:
                 self._store.close()
+                self._store = None
 
             legacy_workdb = Path(str(path) + ".workdb")
             if legacy_workdb.exists():
@@ -1509,6 +1546,12 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             self.after(50, self._cmd_validate_yaml)
         except Exception as exc:
             self._yaml_loaded = False
+            if self._store is not None:
+                self._store.close()
+                self._store = None
+            self.workouts = []
+            self._selected_workout = None
+            self._draw_calendar()
             self._set_yaml_status("Ошибка чтения YAML · проверьте файл", ready=False)
             self._log(f"[ERR] {exc}")
 
@@ -1714,6 +1757,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         from garmin_fit.cli_runner import redact_args, run_cli_captured
 
         run_args = list(args)
+        validation_context = self._validation_context(args) if args and args[0] == "validate-yaml" else None
         if run_args and run_args[0].startswith("garmin-calendar") and self.pass_var.get():
             run_args += ["--password", self.pass_var.get()]
         self._log(f"\n$ garmin_fit.cli {' '.join(redact_args(run_args))}")
@@ -1722,14 +1766,18 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             code = run_cli_captured(run_args, lambda line: self.after(0, self._log, line))
             ok = code == 0
             self.after(0, self._log, "[OK] Готово" if ok else f"[FAIL] код {code}")
-            self.after(0, self._handle_cli_result, args, ok)
+            self.after(0, self._handle_cli_result, args, ok, validation_context)
             self.after(0, self._end_operation, ok)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _handle_cli_result(self, args, ok: bool) -> None:
+    def _handle_cli_result(self, args, ok: bool, validation_context=None) -> None:
         if args and args[0] == "validate-yaml":
             self._yaml_validation_running = False
+            current_args = ["--plan", self.yaml_path.get()] if self.yaml_path.get().strip() else []
+            if validation_context is None or validation_context != self._validation_context(current_args):
+                self._set_yaml_status("План изменился · повторите проверку YAML", ready=False)
+                return
             if ok:
                 self._set_yaml_status("YAML валиден · готово к сборке", ready=True)
                 self._result_var.set("YAML проверен: план готов к сборке FIT")
@@ -1813,6 +1861,8 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._run(args)
 
     def _cmd_validate_yaml(self):
+        if self._operation_active:
+            return
         if self.yaml_path.get().strip():
             self._set_yaml_status("Проверка YAML…", ready=False)
             self._yaml_validation_running = True
@@ -1824,12 +1874,17 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
     def _cmd_validate_fit(self):  self._run(["validate-fit"])
     def _cmd_doctor(self):        self._run(["doctor", "--llm"])
     def _cmd_archive(self):
+        path = self.yaml_path.get().strip()
+        if not path or not Path(path).is_file():
+            messagebox.showwarning("Нет плана", "Выберите существующий YAML-план.", parent=self)
+            return
         if messagebox.askyesno(
             "Архивировать план",
-            "Переместить текущий план и FIT-файлы в архив? Output_fit/ будет очищен.",
+            f"Переместить план {Path(path).name}, связанный Markdown и его FIT-файлы в архив?\n"
+            "Остальные планы и FIT-файлы останутся на месте.",
             parent=self,
         ):
-            self._run(["archive", "--yes"])
+            self._run(["archive", "--plan", path, "--yes"])
     def _cmd_list_archives(self): self._run(["list-archives"])
 
     def _cmd_restore(self):

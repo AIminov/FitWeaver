@@ -33,11 +33,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (updated 2026-11-19, start here):**
-0. Address the data-loss/context defects in `docs/UX_CODE_AUDIT_2026-11-19.md` first:
-   preserve cadence in PlanStore; bind editor drafts to their source plan/profile;
-   preserve previous FIT output on failed builds; scope GUI archiving to the selected plan.
-   Then fix SQLite/YAML failure consistency, stale validation results and duplicate insertion.
-   Add regression coverage before implementing draft recovery, undo and upload preview.
+0. Implement desktop draft recovery first, then undo and upload preview. The seven
+   reliability fixes from `docs/UX_CODE_AUDIT_2026-11-19.md` have offline regression coverage.
 1. Finish the running 59-case Unsloth IQ4_XS baseline; compare the same 12-case pilot using
    the reordered YAML prompt and compact `W/S/R/E/B` output. Record strict pass, token count,
    cold/warm latency and CPU thread settings before changing defaults.

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS steps (
     position INTEGER NOT NULL,
     step_type TEXT, intensity TEXT,
     km TEXT, seconds TEXT, pace_fast TEXT, pace_slow TEXT,
-    hr_low TEXT, hr_high TEXT, back_to_offset TEXT, count TEXT,
+    hr_low TEXT, hr_high TEXT, cad_low TEXT, cad_high TEXT, back_to_offset TEXT, count TEXT,
     extra_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS drills (
@@ -86,6 +86,10 @@ class PlanStore:
         self._conn = conn
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._yaml_path: Path | None = None
+        self.revision = 0
+        self._source_bytes: bytes | None = None
+        self._saved_state = sqlite3.connect(":memory:")
+        self._conn.backup(self._saved_state)
 
     @staticmethod
     def workdb_path_for(yaml_path: Path, cache_dir: Path | None = None) -> Path:
@@ -108,32 +112,60 @@ class PlanStore:
     def open(cls, db_path: Path) -> "PlanStore":
         conn = sqlite3.connect(str(db_path))
         conn.executescript(_SCHEMA)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(steps)")}
+        for column in ("cad_low", "cad_high"):
+            if column not in columns:
+                conn.execute(f"ALTER TABLE steps ADD COLUMN {column} TEXT")
         conn.commit()
         return cls(conn)
 
     def close(self) -> None:
         self._conn.close()
+        self._saved_state.close()
 
     # ── YAML <-> DB ──────────────────────────────────────────────────────────
     def load_from_yaml(self, yaml_path: Path) -> list[str]:
         """Full reload: parse YAML, repair, wipe DB, insert. Returns repair notes."""
         yaml_path = Path(yaml_path)
-        with open(yaml_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        source_bytes = yaml_path.read_bytes()
+        data = yaml.safe_load(source_bytes.decode("utf-8")) or {}
         repaired_data, notes = repair_plan_data(data)
         plan = plan_from_data(repaired_data)
         self._replace_plan(plan)
         self._yaml_path = yaml_path
+        self._source_bytes = source_bytes
+        self._conn.backup(self._saved_state)
+        self.revision += 1
         return notes
 
-    def export_to_yaml(self, yaml_path: Path) -> None:
+    def export_to_yaml(self, yaml_path: Path) -> bytes:
         data = plan_to_data(self.get_plan())
         # Atomic: the user's plan is rewritten after every edit in the GUI.
-        atomic_write_text(yaml_path, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+        atomic_write_text(yaml_path, text)
+        return text.encode("utf-8")
 
     def _write_through(self) -> None:
-        if self._yaml_path is not None:
-            self.export_to_yaml(self._yaml_path)
+        try:
+            if self._yaml_path is not None:
+                if self._yaml_path.read_bytes() != self._source_bytes:
+                    raise ValueError("План изменён вне редактора. Загрузите его заново перед сохранением.")
+                self._source_bytes = self.export_to_yaml(self._yaml_path)
+        except Exception:
+            # Mutations have committed their staging rows already. Restore exact IDs,
+            # positions and values so a failed save cannot leak into the next edit.
+            self._conn.rollback()
+            self._saved_state.backup(self._conn)
+            raise
+        self._conn.backup(self._saved_state)
+        self.revision += 1
+
+    def _check_unique_name(self, filename: str, name: str, exclude_id: int = -1) -> None:
+        if self._conn.execute(
+            "SELECT 1 FROM workouts WHERE id != ? AND (filename = ? OR name = ?) LIMIT 1",
+            (exclude_id, filename, name),
+        ).fetchone():
+            raise ValueError(f"workout filename already exists: {filename}")
 
     def get_plan(self) -> WorkoutPlan:
         cur = self._conn.execute(
@@ -153,19 +185,20 @@ class PlanStore:
     def _get_steps(self, workout_id: int) -> list[WorkoutStep]:
         cur = self._conn.execute(
             "SELECT id, step_type, intensity, km, seconds, pace_fast, pace_slow, "
-            "hr_low, hr_high, back_to_offset, count, extra_json "
+            "hr_low, hr_high, cad_low, cad_high, back_to_offset, count, extra_json "
             "FROM steps WHERE workout_id = ? ORDER BY position",
             (workout_id,),
         )
         steps = []
         for (step_id, step_type, intensity, km, seconds, pace_fast, pace_slow,
-             hr_low, hr_high, back_to_offset, count, extra_json) in cur.fetchall():
+             hr_low, hr_high, cad_low, cad_high, back_to_offset, count, extra_json) in cur.fetchall():
             drills = self._get_drills(step_id)
             steps.append(WorkoutStep(
                 step_type=step_type, intensity=intensity,
                 km=_load_float(km), seconds=_load_int(seconds),
                 pace_fast=pace_fast, pace_slow=pace_slow,
                 hr_low=_load_int(hr_low), hr_high=_load_int(hr_high),
+                cad_low=_load_int(cad_low), cad_high=_load_int(cad_high),
                 back_to_offset=_load_int(back_to_offset), count=_load_int(count),
                 drills=drills or None, extra=json.loads(extra_json or "{}"),
             ))
@@ -205,12 +238,13 @@ class PlanStore:
     def _insert_step(self, workout_id: int, position: int, step: WorkoutStep) -> int:
         cur = self._conn.execute(
             "INSERT INTO steps (workout_id, position, step_type, intensity, km, seconds, "
-            "pace_fast, pace_slow, hr_low, hr_high, back_to_offset, count, extra_json) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "pace_fast, pace_slow, hr_low, hr_high, cad_low, cad_high, back_to_offset, count, extra_json) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (workout_id, position, step.step_type, step.intensity,
              _dump_scalar(step.km), _dump_scalar(step.seconds),
              _dump_scalar(step.pace_fast), _dump_scalar(step.pace_slow),
              _dump_scalar(step.hr_low), _dump_scalar(step.hr_high),
+             _dump_scalar(step.cad_low), _dump_scalar(step.cad_high),
              _dump_scalar(step.back_to_offset), _dump_scalar(step.count),
              json.dumps(step.extra)),
         )
@@ -248,7 +282,7 @@ class PlanStore:
         self._conn.commit()
         self._write_through()
 
-    def duplicate_workout(self, workout_id: int) -> int:
+    def duplicate_workout(self, workout_id: int, *, filename: str | None = None) -> int:
         row = self._conn.execute(
             "SELECT filename, name, desc, type_code, distance_km, "
             "estimated_duration_min, extra_json FROM workouts WHERE id = ?",
@@ -256,7 +290,16 @@ class PlanStore:
         ).fetchone()
         if row is None:
             raise ValueError(f"workout id {workout_id} not found")
-        filename, name, desc, type_code, distance_km, duration, extra_json = row
+        original_filename, name, desc, type_code, distance_km, duration, extra_json = row
+        if filename is None:
+            base = original_filename or name or "workout"
+            filename = f"{base}_copy"
+            suffix = 2
+            while self.find_workout_id_by_filename(filename) is not None:
+                filename = f"{base}_copy{suffix}"
+                suffix += 1
+        self._check_unique_name(filename, filename)
+        name = filename
         steps = self._get_steps(workout_id)
         max_position = self._conn.execute(
             "SELECT COALESCE(MAX(position), -1) FROM workouts"
@@ -278,6 +321,7 @@ class PlanStore:
         self._write_through()
 
     def rename_workout_filename(self, workout_id: int, new_filename: str) -> None:
+        self._check_unique_name(new_filename, new_filename, workout_id)
         self._conn.execute(
             "UPDATE workouts SET filename = ?, name = ? WHERE id = ?",
             (new_filename, new_filename, workout_id),
@@ -573,6 +617,7 @@ class PlanStore:
     ) -> int:
         """Append (or insert) a brand-new workout, e.g. one built in the
         visual builder tab."""
+        self._check_unique_name(filename, name)
         if position is None:
             position = self._conn.execute(
                 "SELECT COALESCE(MAX(position), -1) + 1 FROM workouts"

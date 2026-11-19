@@ -57,6 +57,13 @@ def test_gui_main_flows(tmp_path):
         results: dict[str, object] = {}
         deadline = time.time() + 60
 
+        def callback_error(exc_type, value, traceback):
+            results["callback_error"] = f"{exc_type.__name__}: {value}"
+            app.quit()
+
+        app.report_callback_exception = callback_error
+        app.after(60000, app.quit)
+
         def done_lines():
             return [line for line in log_lines if line == "[OK] Готово" or line.startswith("[FAIL] код")]
 
@@ -111,6 +118,21 @@ def test_gui_main_flows(tmp_path):
 
         def finish():
             app.pass_var.set("")
+            # An editor opened for A must not write into B even when both
+            # disposable databases assign workout ID 1.
+            app._show_detail(app.workouts[0])
+            app._edit_selected_workout()
+            second_plan = plan_copy.with_name("second.yaml")
+            second_plan.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+            app.yaml_path.set(str(second_plan))
+            app._reload_yaml()
+            before = second_plan.read_bytes()
+            app._builder_filename_var.set("must_not_overwrite_second_plan")
+            app._builder_save_edit()
+            results["editor_isolated"] = second_plan.read_bytes() == before
+            results["draft_retained"] = bool(app._builder_steps)
+            app.yaml_path.set("")
+            results["empty_context_closed_store"] = app._store is None
             app.quit()
 
         app.after(200, step_load_plan)
@@ -121,6 +143,7 @@ def test_gui_main_flows(tmp_path):
             stub.stop()
 
     assert not results.get("timeout"), results
+    assert not results.get("callback_error"), results
     assert results["loaded_workouts"] >= 1
     assert results["sibling_files"] == ["plan.yaml"]  # no *.workdb beside the user's plan
     assert "Разобрано без LLM — 3 тренировки" in results["status"]
@@ -129,5 +152,8 @@ def test_gui_main_flows(tmp_path):
     assert str(results["editor"]).startswith("==== ТРЕНИРОВКА")
     assert results["validate_result"] == "[OK] Готово"
     assert results["validate_seconds"] < 10  # in-process, no exe start-up
+    assert results["editor_isolated"]
+    assert results["draft_retained"]
+    assert results["empty_context_closed_store"]
     assert not any("topsecret-password" in line for line in log_lines)
     assert any("--password ***" in line for line in log_lines)

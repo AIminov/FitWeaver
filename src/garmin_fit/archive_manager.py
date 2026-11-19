@@ -57,7 +57,7 @@ def _make_unique_archive_name(base_name):
 
 def _collect_plan_files(plan_paths=None):
     plan_files = []
-    if plan_paths:
+    if plan_paths is not None:
         for raw_path in plan_paths:
             plan_path = Path(raw_path)
             if plan_path.exists() and plan_path.is_file() and plan_path.suffix.lower() in (".md", ".yaml", ".yml"):
@@ -156,6 +156,7 @@ def archive_current_plan(
     plan_paths=None,
     artifact_paths=None,
     keep_fit=False,
+    scope_fits_to_plan=False,
 ):
     """
     Archive the current plan, FIT files and build artifacts.
@@ -190,17 +191,32 @@ def archive_current_plan(
                 derived_plan_name = primary.stem
         archive_name = get_archive_name(plan_name=derived_plan_name, owner_tag=owner_tag)
 
+    plan_files = _collect_plan_files(plan_paths=plan_paths)
+    fits = list(OUTPUT_DIR.glob("*.fit"))
+    if scope_fits_to_plan:
+        # Resolve and validate before moving anything. No matching FIT is fine;
+        # unrelated results must never be swept into a selected-plan archive.
+        from .build_from_plan import load_plan_build_input
+        from .plan_processing import sanitize_workout_name
+
+        if not plan_paths or not plan_files:
+            raise ValueError("Selected-plan archiving requires an existing YAML plan")
+        names = set()
+        for plan_file in plan_files:
+            if plan_file.suffix.lower() in (".yaml", ".yml"):
+                for workout in load_plan_build_input(plan_file).plan.workouts:
+                    names.add((sanitize_workout_name(workout.filename or workout.name) + ".fit").casefold())
+        fits = [fit for fit in fits if fit.name.casefold() in names]
+
     archive_path = ARCHIVE_DIR / archive_name
     archive_path.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Creating archive: {archive_name}")
     logger.info(f"Archive location: {archive_path}")
 
-    plan_files = _collect_plan_files(plan_paths=plan_paths)
     artifact_files = _collect_artifact_files(plan_files, artifact_paths=artifact_paths)
 
     # Archive FIT files
-    fits = list(OUTPUT_DIR.glob("*.fit"))
     if fits:
         fits_archive = archive_path / "output_fit"
         fits_archive.mkdir(exist_ok=True)

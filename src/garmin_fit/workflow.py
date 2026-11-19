@@ -431,8 +431,18 @@ def workflow_validate_only(validate_strict=False, run_id=None):
     return run_step("Validate FIT Files", module_name="garmin_fit.check_fit", args=validate_args, run_id=run_id)
 
 
-def workflow_archive(run_id=None, assume_yes=False):
+def workflow_archive(run_id=None, assume_yes=False, plan_path=None):
     print_header("ARCHIVE CURRENT PLAN")
+    if plan_path:
+        from .archive_manager import archive_current_plan
+        if not Path(plan_path).is_file():
+            logger.error("Selected plan does not exist: %s", plan_path)
+            return 1
+        if not _confirm(f"Archive selected plan {plan_path}? (yes/no): ", assume_yes):
+            return 0
+        archive_current_plan(run_id=run_id, plan_paths=[Path(plan_path)], scope_fits_to_plan=True)
+        logger.info("[OK] Selected plan archived; unrelated files preserved")
+        return 0
     output_count = check_outputs()
     plan_count = len(sorted(PLAN_DIR.glob("*.yaml")) + sorted(PLAN_DIR.glob("*.yml")) + sorted(PLAN_DIR.glob("*.md")))
 

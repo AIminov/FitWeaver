@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-19 - Desktop reliability fixes
+
+- Preserve cadence in the plan store, restore staging after failed YAML writes,
+  reject external edits and duplicate workout names, and bind editor saves and validation
+  results to their originating context.
+- Validate FIT files before replacing previous output and scope desktop archiving to
+  the selected plan, its related Markdown and matching FIT filenames.
+- Regression suite: 515 tests and 36 subtests passed.
+
 ## 2026-11-19 - UX and reliability audit
 
 - Documented seven persistence/context/build/archive defects with offline evidence and

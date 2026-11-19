@@ -162,7 +162,7 @@ def build_fit_from_workout(
     return output_path
 
 
-def build_all_fits_from_plan(yaml_path: Path, verify_with_csv: bool = False):
+def build_all_fits_from_plan(yaml_path: Path, verify_with_csv: bool = False, *, output_dir: Path | None = None):
     """
     Build FIT files directly from YAML.
 
@@ -173,6 +173,8 @@ def build_all_fits_from_plan(yaml_path: Path, verify_with_csv: bool = False):
     logger.info("BUILDING FIT FILES DIRECTLY FROM YAML")
     logger.info("=" * 70)
 
+    output_dir = OUTPUT_DIR if output_dir is None else Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     plan_input = load_plan_build_input(Path(yaml_path))
     for repair in plan_input.repairs:
         logger.info(f"[REPAIR] {repair}")
@@ -193,7 +195,7 @@ def build_all_fits_from_plan(yaml_path: Path, verify_with_csv: bool = False):
     for workout, (serial, timestamp) in zip(workouts, serial_timestamp_pairs):
         name = workout.filename or workout.name or "?"
         try:
-            fit_path = build_fit_from_workout(workout, serial, timestamp)
+            fit_path = build_fit_from_workout(workout, serial, timestamp, output_dir=output_dir)
             if verifier is None or verifier(fit_path):
                 logger.info(f"  [OK] Generated: {fit_path.name}")
                 success_count += 1
@@ -211,13 +213,13 @@ def build_all_fits_from_plan(yaml_path: Path, verify_with_csv: bool = False):
         logger.warning(f"FAILED ({len(failed_names)}): {', '.join(failed_names)}")
         if success_count > 0:
             logger.warning(
-                f"Partial results are in {OUTPUT_DIR} — "
+                f"Partial results are in {output_dir} — "
                 "remove or overwrite before retrying to avoid duplicates."
             )
     logger.info("=" * 70)
 
     if success_count > 0:
-        logger.info(f"\nOutput directory: {OUTPUT_DIR}")
+        logger.info(f"\nOutput directory: {output_dir}")
         logger.info(f"Generated {success_count} FIT file(s)")
 
     return success_count, len(workouts)
