@@ -285,6 +285,8 @@ class GarminTabMixin:
         self._gc_edit_event_btn.configure(state="disabled")
         self._gc_calendar_detail_var.set("")
         self._gc_calendar_status_var.set("Загружаю события Garmin Connect…")
+        email = self._active_profile_email
+        password = self.pass_var.get() or None
 
         def worker():
             try:
@@ -292,8 +294,8 @@ class GarminTabMixin:
                 from garmin_fit.workflow import _connect_garmin_cli_client
 
                 client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
+                    email=email,
+                    password=password,
                     prompt_mfa=self._gui_mfa_prompt,
                 )
                 get_month = getattr(client, "get_scheduled_workouts", None)
@@ -362,19 +364,21 @@ class GarminTabMixin:
         self._gc_canvas.itemconfig(self._gc_list_win, width=e.width)
 
     def _gc_check_connection(self):
-        if not self.email_var.get():
+        if not self._active_profile_email:
             messagebox.showwarning("Нет email", "Сначала выберите профиль Garmin слева.")
             return
         if not self._begin_operation("Проверка подключения к Garmin"):
             return
         self._gc_status.config(text="⏳ Проверяю авторизацию Garmin Connect…", fg=YELLOW)
+        email = self._active_profile_email
+        password = self.pass_var.get() or None
 
         def worker():
             try:
                 from garmin_fit.workflow import _connect_garmin_cli_client
                 client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
+                    email=email,
+                    password=password,
                     prompt_mfa=self._gui_mfa_prompt,
                 )
                 # A small read request verifies both authentication and API access.
@@ -418,23 +422,26 @@ class GarminTabMixin:
             messagebox.showerror("Не удалось сохранить диагностику", str(exc), parent=self)
 
     def _gc_load(self):
-        if not self.email_var.get():
+        if not self._active_profile_email:
             messagebox.showwarning("Нет email", "Введите email в левой панели.")
             return
         if not self._begin_operation("Загрузка тренировок из Garmin"):
             return
         self._gc_status.config(text="⏳ Подключаюсь к Garmin Connect…", fg=YELLOW)
         self._gc_clear_list()
+        email = self._active_profile_email
+        password = self.pass_var.get() or None
+        limit_text = self._gc_limit.get()
 
         def worker():
             try:
                 from garmin_fit.workflow import _connect_garmin_cli_client
                 client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
+                    email=email,
+                    password=password,
                     prompt_mfa=self._gui_mfa_prompt,
                 )
-                limit = int(self._gc_limit.get() or 200)
+                limit = int(limit_text or 200)
                 workouts = client.get_workouts(0, limit)
                 self.after(0, self._gc_render, workouts)
                 self.after(0, self._record_gc_operation,
@@ -456,6 +463,17 @@ class GarminTabMixin:
         for w in self._gc_list_frame.winfo_children():
             w.destroy()
         self._gc_update_del_btn()
+
+    def _gc_clear_profile_results(self):
+        self._gc_workouts = []
+        self._gc_clear_list()
+        self._gc_scheduled_workouts = []
+        self._gc_selected_event = None
+        self._gc_edit_event_btn.configure(state="disabled")
+        self._gc_calendar_detail_var.set("")
+        self._gc_calendar_status_var.set("")
+        self._gc_status.config(text="")
+        self._gc_calendar_render()
 
     def _gc_render(self, workouts: list[dict]):
         self._gc_workouts = workouts
@@ -597,13 +615,15 @@ class GarminTabMixin:
     def _gc_delete_one(self, workout_id: str, row_widget: tk.Frame):
         if not self._begin_operation("Удаление тренировки из Garmin"):
             return
+        email = self._active_profile_email
+        password = self.pass_var.get() or None
 
         def worker():
             try:
                 from garmin_fit.workflow import _connect_garmin_cli_client
                 client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
+                    email=email,
+                    password=password,
                     prompt_mfa=self._gui_mfa_prompt,
                 )
                 client.delete_workout(workout_id)
@@ -627,7 +647,7 @@ class GarminTabMixin:
         threading.Thread(target=worker, daemon=True).start()
 
     def _gc_delete_selected(self):
-        to_delete = [(wid, v) for wid, v in self._gc_checks.items() if v.get()]
+        to_delete = tuple(wid for wid, v in self._gc_checks.items() if v.get())
         if not to_delete:
             return
         if not messagebox.askyesno(
@@ -641,13 +661,15 @@ class GarminTabMixin:
 
         self._gc_del_btn.config(state="disabled")
         self._gc_status.config(text=f"⏳ Удаляю {len(to_delete)} тренировок…", fg=YELLOW)
+        email = self._active_profile_email
+        password = self.pass_var.get() or None
 
         def worker():
             try:
                 from garmin_fit.workflow import _connect_garmin_cli_client
                 client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
+                    email=email,
+                    password=password,
                     prompt_mfa=self._gui_mfa_prompt,
                 )
             except Exception as exc:
@@ -659,7 +681,7 @@ class GarminTabMixin:
                 return
 
             deleted, failed, atp = 0, 0, 0
-            for wid, _var in to_delete:
+            for wid in to_delete:
                 try:
                     client.delete_workout(wid)
                     deleted += 1

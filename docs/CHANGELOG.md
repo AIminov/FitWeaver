@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-20 - Desktop task context
+
+- Capture Garmin and LLM request inputs before starting workers and clear Garmin
+  calendar and library entries when switching profiles.
+
 ## 2026-11-20 - Explicit workout dates
 
 - Support optional ISO dates in workout YAML, marked-plan conversion, local calendar

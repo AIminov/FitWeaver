@@ -313,3 +313,26 @@ def test_gui_archive_passes_selected_path(tmp_path):
     with patch.object(gui.messagebox, "askyesno", return_value=True):
         gui.App._cmd_archive(app)
     app._run.assert_called_once_with(["archive", "--plan", str(path), "--yes"])
+
+
+def test_garmin_worker_uses_profile_and_limit_captured_before_start():
+    client = Mock()
+    client.get_workouts.return_value = []
+    app = SimpleNamespace(_active_profile_email="original@example.com",
+        pass_var=Mock(), _gc_limit=Mock(), _begin_operation=Mock(return_value=True),
+        _gc_status=Mock(), _gc_clear_list=Mock(), _gui_mfa_prompt=Mock(),
+        _gc_render=Mock(), _record_gc_operation=Mock(), _end_operation=Mock(),
+        _gc_update_del_btn=Mock(), after=Mock())
+    app.pass_var.get.return_value = "original"
+    app._gc_limit.get.return_value = "7"
+    with patch("garmin_fit.gui_garmin_tab.threading.Thread") as thread, patch(
+        "garmin_fit.workflow._connect_garmin_cli_client", return_value=client
+    ) as connect:
+        gui.App._gc_load(app)
+        app._active_profile_email = "changed@example.com"
+        app.pass_var.get.return_value = "changed"
+        app._gc_limit.get.return_value = "8"
+        thread.call_args.kwargs["target"]()
+    assert connect.call_args.kwargs["email"] == "original@example.com"
+    assert connect.call_args.kwargs["password"] == "original"
+    client.get_workouts.assert_called_once_with(0, 7)

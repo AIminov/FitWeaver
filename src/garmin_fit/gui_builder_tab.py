@@ -792,6 +792,8 @@ class BuilderTabMixin:
         if not self._begin_operation("Отправка тренировки в Garmin"):
             return
         self._result_var.set("Отправляю тренировку и назначаю её на выбранную дату…")
+        email = self._active_profile_email
+        password = self.pass_var.get() or None
 
         def worker():
             try:
@@ -799,8 +801,8 @@ class BuilderTabMixin:
                 from garmin_fit.workflow import _connect_garmin_cli_client
 
                 client = _connect_garmin_cli_client(
-                    email=self.email_var.get() or None,
-                    password=self.pass_var.get() or None,
+                    email=email,
+                    password=password,
                     prompt_mfa=self._gui_mfa_prompt,
                 )
                 result = GarminCalendarExporter(client).upload_and_schedule(

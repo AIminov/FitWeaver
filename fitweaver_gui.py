@@ -485,6 +485,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         # Пароль не сохраняется в профиле и не должен переноситься между email.
         self.pass_var.set("")
         self._activate_profile(new_email, reset_if_missing=True)
+        self._gc_clear_profile_results()
         self._restore_drafts()
         self._refresh_profile_list()
         if self.yaml_path.get() and Path(self.yaml_path.get()).exists():
@@ -1945,7 +1946,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                 self._set_result_actions("open_fit")
 
     def _append_garmin_args(self, args):
-        if self.email_var.get(): args += ["--email",     self.email_var.get()]
+        if self._active_profile_email: args += ["--email", self._active_profile_email]
         if self.year_var.get():  args += ["--year",      self.year_var.get()]
         if self.from_var.get():  args += ["--from-date", self.from_var.get()]
         if self.to_var.get():    args += ["--to-date",   self.to_var.get()]
@@ -2149,11 +2150,15 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         key = (self.llm_url.get(), self.llm_model.get())
         if getattr(self, "_warmed_llm", None) == key:
             return
+        try:
+            client = self._make_llm_client()
+        except Exception:
+            return
         self._warmed_llm = key
 
         def worker():
             try:
-                self._make_llm_client().warm_up()
+                client.warm_up()
             except Exception:
                 pass  # best effort: generation will load the model anyway
 
@@ -2188,11 +2193,16 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         if not self._begin_operation("Проверка подключения"):
             return
         self._llm_status.config(text="●", fg=YELLOW)
-        self.update_idletasks()
+        try:
+            client = self._make_llm_client()
+        except Exception as exc:
+            self._llm_status.config(text="●", fg=RED)
+            self._set_progress(f"Ошибка: {exc}")
+            self._end_operation(False)
+            return
 
         def check():
             try:
-                client = self._make_llm_client()
                 ok = client.check_connection()
                 color = GREEN if ok else RED
                 self.after(0, self._llm_status.config, {"text": "●", "fg": color})
@@ -2226,6 +2236,14 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         from garmin_fit.marked_plan import is_marked_plan
         marked = is_marked_plan(plan_text)
         hr_zones = self._builder_hr_zones()
+        mode = self.llm_conn_mode.get()
+        try:
+            client = None if marked else self._make_llm_client(for_generation=True)
+        except Exception as exc:
+            self._set_progress(f"❌ {exc}", RED)
+            self._llm_ui_idle()
+            self._end_operation(False)
+            return
         if marked:
             self._set_progress("⏳ Разбираю размеченный план (без LLM)…")
         else:
@@ -2239,12 +2257,10 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                     # Marked text is compiled deterministically: no LLM, no network.
                     from garmin_fit.plan_service import build_marked_plan_draft
                     result = build_marked_plan_draft(plan_text, hr_zones=hr_zones)
-                elif self.llm_conn_mode.get() == "api":
-                    client = self._make_llm_client(for_generation=True)
+                elif mode == "api":
                     result = client.build_plan_draft(plan_text, max_retries=1)
                 else:
                     from garmin_fit.plan_service import build_plan_draft
-                    client = self._make_llm_client(for_generation=True)
                     client.cancel_event = cancel_event
                     client.progress_callback = lambda info: self.after(0, self._on_llm_progress, info)
                     result = build_plan_draft(
