@@ -2217,6 +2217,19 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
     def _set_progress(self, text, color=YELLOW):
         self._llm_progress.config(text=text, fg=color)
 
+    def _llm_result_context(self, *, marked: bool) -> tuple:
+        source = self._plan_text.get("1.0", "end").strip()
+        profile = self._active_profile_email
+        if marked:
+            return source, profile
+        mode = self.llm_conn_mode.get()
+        settings = (
+            (self.api_url.get(), self.api_token.get()) if mode == "api"
+            else (self.llm_url.get(), self.llm_model.get(), self.llm_type.get(),
+                  self.llm_output_format.get())
+        )
+        return source, profile, mode, settings, self.llm_timeout.get()
+
     def _llm_generate(self):
         plan_text = self._plan_text.get("1.0", "end").strip()
         if not plan_text:
@@ -2235,6 +2248,7 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
 
         from garmin_fit.marked_plan import is_marked_plan
         marked = is_marked_plan(plan_text)
+        context = self._llm_result_context(marked=marked)
         hr_zones = self._builder_hr_zones()
         mode = self.llm_conn_mode.get()
         try:
@@ -2282,6 +2296,17 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
                     n = 0
 
                 def finish():
+                    try:
+                        current = self._llm_result_context(marked=marked)
+                    except tk.TclError:
+                        current = None
+                    if cancel_event.is_set() or current != context:
+                        message = ("Разбор отменён" if cancel_event.is_set() else
+                                   "Текст или настройки изменились. Нажмите «Разобрать план» ещё раз.")
+                        self._set_progress(message, YELLOW)
+                        self._llm_ui_idle()
+                        self._end_operation(False)
+                        return
                     if errors:
                         self._show_generated("")
                         self._set_progress(f"❌ YAML не создан: {errors[0]}", RED)

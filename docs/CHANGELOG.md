@@ -1,5 +1,7 @@
 # Changelog
 
+- Discard a completed generator result if its source text or relevant settings changed during generation.
+
 ## 2026-11-20 - Desktop task context
 
 - Capture Garmin and LLM request inputs before starting workers and clear Garmin
