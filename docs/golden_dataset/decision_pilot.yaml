@@ -1,0 +1,42 @@
+# Synthetic cases inspired by the golden workout categories. Do not train on these.
+cases:
+  - id: pace_vs_elapsed
+    text: "6×800 м темпом 4:15, отдых 2 мин."
+    choices: {a: "4:15 на каждый отрезок", b: "4:15 на километр"}
+    expected: b
+  - id: elapsed_vs_pace
+    text: "6×800 м, каждый отрезок за 4:15, отдых 2 мин."
+    choices: {a: "4:15 на каждый отрезок", b: "4:15 на километр"}
+    expected: a
+  - id: unclear_pace
+    text: "6×800 м, 4:15, отдых 2 мин."
+    choices: {a: "4:15 на каждый отрезок", b: "4:15 на километр"}
+    expected: clarify
+  - id: recovery_between
+    text: "4×1 км, по 2 минуты трусцы только между отрезками."
+    choices: {a: "Три восстановления", b: "Четыре восстановления"}
+    expected: a
+  - id: recovery_after_each
+    text: "4×1 км, по 2 минуты трусцы после каждого, включая последний."
+    choices: {a: "Три восстановления", b: "Четыре восстановления"}
+    expected: b
+  - id: recovery_unspecified
+    text: "4×1 км, отдых по 2 минуты по самочувствию."
+    choices: {a: "Ровно три восстановления", b: "Ровно четыре восстановления"}
+    expected: clarify
+  - id: pulse_cap
+    text: "Беги 30 минут, пульс не выше 145."
+    choices: {a: "145 — нижняя граница", b: "145 — верхняя граница"}
+    expected: b
+  - id: pulse_floor
+    text: "Беги 30 минут, пульс не ниже 145."
+    choices: {a: "145 — нижняя граница", b: "145 — верхняя граница"}
+    expected: a
+  - id: nested_repeats
+    text: "Два круга. В каждом три раза по 400 м, затем 3 мин отдыха перед следующим кругом."
+    choices: {a: "Три отрезка на круг, отдых между кругами", b: "Отдых после каждого отрезка"}
+    expected: a
+  - id: repeat_scope_unclear
+    text: "Два круга по три отрезка по 400 м, отдых 3 мин."
+    choices: {a: "Отдых между кругами", b: "Отдых после каждого отрезка"}
+    expected: clarify

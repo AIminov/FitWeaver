@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21 - Offline decision pilot
+
+- Add synthetic fixed-choice parsing cases and offline scoring of exported decisions.
+
 ## 2026-11-21 - Local calendar module
 
 - Move the YAML calendar tab and its editing history into a dedicated GUI module.
