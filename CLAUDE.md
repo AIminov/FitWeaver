@@ -34,6 +34,7 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 
 **Next tasks (updated 2026-11-21, start here):**
 0. Manually exercise generation progress/cancellation and sidebar actions in the rebuilt GUI.
+   The source GUI smoke test covers cancellation and late responses using a stub model.
    Both executables passed clean-runtime startup and plan validation. Local plan edits now share
    the plan_edits service. Garmin and LLM workers capture inputs before starting.
    Generation results are checked against the current source and settings before display.

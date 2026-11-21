@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21 - Desktop generation regression coverage
+
+- Exercise cancellation and stale responses in the Tk smoke test with a controlled model response.
+
 ## 2026-11-21 - Clean-runtime executable smoke
 
 - Create the plan archive directory even when the runtime has no Plan folder yet.

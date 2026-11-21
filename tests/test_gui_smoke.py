@@ -10,8 +10,10 @@ dialogs are stubbed.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -123,7 +125,6 @@ def test_gui_main_flows(tmp_path):
 
         def finish():
             app.pass_var.set("")
-            from types import SimpleNamespace
 
             def drop(workout, day, *, copy=False):
                 app._drag_moved = True
@@ -185,7 +186,48 @@ def test_gui_main_flows(tmp_path):
             results["draft_cleared"] = not any(app._draft_snapshot().values())
             app.yaml_path.set("")
             results["empty_context_closed_store"] = app._store is None
-            app.quit()
+            check_late_result(cancel=True)
+
+        def check_late_result(*, cancel):
+            release = threading.Event()
+            started = threading.Event()
+
+            def generate(*args, **kwargs):
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError("GUI did not release the fake model")
+                return SimpleNamespace(
+                    yaml_text=results["yaml"], warnings=[], repairs=[], validation_errors=[],
+                )
+
+            app.llm_conn_mode.set("api")
+            app._plan_text.delete("1.0", "end")
+            app._plan_text.insert("1.0", "Slow model request")
+            with patch.object(app, "_make_llm_client", return_value=SimpleNamespace(build_plan_draft=generate)):
+                app._llm_generate()
+
+            def change_input():
+                try:
+                    if cancel:
+                        results["cancel_available"] = str(app._cancel_btn.cget("state")) == "normal"
+                        app._cancel_btn.invoke()
+                        results["cancel_progress"] = "Отменяю" in app._llm_progress.cget("text")
+                    else:
+                        app._plan_text.insert("end", " edited")
+                finally:
+                    release.set()
+                wait_then(lambda: not app._operation_active, check_result)
+
+            def check_result():
+                status = app._llm_progress.cget("text")
+                if cancel:
+                    results["cancel_discarded"] = not app._generated_yaml and "отменена" in status
+                    check_late_result(cancel=False)
+                else:
+                    results["stale_discarded"] = not app._generated_yaml and "изменились" in status
+                    app.quit()
+
+            wait_then(started.is_set, change_input)
 
         app.after(200, step_load_plan)
         app.mainloop()
@@ -215,5 +257,7 @@ def test_gui_main_flows(tmp_path):
     assert results["undo_restores_draft"] and results["redo_clears_draft"]
     assert results["new_edit_discards_redo"]
     assert results["empty_context_closed_store"]
+    assert results["cancel_available"] and results["cancel_progress"] and results["cancel_discarded"]
+    assert results["stale_discarded"]
     assert not any("topsecret-password" in line for line in log_lines)
     assert any("--password ***" in line for line in log_lines)
