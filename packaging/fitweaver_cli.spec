@@ -44,6 +44,7 @@ llm_datas = collect_data_files("garmin_fit.llm", includes=["*.yaml", "*.txt", "*
 _GUI_ONLY = {
     "garmin_fit.gui_theme", "garmin_fit.gui_validation",
     "garmin_fit.gui_garmin_tab", "garmin_fit.gui_builder_tab", "garmin_fit.gui_palette",
+    "garmin_fit.gui_calendar_tab",
 }
 garmin_fit_submodules = [
     m for m in collect_submodules("garmin_fit") if m not in _GUI_ONLY and _app_module(m)

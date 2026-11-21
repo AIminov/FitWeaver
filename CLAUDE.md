@@ -56,8 +56,10 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
    read-only calendar lookup confirmed one exact name/date match.
 4. Refine target-to-step scoring for complex source text, add precise free-text patterns,
    then choose an embedded llama-server/GGUF runtime only if model quality is acceptable.
-5. Code quality: move the remaining YAML Calendar and LLM GUI tabs into modules and consolidate
-   their shared state; the Builder and Garmin tabs have already moved.
+5. Code quality: move the LLM GUI tab into a module and consolidate shared state.
+   The YAML Calendar, Builder, and Garmin tabs have already moved.
+6. Evaluate decision models such as TypeSafe Jev as optional parse rankers if a candidate
+   benchmark is available. Keep deterministic validation and the offline path.
 5. `TODO.md` lists every open task (only open ones). The Telegram bot is deprioritized.
 
 **Working style preferences:**

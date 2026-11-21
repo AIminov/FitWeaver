@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21 - Local calendar module
+
+- Move the YAML calendar tab and its editing history into a dedicated GUI module.
+
 ## 2026-11-21 - Desktop generation regression coverage
 
 - Exercise cancellation and stale responses in the Tk smoke test with a controlled model response.
