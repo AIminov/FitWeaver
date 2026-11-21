@@ -265,7 +265,7 @@ def archive_current_plan(
 
     # Archive and move plan files (clean Plan/ directory except plan_done/)
     if plan_files:
-        PLAN_DONE_DIR.mkdir(exist_ok=True)
+        PLAN_DONE_DIR.mkdir(parents=True, exist_ok=True)
 
         # Create plan_done subdirectory with same naming as archive
         plan_done_subdir = PLAN_DONE_DIR / archive_name

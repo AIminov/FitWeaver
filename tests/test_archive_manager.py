@@ -7,6 +7,21 @@ import garmin_fit.archive_manager as archive_manager
 
 
 class ArchiveManagerTests(unittest.TestCase):
+    def test_snapshot_from_external_plan_with_fresh_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_file = root / "sample.yaml"
+            plan_file.write_text("workouts: []", encoding="utf-8")
+            with patch.multiple(
+                archive_manager, PLAN_DONE_DIR=root / "Plan" / "plan_done",
+                OUTPUT_DIR=root / "Output_fit", ARCHIVE_DIR=root / "Archive",
+                ARTIFACTS_DIR=root / "Build_artifacts",
+            ):
+                archive = archive_manager.archive_current_plan(
+                    archive_name="fresh", keep_plan=True, plan_paths=[plan_file])
+            self.assertTrue(plan_file.is_file())
+            self.assertTrue((archive / plan_file.name).is_file())
+
     def test_archive_move_plan_handles_plan_done_collision(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

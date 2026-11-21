@@ -33,7 +33,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
 **Auth:** user uses `gh` CLI — already authenticated as AIminov. No need to configure tokens.
 
 **Next tasks (updated 2026-11-21, start here):**
-0. Rebuild and smoke-test the desktop and CLI executables. Local plan edits now share
+0. Manually exercise generation progress/cancellation and sidebar actions in the rebuilt GUI.
+   Both executables passed clean-runtime startup and plan validation. Local plan edits now share
    the plan_edits service. Garmin and LLM workers capture inputs before starting.
    Generation results are checked against the current source and settings before display.
    Optional workout dates now take precedence over legacy filename dates.

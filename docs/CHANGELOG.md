@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 - Clean-runtime executable smoke
+
+- Create the plan archive directory even when the runtime has no Plan folder yet.
+- Rebuilt both Windows executables. Verified CLI marked-plan conversion, validation,
+  FIT generation and archiving, plus packaged GUI startup and YAML validation.
+
 ## 2026-11-21 - Shared local plan edits
 
 - Route workout saves, calendar moves, copies, and history replay through a shared
