@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 - Offline candidate rules
+
+- Generate focused interpretation candidates from Russian workout phrases and measure
+  rule accuracy separately from expected-option coverage.
+
 ## 2026-11-21 - Offline decision pilot
 
 - Add synthetic fixed-choice parsing cases and offline scoring of exported decisions.

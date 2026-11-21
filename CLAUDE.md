@@ -58,8 +58,8 @@ See `version.txt` for project version history. See `TODO.md` for the full task b
    then choose an embedded llama-server/GGUF runtime only if model quality is acceptable.
 5. Code quality: move the LLM GUI tab into a module and consolidate shared state.
    The YAML Calendar, Builder, and Garmin tabs have already moved.
-6. Build deterministic candidate generation and a rule baseline, then compare local
-   decision models with the fixed-choice pilot in docs/golden_dataset/decision_pilot.yaml.
+6. Expand the offline decision pilot with independently labeled cases. Compare local
+   decision models against the existing candidate rules before considering integration.
 5. `TODO.md` lists every open task (only open ones). The Telegram bot is deprioritized.
 
 **Working style preferences:**

@@ -23,3 +23,8 @@ Run `python -m garmin_fit.decision_eval docs/golden_dataset/decision_pilot.yaml`
 for the always-clarify baseline. Append a JSON file mapping each case ID to a choice
 ID to score exported predictions. A missed clarification also counts as a wrong
 selection. Keep this pilot out of training and use a separate larger set for final evaluation.
+
+Run `python -m garmin_fit.decision_eval docs/golden_dataset/decision_pilot.yaml --rules`
+to score candidates generated from text. The rules were developed against this pilot,
+so the score checks wiring, not generalization. Candidates represent individual
+interpretation decisions, not complete workout plans.

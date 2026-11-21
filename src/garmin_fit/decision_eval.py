@@ -35,12 +35,27 @@ def main() -> None:
     parser.add_argument("suite", type=Path)
     parser.add_argument("predictions", type=Path, nargs="?",
                         help="JSON object mapping case IDs to choice IDs. Default: always clarify.")
+    parser.add_argument("--rules", action="store_true", help="Evaluate text-only candidate rules.")
     args = parser.parse_args()
+    if args.rules and args.predictions:
+        parser.error("Choose --rules or a predictions file")
     cases = yaml.safe_load(args.suite.read_text(encoding="utf-8"))["cases"]
     predictions = (json.loads(args.predictions.read_text(encoding="utf-8")) if args.predictions
                    else {case["id"]: CLARIFY for case in cases})
     try:
+        if args.rules:
+            from .decision_candidates import build_decision
+
+            generated = {case["id"]: build_decision(case["text"]) for case in cases}
+            predictions = {key: item.preferred for key, item in generated.items()}
         scores = score_decisions(cases, predictions)
+        if args.rules:
+            scores["answerable_cases"] = sum(case["expected"] != CLARIFY for case in cases)
+            scores["expected_option_generated"] = sum(
+                case["expected"] != CLARIFY
+                and case["expected"] in {candidate.key for candidate in generated[case["id"]].candidates}
+                for case in cases
+            )
     except (TypeError, ValueError) as exc:
         parser.error(str(exc))
     print(json.dumps(scores, indent=2))
