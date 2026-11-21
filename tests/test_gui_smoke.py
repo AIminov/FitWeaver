@@ -26,6 +26,9 @@ def test_gui_main_flows(tmp_path):
     import fitweaver_gui
     from garmin_fit import config, logging_utils, profile_store
 
+    def unexpected_dialog(title, message, **kwargs):
+        raise AssertionError(f"{title}: {message}")
+
     stubs = [
         patch.object(fitweaver_gui, "SESSION_FILE", tmp_path / ".gui_session.json"),
         patch.object(fitweaver_gui, "PROJECT_ROOT", tmp_path),
@@ -34,6 +37,7 @@ def test_gui_main_flows(tmp_path):
         patch.object(logging_utils, "setup_file_logging", lambda *a, **k: None),
         patch("urllib.request.urlopen", side_effect=OSError("offline in tests")),
         patch.object(fitweaver_gui.messagebox, "showwarning", lambda *a, **k: None),
+        patch.object(fitweaver_gui.messagebox, "showerror", unexpected_dialog),
         patch.object(fitweaver_gui.messagebox, "showinfo", lambda *a, **k: None),
         patch.object(fitweaver_gui.messagebox, "askyesno", lambda *a, **k: True),
     ]
@@ -108,14 +112,14 @@ def test_gui_main_flows(tmp_path):
             results["editor"] = app._plan_text.get("1.0", "end")
             results["t0"] = time.time()
             app._run(["validate-yaml", "--plan", str(FIXTURE)])
-            wait_then(lambda: len(done_lines()) >= 1, step_garmin)
+            wait_then(lambda: len(done_lines()) >= 1 and not app._operation_active, step_garmin)
 
         def step_garmin():
             results["validate_seconds"] = time.time() - results["t0"]
             results["validate_result"] = done_lines()[-1]
             app.pass_var.set("topsecret-password")
             app._run(["garmin-calendar", "--plan", str(FIXTURE), "--dry-run"])
-            wait_then(lambda: len(done_lines()) >= 2, finish)
+            wait_then(lambda: len(done_lines()) >= 2 and not app._operation_active, finish)
 
         def finish():
             app.pass_var.set("")

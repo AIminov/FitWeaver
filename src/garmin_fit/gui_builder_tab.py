@@ -838,7 +838,7 @@ class BuilderTabMixin:
         threading.Thread(target=worker, daemon=True).start()
 
     def _builder_commit(self):
-        from garmin_fit.workout_builder import validate_draft
+        from garmin_fit.plan_edits import save_workout
 
         filename = self._builder_filename_var.get().strip()
         if not filename or not self._builder_steps:
@@ -847,13 +847,8 @@ class BuilderTabMixin:
             messagebox.showwarning(
                 "Нет плана", "Сначала откройте или создайте YAML план вверху окна.")
             return
-        errors, warnings = validate_draft(filename, filename, self._builder_steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors))
-            return
-
         try:
-            self._store.add_workout(filename=filename, name=filename, steps=self._builder_steps)
+            save_workout(self._store, filename, self._builder_steps)
         except (ValueError, OSError) as exc:
             messagebox.showerror("Не удалось добавить тренировку", str(exc), parent=self)
             return
@@ -867,7 +862,7 @@ class BuilderTabMixin:
         self._builder_clear()
 
     def _builder_save_edit(self):
-        from garmin_fit.workout_builder import validate_draft
+        from garmin_fit.plan_edits import save_workout
 
         workout_id = self._builder_edit_workout_id
         filename = self._builder_filename_var.get().strip()
@@ -881,13 +876,8 @@ class BuilderTabMixin:
                 parent=self,
             )
             return
-        errors, warnings = validate_draft(filename, filename, self._builder_steps)
-        if errors:
-            messagebox.showwarning("Есть ошибки", "\n".join(errors), parent=self)
-            return
         try:
-            self._store.replace_workout_steps(
-                workout_id, self._builder_steps, filename=filename)
+            save_workout(self._store, filename, self._builder_steps, workout_id=workout_id)
         except Exception as exc:
             messagebox.showerror("Не удалось сохранить", str(exc), parent=self)
             return

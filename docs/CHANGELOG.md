@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 - Shared local plan edits
+
+- Route workout saves, calendar moves, copies, and history replay through a shared
+  service that uses PlanStore for persistence.
+
 - Discard a completed generator result if its source text or relevant settings changed during generation.
 
 ## 2026-11-20 - Desktop task context

@@ -39,7 +39,6 @@ from garmin_fit.gui_palette import (
     MUTED,
     PURPLE,
     RED,
-    WEEKDAY_ABBR_EN,
     WORKOUT_COLORS,
     YELLOW,
 )
@@ -1412,33 +1411,17 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             return
 
         filename = wo.get("filename") or wo.get("name") or ""
-        workout_id = self._store.find_workout_id_by_filename(filename)
-        if workout_id is None:
-            self._log(f"[ERR] Не удалось найти тренировку «{filename}»")
-            return
+        from garmin_fit.plan_edits import reschedule
 
-        new_date = datetime.date.fromisoformat(target_date_str)
-        new_filename = self._compute_renamed_filename(filename, new_date)
-        old_date = self._store.get_workout_date(workout_id)
         self._calendar_history_buttons()
-
-        if is_copy:
-            new_filename = self._dedupe_filename(new_filename, exclude_workout_id=-1)
-            try:
-                self._store.duplicate_workout(workout_id, filename=new_filename, date=target_date_str)
-            except (ValueError, OSError) as exc:
-                messagebox.showerror("Не удалось скопировать", str(exc), parent=self)
-                return
-            self._log(f"[OK] «{filename}» скопирована на {target_date_str} → «{new_filename}»")
-        else:
-            try:
-                self._store.rename_workout_filename(workout_id, new_filename, date=target_date_str, update_date=True)
-            except (ValueError, OSError) as exc:
-                messagebox.showerror("Не удалось перенести", str(exc), parent=self)
-                return
-            self._log(f"[OK] «{filename}» перенесена на {target_date_str} → «{new_filename}»")
-
-        self._calendar_undo.append((is_copy, filename, new_filename, old_date, target_date_str))
+        try:
+            change = reschedule(self._store, filename, target_date_str, copy=is_copy)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("?? ??????? ???????? ????", str(exc), parent=self)
+            return
+        action = "???????????" if is_copy else "??????????"
+        self._log(f"[OK] ?{filename}? {action} ?? {target_date_str} ? ?{change.new_name}?")
+        self._calendar_undo.append(change)
         del self._calendar_undo[:-50]
         self._calendar_redo.clear()
         self._calendar_history_context = self._current_plan_context()
@@ -1460,20 +1443,10 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
             source, destination = destination, source
         if self._operation_active or self._store is None or not source:
             return
-        is_copy, old_name, new_name, old_date, new_date = source[-1]
-        workout_id = self._store.find_workout_id_by_filename(old_name if redo else new_name)
-        if workout_id is None:
-            messagebox.showerror("Тренировка не найдена", "Обновите локальный план.", parent=self)
-            return
+        from garmin_fit.plan_edits import replay_reschedule
+
         try:
-            if is_copy and redo:
-                self._store.duplicate_workout(workout_id, filename=new_name, date=new_date)
-            elif is_copy:
-                self._store.delete_workout(workout_id)
-            else:
-                self._store.rename_workout_filename(
-                    workout_id, new_name if redo else old_name,
-                    date=new_date if redo else old_date, update_date=True)
+            replay_reschedule(self._store, source[-1], redo=redo)
         except (ValueError, OSError) as exc:
             messagebox.showerror("Не удалось применить правку", str(exc), parent=self)
             return
@@ -1490,35 +1463,6 @@ class App(BuilderTabMixin, GarminTabMixin, _AppBase):
         self._detail_var.set("")
         self._edit_selected_btn.configure(state="disabled")
         self._draw_calendar()
-
-    def _dedupe_filename(self, filename: str, exclude_workout_id: int) -> str:
-        """Append _copy / _copy2 / ... if filename collides with another
-        workout already in the plan (e.g. copying onto the same day the
-        source workout is already on recomputes an identical name)."""
-        candidate = filename
-        suffix = 1
-        while True:
-            existing_id = self._store.find_workout_id_by_filename(candidate)
-            if existing_id is None or existing_id == exclude_workout_id:
-                return candidate
-            suffix += 1
-            candidate = f"{filename}_copy{'' if suffix == 2 else suffix}"
-
-    def _compute_renamed_filename(self, old_filename: str, new_date: datetime.date) -> str:
-        """Rewrite the W{week}_{MM-DD}_{Day}_... prefix for a new date,
-        reusing plan_processing.normalize_workout_identifier to recompute
-        the ISO calendar week (it does not re-derive the weekday token, so
-        that's computed here from new_date directly)."""
-        from garmin_fit.plan_processing import normalize_workout_identifier
-
-        weekday = WEEKDAY_ABBR_EN[new_date.weekday()]
-        date_token = f"{new_date.month:02d}-{new_date.day:02d}"
-        candidate, n = re.subn(
-            r"_\d{2}-\d{2}_[A-Za-z]+_", f"_{date_token}_{weekday}_", old_filename, count=1)
-        if n == 0:
-            candidate = f"W00_{date_token}_{weekday}_{old_filename}"
-        return normalize_workout_identifier(
-            candidate, workout_index=0, inferred_year=new_date.year)
 
     def _show_detail(self, wo):
         self._selected_workout = wo
